@@ -4,8 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Mail, Lock, Shield } from "lucide-react";
+import { Shield } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +15,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -29,12 +27,6 @@ import {
 
 
 const formSchema = z.object({
-  email: z.string().email({
-    message: "Por favor, introduce una dirección de correo electrónico válida.",
-  }),
-  password: z.string().min(6, {
-    message: "La contraseña debe tener al menos 6 caracteres.",
-  }),
   role: z.enum(["alumno", "docente", "admin"], {
     required_error: "Por favor, selecciona un rol.",
   }),
@@ -47,8 +39,6 @@ export default function LoginPage() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      email: "",
-      password: "",
       role: "alumno",
     },
   });
@@ -77,51 +67,12 @@ export default function LoginPage() {
           Bienvenido de nuevo
         </CardTitle>
         <CardDescription className="text-center">
-          Ingresa tus credenciales para acceder a tu cuenta
+          Selecciona tu rol para acceder a tu cuenta
         </CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Correo electrónico</FormLabel>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <FormControl>
-                      <Input placeholder="tu@ejemplo.com" {...field} className="pl-10"/>
-                    </FormControl>
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <div className="flex items-center justify-between">
-                    <FormLabel>Contraseña</FormLabel>
-                    <Link href="/forgot-password" passHref>
-                      <Button variant="link" className="h-auto p-0 text-sm">
-                        ¿Olvidaste la contraseña?
-                      </Button>
-                    </Link>
-                  </div>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} className="pl-10" />
-                    </FormControl>
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
              <FormField
               control={form.control}
               name="role"
