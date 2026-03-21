@@ -33,25 +33,25 @@ const users = [
         name: 'Ana Gómez',
         email: 'ana.gomez@example.com',
         password: 'password123',
-        role: 'docente',
+        role: 'Docente',
     },
     {
         name: 'Luis Fernandez',
         email: 'luis.fernandez@example.com',
         password: 'password123',
-        role: 'admin',
+        role: 'Admin',
     }
 ]
 
 
 const formSchema = z.object({
-  email: z.string().email({
-    message: "Por favor, introduce una dirección de correo electrónico válida.",
+  email: z.string().min(1, {
+    message: "Por favor, introduce tu correo o usuario.",
   }),
   password: z.string().min(1, {
     message: "Por favor, introduce tu contraseña.",
   }),
-  role: z.enum(["docente", "admin"], {
+  role: z.enum(["Docente", "Admin"], {
     required_error: "Por favor, selecciona un rol.",
   }),
 });
@@ -69,6 +69,17 @@ export default function LoginPage() {
   });
 
   function onSubmit(values: z.infer<typeof formSchema>) {
+    if (values.email === "Admin" && values.password === "admin" && values.role === "Admin") {
+      toast({
+          title: "Acceso de administrador concedido",
+          description: "Redirigiendo al panel de control...",
+      });
+      setTimeout(() => {
+          router.push("/admin/dashboard");
+      }, 1000);
+      return;
+    }
+    
     const authenticatedUser = users.find(
       user => user.email === values.email && user.password === values.password && user.role === values.role
     );
@@ -79,7 +90,7 @@ export default function LoginPage() {
             description: "Redirigiendo a tu panel de control...",
         });
         setTimeout(() => {
-            if (values.role === 'admin') {
+            if (values.role === 'Admin') {
                 router.push("/admin/dashboard");
             } else {
                 router.push("/dashboard");
@@ -112,11 +123,11 @@ export default function LoginPage() {
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Correo electrónico</FormLabel>
+                  <FormLabel>Correo o Usuario</FormLabel>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <FormControl>
-                      <Input placeholder="tu@ejemplo.com" {...field} className="pl-10"/>
+                      <Input placeholder="Admin" {...field} className="pl-10"/>
                     </FormControl>
                   </div>
                   <FormMessage />
@@ -132,7 +143,7 @@ export default function LoginPage() {
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} className="pl-10" />
+                      <Input type="password" placeholder="admin" {...field} className="pl-10" />
                     </FormControl>
                   </div>
                   <FormMessage />
@@ -154,8 +165,8 @@ export default function LoginPage() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="docente">Docente</SelectItem>
-                        <SelectItem value="admin">Administrador</SelectItem>
+                        <SelectItem value="Docente">Docente</SelectItem>
+                        <SelectItem value="Admin">Administrador</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
