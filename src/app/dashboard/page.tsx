@@ -20,26 +20,26 @@ export default function DashboardPage() {
       <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b bg-background px-4 sm:px-6">
         <div className="flex items-center gap-2">
             <Logo className="h-8 w-8" />
-            <h1 className="text-xl font-semibold">UniLink Dashboard</h1>
+            <h1 className="text-xl font-semibold">Panel de UniLink</h1>
         </div>
         <LogoutButton />
       </header>
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6">
         <div className="mx-auto grid w-full max-w-6xl gap-2">
-          <h1 className="text-3xl font-semibold">Welcome, {user.name}!</h1>
+          <h1 className="text-3xl font-semibold">¡Bienvenido, {user.name}!</h1>
         </div>
         <div className="mx-auto grid w-full max-w-6xl items-start gap-6 md:grid-cols-[180px_1fr] lg:grid-cols-[250px_1fr]">
           <nav className="grid gap-4 text-sm text-muted-foreground">
             <a href="#" className="font-semibold text-primary">
-              Profile
+              Perfil
             </a>
-            <a href="#" className="hover:text-primary">Settings</a>
-            <a href="#" className="hover:text-primary">Support</a>
+            <a href="#" className="hover:text-primary">Configuración</a>
+            <a href="#" className="hover:text-primary">Soporte</a>
           </nav>
           <div className="grid gap-6">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-lg font-medium">Your Profile</CardTitle>
+                <CardTitle className="text-lg font-medium">Tu perfil</CardTitle>
                 <Badge variant="outline" className="border-accent text-accent">{user.plan}</Badge>
               </CardHeader>
               <CardContent className="flex items-center gap-4 pt-4">
@@ -55,11 +55,11 @@ export default function DashboardPage() {
             </Card>
             <Card>
                 <CardHeader>
-                    <CardTitle>What's New</CardTitle>
-                    <CardDescription>Latest updates and features from UniLink.</CardDescription>
+                    <CardTitle>Novedades</CardTitle>
+                    <CardDescription>Últimas actualizaciones y características de UniLink.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <p>Welcome to the new and improved UniLink Access dashboard! We're excited to have you here.</p>
+                    <p>¡Bienvenido al nuevo y mejorado panel de UniLink Access! Estamos emocionados de tenerte aquí.</p>
                 </CardContent>
             </Card>
           </div>

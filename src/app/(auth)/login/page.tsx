@@ -30,13 +30,13 @@ import {
 
 const formSchema = z.object({
   email: z.string().email({
-    message: "Please enter a valid email address.",
+    message: "Por favor, introduce una dirección de correo electrónico válida.",
   }),
   password: z.string().min(6, {
-    message: "Password must be at least 6 characters.",
+    message: "La contraseña debe tener al menos 6 caracteres.",
   }),
   role: z.enum(["admin", "user"], {
-    required_error: "Please select a role.",
+    required_error: "Por favor, selecciona un rol.",
   }),
 });
 
@@ -57,8 +57,8 @@ export default function LoginPage() {
     // Simulate API call
     console.log(values);
     toast({
-      title: "Login Successful",
-      description: "Redirecting to your dashboard...",
+      title: "Inicio de sesión exitoso",
+      description: "Redirigiendo a tu panel de control...",
     });
     // Redirect to dashboard on successful login
     setTimeout(() => {
@@ -74,10 +74,10 @@ export default function LoginPage() {
     <Card className="w-full shadow-lg">
       <CardHeader>
         <CardTitle className="text-2xl font-bold tracking-tight text-center">
-          Welcome Back
+          Bienvenido de nuevo
         </CardTitle>
         <CardDescription className="text-center">
-          Enter your credentials to access your account
+          Ingresa tus credenciales para acceder a tu cuenta
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -88,11 +88,11 @@ export default function LoginPage() {
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>Correo electrónico</FormLabel>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <FormControl>
-                      <Input placeholder="you@example.com" {...field} className="pl-10"/>
+                      <Input placeholder="tu@ejemplo.com" {...field} className="pl-10"/>
                     </FormControl>
                   </div>
                   <FormMessage />
@@ -105,10 +105,10 @@ export default function LoginPage() {
               render={({ field }) => (
                 <FormItem>
                   <div className="flex items-center justify-between">
-                    <FormLabel>Password</FormLabel>
+                    <FormLabel>Contraseña</FormLabel>
                     <Link href="/forgot-password" passHref>
                       <Button variant="link" className="h-auto p-0 text-sm">
-                        Forgot password?
+                        ¿Olvidaste la contraseña?
                       </Button>
                     </Link>
                   </div>
@@ -127,18 +127,18 @@ export default function LoginPage() {
               name="role"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Role</FormLabel>
+                  <FormLabel>Rol</FormLabel>
                   <div className="relative">
                     <Shield className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger className="pl-10">
-                          <SelectValue placeholder="Select a role" />
+                          <SelectValue placeholder="Selecciona un rol" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="user">User</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="user">Usuario</SelectItem>
+                        <SelectItem value="admin">Administrador</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -147,15 +147,15 @@ export default function LoginPage() {
               )}
             />
             <Button type="submit" className="w-full">
-              Log In
+              Iniciar sesión
             </Button>
           </form>
         </Form>
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          Don't have an account?{" "}
+          ¿No tienes una cuenta?{" "}
           <Link href="/signup" passHref>
             <Button variant="link" className="h-auto p-0">
-              Sign up
+              Regístrate
             </Button>
           </Link>
         </p>

@@ -21,7 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 
 const formSchema = z.object({
   email: z.string().email({
-    message: "Please enter a valid email address.",
+    message: "Por favor, introduce una dirección de correo electrónico válida.",
   }),
 });
 
@@ -39,8 +39,8 @@ export default function ForgotPasswordPage() {
     // Simulate API call
     console.log(values);
     toast({
-      title: "Password Reset Email Sent",
-      description: "Please check your inbox for instructions to reset your password.",
+      title: "Correo de restablecimiento de contraseña enviado",
+      description: "Revisa tu bandeja de entrada para ver las instrucciones para restablecer tu contraseña.",
     });
     form.reset();
   }
@@ -49,10 +49,10 @@ export default function ForgotPasswordPage() {
     <Card className="w-full shadow-lg">
       <CardHeader>
         <CardTitle className="text-2xl font-bold tracking-tight text-center">
-          Forgot Your Password?
+          ¿Olvidaste tu contraseña?
         </CardTitle>
         <CardDescription className="text-center">
-          No worries! Enter your email and we'll send you a reset link.
+          ¡No te preocupes! Ingresa tu correo electrónico y te enviaremos un enlace para restablecerla.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -63,11 +63,11 @@ export default function ForgotPasswordPage() {
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>Correo electrónico</FormLabel>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <FormControl>
-                      <Input placeholder="you@example.com" {...field} className="pl-10"/>
+                      <Input placeholder="tu@ejemplo.com" {...field} className="pl-10"/>
                     </FormControl>
                   </div>
                   <FormMessage />
@@ -75,7 +75,7 @@ export default function ForgotPasswordPage() {
               )}
             />
             <Button type="submit" className="w-full">
-              Send Reset Link
+              Enviar enlace de restablecimiento
             </Button>
           </form>
         </Form>
@@ -83,7 +83,7 @@ export default function ForgotPasswordPage() {
             <Link href="/login" passHref>
               <Button variant="ghost">
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Login
+                Volver al inicio de sesión
               </Button>
             </Link>
         </div>

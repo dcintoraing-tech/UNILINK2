@@ -9,33 +9,33 @@ export default function AdminDashboardPage() {
       <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b bg-background px-4 sm:px-6">
         <div className="flex items-center gap-2">
             <Logo className="h-8 w-8" />
-            <h1 className="text-xl font-semibold">Admin Dashboard</h1>
+            <h1 className="text-xl font-semibold">Panel de Administrador</h1>
         </div>
         <LogoutButton />
       </header>
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6">
         <div className="mx-auto grid w-full max-w-6xl gap-2">
-          <h1 className="text-3xl font-semibold">Welcome, Admin!</h1>
+          <h1 className="text-3xl font-semibold">¡Bienvenido, Administrador!</h1>
         </div>
         <div className="mx-auto grid w-full max-w-6xl items-start gap-6 md:grid-cols-[180px_1fr] lg:grid-cols-[250px_1fr]">
           <nav className="grid gap-4 text-sm text-muted-foreground">
             <a href="#" className="font-semibold text-primary flex items-center gap-2">
               <Users className="h-4 w-4" />
-              User Management
+              Gestión de usuarios
             </a>
             <a href="#" className="hover:text-primary flex items-center gap-2">
               <Settings className="h-4 w-4" />
-              System Settings
+              Configuración del sistema
             </a>
           </nav>
           <div className="grid gap-6">
             <Card>
               <CardHeader>
-                <CardTitle>Admin Panel</CardTitle>
-                <CardDescription>Manage your application from here.</CardDescription>
+                <CardTitle>Panel de Administración</CardTitle>
+                <CardDescription>Gestiona tu aplicación desde aquí.</CardDescription>
               </CardHeader>
               <CardContent>
-                <p>This is the central hub for all administrative tasks.</p>
+                <p>Este es el centro para todas las tareas administrativas.</p>
               </CardContent>
             </Card>
           </div>

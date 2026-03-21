@@ -22,14 +22,14 @@ import { useToast } from "@/hooks/use-toast";
 
 const formSchema = z.object({
   email: z.string().email({
-    message: "Please enter a valid email address.",
+    message: "Por favor, introduce una dirección de correo electrónico válida.",
   }),
   password: z.string().min(6, {
-    message: "Password must be at least 6 characters.",
+    message: "La contraseña debe tener al menos 6 caracteres.",
   }),
   confirmPassword: z.string()
 }).refine(data => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
+  message: "Las contraseñas no coinciden",
   path: ["confirmPassword"],
 });
 
@@ -50,8 +50,8 @@ export default function SignupPage() {
     // Simulate API call
     console.log(values);
     toast({
-      title: "Account Created",
-      description: "You can now log in with your new account.",
+      title: "Cuenta creada",
+      description: "Ahora puedes iniciar sesión con tu nueva cuenta.",
     });
     setTimeout(() => {
         router.push("/login");
@@ -62,10 +62,10 @@ export default function SignupPage() {
     <Card className="w-full shadow-lg">
       <CardHeader>
         <CardTitle className="text-2xl font-bold tracking-tight text-center">
-          Create an Account
+          Crear una cuenta
         </CardTitle>
         <CardDescription className="text-center">
-          Join UniLink Access to connect and grow
+          Únete a UniLink Access para conectar y crecer
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -76,11 +76,11 @@ export default function SignupPage() {
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>Correo electrónico</FormLabel>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <FormControl>
-                      <Input placeholder="you@example.com" {...field} className="pl-10"/>
+                      <Input placeholder="tu@ejemplo.com" {...field} className="pl-10"/>
                     </FormControl>
                   </div>
                   <FormMessage />
@@ -92,7 +92,7 @@ export default function SignupPage() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Password</FormLabel>
+                  <FormLabel>Contraseña</FormLabel>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <FormControl>
@@ -108,7 +108,7 @@ export default function SignupPage() {
               name="confirmPassword"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Confirm Password</FormLabel>
+                  <FormLabel>Confirmar contraseña</FormLabel>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <FormControl>
@@ -120,15 +120,15 @@ export default function SignupPage() {
               )}
             />
             <Button type="submit" className="w-full">
-              Sign Up
+              Registrarse
             </Button>
           </form>
         </Form>
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          Already have an account?{" "}
+          ¿Ya tienes una cuenta?{" "}
           <Link href="/login" passHref>
             <Button variant="link" className="h-auto p-0">
-              Log in
+              Iniciar sesión
             </Button>
           </Link>
         </p>
