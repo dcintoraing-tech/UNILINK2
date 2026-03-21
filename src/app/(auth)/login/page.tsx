@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Mail, Lock } from "lucide-react";
+import { Mail, Lock, Shield } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +19,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 
 const formSchema = z.object({
   email: z.string().email({
@@ -26,6 +34,9 @@ const formSchema = z.object({
   }),
   password: z.string().min(6, {
     message: "Password must be at least 6 characters.",
+  }),
+  role: z.enum(["admin", "user"], {
+    required_error: "Please select a role.",
   }),
 });
 
@@ -38,6 +49,7 @@ export default function LoginPage() {
     defaultValues: {
       email: "",
       password: "",
+      role: "user",
     },
   });
 
@@ -50,7 +62,11 @@ export default function LoginPage() {
     });
     // Redirect to dashboard on successful login
     setTimeout(() => {
-        router.push("/dashboard");
+        if (values.role === 'admin') {
+            router.push("/admin/dashboard");
+        } else {
+            router.push("/dashboard");
+        }
     }, 1000);
   }
 
@@ -101,6 +117,30 @@ export default function LoginPage() {
                     <FormControl>
                       <Input type="password" placeholder="••••••••" {...field} className="pl-10" />
                     </FormControl>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+             <FormField
+              control={form.control}
+              name="role"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Role</FormLabel>
+                  <div className="relative">
+                    <Shield className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="pl-10">
+                          <SelectValue placeholder="Select a role" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="user">User</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <FormMessage />
                 </FormItem>
