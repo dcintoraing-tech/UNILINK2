@@ -151,14 +151,6 @@ export default function LoginPage() {
             </Button>
           </form>
         </Form>
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          ¿No tienes una cuenta?{" "}
-          <Link href="/signup" passHref>
-            <Button variant="link" className="h-auto p-0">
-              Regístrate
-            </Button>
-          </Link>
-        </p>
       </CardContent>
     </Card>
   );
