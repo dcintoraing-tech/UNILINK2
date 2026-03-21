@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PlusCircle, MoreHorizontal } from 'lucide-react';
 import {
   Card,
@@ -67,6 +67,7 @@ const initialUsers: User[] = [
         id: '1',
         name: 'Ana Gómez',
         email: 'ana.gomez@example.com',
+        password: 'password123',
         role: 'Docente',
         status: 'Activo',
         createdAt: '2023-10-25'
@@ -75,17 +76,45 @@ const initialUsers: User[] = [
         id: '2',
         name: 'Luis Fernandez',
         email: 'luis.fernandez@example.com',
+        password: 'password123',
         role: 'Admin',
         status: 'Inactivo',
         createdAt: '2023-10-24'
     }
-]
+];
+
+const USERS_STORAGE_KEY = 'unilink-users';
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [users, setUsers] = useState<User[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    try {
+      const storedUsers = localStorage.getItem(USERS_STORAGE_KEY);
+      if (storedUsers) {
+        setUsers(JSON.parse(storedUsers));
+      } else {
+        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(initialUsers));
+        setUsers(initialUsers);
+      }
+    } catch (error) {
+      console.error("Failed to access localStorage:", error);
+      setUsers(initialUsers);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (users.length > 0) {
+      try {
+        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+      } catch (error) {
+        console.error("Failed to save users to localStorage:", error);
+      }
+    }
+  }, [users]);
 
   const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -94,7 +123,16 @@ export default function UsersPage() {
 
     if (editingUser) {
       // Editar usuario
-      setUsers(users.map(u => u.id === editingUser.id ? { ...editingUser, ...userData, id: editingUser.id, createdAt: editingUser.createdAt } : u));
+      const userToUpdate = users.find(u => u.id === editingUser.id);
+      if (!userToUpdate) return;
+      
+      const updatedUser = {
+        ...userToUpdate,
+        ...userData,
+        password: userData.password ? userData.password : userToUpdate.password,
+      };
+
+      setUsers(users.map(u => u.id === editingUser.id ? updatedUser : u));
       toast({ title: "Usuario actualizado", description: `El usuario ${userData.name} ha sido actualizado.` });
     } else {
       // Crear usuario

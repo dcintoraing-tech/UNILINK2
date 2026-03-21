@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import { Mail, Lock, Shield } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -28,7 +29,7 @@ import {
 
 // Simulación de la base de datos de usuarios.
 // En una aplicación real, esto vendría de tu backend/base de datos.
-const users = [
+const initialUsers = [
     {
         name: 'Ana Gómez',
         email: 'ana.gomez@example.com',
@@ -41,7 +42,9 @@ const users = [
         password: 'password123',
         role: 'Admin',
     }
-]
+];
+
+const USERS_STORAGE_KEY = 'unilink-users';
 
 
 const formSchema = z.object({
@@ -59,6 +62,21 @@ const formSchema = z.object({
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const [users, setUsers] = useState<any[]>([]);
+
+  useEffect(() => {
+    try {
+      const storedUsers = localStorage.getItem(USERS_STORAGE_KEY);
+      if (storedUsers) {
+        setUsers(JSON.parse(storedUsers));
+      } else {
+        setUsers(initialUsers);
+      }
+    } catch (error) {
+      console.error("Failed to access localStorage:", error);
+      setUsers(initialUsers);
+    }
+  }, []);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
