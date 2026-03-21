@@ -35,7 +35,7 @@ const formSchema = z.object({
   password: z.string().min(6, {
     message: "La contraseña debe tener al menos 6 caracteres.",
   }),
-  role: z.enum(["admin", "user"], {
+  role: z.enum(["alumno", "docente", "admin"], {
     required_error: "Por favor, selecciona un rol.",
   }),
 });
@@ -49,7 +49,7 @@ export default function LoginPage() {
     defaultValues: {
       email: "",
       password: "",
-      role: "user",
+      role: "alumno",
     },
   });
 
@@ -137,7 +137,8 @@ export default function LoginPage() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="user">Usuario</SelectItem>
+                        <SelectItem value="alumno">Alumno</SelectItem>
+                        <SelectItem value="docente">Docente</SelectItem>
                         <SelectItem value="admin">Administrador</SelectItem>
                       </SelectContent>
                     </Select>

@@ -1,46 +1,21 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogoutButton } from "@/components/logout-button";
-import { Logo } from "@/components/logo";
-import { Users, Settings } from "lucide-react";
 
 export default function AdminDashboardPage() {
   return (
-    <div className="flex min-h-screen w-full flex-col">
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b bg-background px-4 sm:px-6">
-        <div className="flex items-center gap-2">
-            <Logo className="h-8 w-8" />
-            <h1 className="text-xl font-semibold">Panel de Administrador</h1>
-        </div>
-        <LogoutButton />
-      </header>
-      <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6">
-        <div className="mx-auto grid w-full max-w-6xl gap-2">
+    <div>
+        <div className="grid gap-2 mb-4">
           <h1 className="text-3xl font-semibold">¡Bienvenido, Administrador!</h1>
+          <p className="text-muted-foreground">Este es el centro para todas las tareas administrativas.</p>
         </div>
-        <div className="mx-auto grid w-full max-w-6xl items-start gap-6 md:grid-cols-[180px_1fr] lg:grid-cols-[250px_1fr]">
-          <nav className="grid gap-4 text-sm text-muted-foreground">
-            <a href="#" className="font-semibold text-primary flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Gestión de usuarios
-            </a>
-            <a href="#" className="hover:text-primary flex items-center gap-2">
-              <Settings className="h-4 w-4" />
-              Configuración del sistema
-            </a>
-          </nav>
-          <div className="grid gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Panel de Administración</CardTitle>
-                <CardDescription>Gestiona tu aplicación desde aquí.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p>Este es el centro para todas las tareas administrativas.</p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </main>
+        <Card>
+            <CardHeader>
+            <CardTitle>Resumen</CardTitle>
+            <CardDescription>Una vista rápida de tu sistema.</CardDescription>
+            </CardHeader>
+            <CardContent>
+            <p>Aquí verás estadísticas y métricas importantes.</p>
+            </CardContent>
+        </Card>
     </div>
   );
 }
