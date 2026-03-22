@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { PlusCircle, MoreHorizontal } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, Eye, EyeOff } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -89,6 +89,8 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -120,6 +122,20 @@ export default function UsersPage() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const userData = Object.fromEntries(formData.entries()) as any;
+    
+    if (userData.password || !editingUser) {
+        if (userData.password !== userData.confirmPassword) {
+            toast({
+                variant: "destructive",
+                title: "Error de contraseña",
+                description: "Las contraseñas no coinciden.",
+            });
+            return;
+        }
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { confirmPassword, ...userToSave } = userData;
 
     if (editingUser) {
       // Editar usuario
@@ -128,22 +144,22 @@ export default function UsersPage() {
       
       const updatedUser = {
         ...userToUpdate,
-        ...userData,
-        password: userData.password ? userData.password : userToUpdate.password,
+        ...userToSave,
+        password: userToSave.password ? userToSave.password : userToUpdate.password,
       };
 
       setUsers(users.map(u => u.id === editingUser.id ? updatedUser : u));
-      toast({ title: "Usuario actualizado", description: `El usuario ${userData.name} ha sido actualizado.` });
+      toast({ title: "Usuario actualizado", description: `El usuario ${userToSave.name} ha sido actualizado.` });
     } else {
       // Crear usuario
       const newUser: User = {
         id: Date.now().toString(),
-        ...userData,
+        ...userToSave,
         status: 'Activo',
         createdAt: new Date().toISOString().split('T')[0],
       };
       setUsers([...users, newUser]);
-      toast({ title: "Usuario creado", description: `El usuario ${userData.name} ha sido creado.` });
+      toast({ title: "Usuario creado", description: `El usuario ${userToSave.name} ha sido creado.` });
     }
     
     setIsDialogOpen(false);
@@ -152,11 +168,15 @@ export default function UsersPage() {
 
   const openEditDialog = (user: User) => {
     setEditingUser(user);
+    setShowPassword(false);
+    setShowConfirmPassword(false);
     setIsDialogOpen(true);
   };
 
   const openCreateDialog = () => {
     setEditingUser(null);
+    setShowPassword(false);
+    setShowConfirmPassword(false);
     setIsDialogOpen(true);
   };
 
@@ -278,7 +298,47 @@ export default function UsersPage() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="password">Contraseña</Label>
-                <Input id="password" name="password" type="password" placeholder={editingUser ? "Dejar en blanco para no cambiar" : ""} required={!editingUser} />
+                <div className="relative">
+                    <Input 
+                        id="password" 
+                        name="password" 
+                        type={showPassword ? "text" : "password"} 
+                        placeholder={editingUser ? "Dejar en blanco para no cambiar" : ""} 
+                        required={!editingUser} 
+                    />
+                    <Button 
+                        type="button" 
+                        variant="ghost" 
+                        size="icon" 
+                        className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground"
+                        onClick={() => setShowPassword(!showPassword)}
+                    >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        <span className="sr-only">{showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
+                    </Button>
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="confirmPassword">Confirmar Contraseña</Label>
+                <div className="relative">
+                    <Input 
+                        id="confirmPassword" 
+                        name="confirmPassword" 
+                        type={showConfirmPassword ? "text" : "password"} 
+                        placeholder="Repetir contraseña" 
+                        required={!editingUser}
+                    />
+                     <Button 
+                        type="button" 
+                        variant="ghost" 
+                        size="icon" 
+                        className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    >
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        <span className="sr-only">{showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
+                    </Button>
+                </div>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="role">Rol</Label>
