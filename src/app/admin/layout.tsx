@@ -33,10 +33,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode; }
             <UserCog className="h-4 w-4" />
             Gestión de Usuarios
           </Link>
-          <Link href="/admin/groups" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
-            <School className="h-4 w-4" />
-            Grupos
-          </Link>
           <Link href="/admin/catalogs" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
             <Book className="h-4 w-4" />
             Catálogos
