@@ -65,7 +65,26 @@ const initialData = {
     turnos: [{ id: '1', name: 'Matutino' }, { id: '2', name: 'Vespertino' }],
     materiaAsignaciones: [],
     horarios: [],
-    users: [],
+    users: [
+        {
+            id: '1',
+            name: 'Ana Gómez',
+            email: 'ana.gomez@example.com',
+            password: 'password123',
+            role: 'Docente',
+            status: 'Activo',
+            createdAt: '2023-10-25'
+        },
+        {
+            id: '2',
+            name: 'Luis Fernandez',
+            email: 'luis.fernandez@example.com',
+            password: 'password123',
+            role: 'Admin',
+            status: 'Inactivo',
+            createdAt: '2023-10-24'
+        }
+    ],
 };
 
 
@@ -467,6 +486,7 @@ export default function CatalogsPage() {
     const [materiaAsignaciones, setMateriaAsignaciones] = useState<AsignacionMateria[]>([]);
     const [horarios, setHorarios] = useState<Horario[]>([]);
     const [users, setUsers] = useState<User[]>([]);
+    const [isLoaded, setIsLoaded] = useState(false);
 
     const docentes = useMemo(() => users.filter(u => u.role === 'Docente'), [users]);
 
@@ -475,7 +495,7 @@ export default function CatalogsPage() {
         return materiaNames.map(name => ({ id: name, name: name }));
     }, [materiaAsignaciones]);
 
-    const catalogStates = {
+    const managedStates = useMemo(() => ({
         carreras: { state: carreras, setState: setCarreras, key: STORAGE_KEYS.carreras, initial: initialData.carreras },
         grupos: { state: grupos, setState: setGrupos, key: STORAGE_KEYS.grupos, initial: initialData.grupos },
         cuatrimestres: { state: cuatrimestres, setState: setCuatrimestres, key: STORAGE_KEYS.cuatrimestres, initial: initialData.cuatrimestres },
@@ -483,37 +503,37 @@ export default function CatalogsPage() {
         materiaAsignaciones: { state: materiaAsignaciones, setState: setMateriaAsignaciones, key: STORAGE_KEYS.materiaAsignaciones, initial: initialData.materiaAsignaciones },
         horarios: { state: horarios, setState: setHorarios, key: STORAGE_KEYS.horarios, initial: initialData.horarios },
         users: { state: users, setState: setUsers, key: STORAGE_KEYS.users, initial: initialData.users },
-    };
+    }), [carreras, grupos, cuatrimestres, horarios, materiaAsignaciones, turnos, users]);
 
     useEffect(() => {
-        Object.values(catalogStates).forEach(({ setState, key, initial }) => {
-            try {
+        try {
+            Object.values(managedStates).forEach(({ setState, key, initial }) => {
                 const storedData = localStorage.getItem(key);
                 if (storedData) {
                     setState(JSON.parse(storedData));
                 } else {
-                    localStorage.setItem(key, JSON.stringify(initial));
                     setState(initial);
                 }
-            } catch (error) {
-                console.error("Failed to access localStorage:", error);
-                setState(initial);
-            }
-        });
+            });
+        } catch (error) {
+            console.error("Failed to access localStorage for loading:", error);
+        } finally {
+            setIsLoaded(true);
+        }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
-        Object.entries(catalogStates).forEach(([name, { state, key }]) => {
-             try {
-                // Do not save initial users data if it's empty
-                if (name === 'users' && state.length === 0) return;
-                localStorage.setItem(key, JSON.stringify(state));
+        if (isLoaded) {
+            try {
+                Object.values(managedStates).forEach(({ state, key }) => {
+                    localStorage.setItem(key, JSON.stringify(state));
+                });
             } catch (error) {
-                console.error(`Failed to save to localStorage (${key}):`, error);
+                 console.error("Failed to access localStorage for saving:", error);
             }
-        });
-    }, [catalogStates]);
+        }
+    }, [managedStates, isLoaded]);
 
 
     return (
