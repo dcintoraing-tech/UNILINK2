@@ -19,6 +19,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
+
 
 // --- INTERFACES ---
 interface CatalogItem {
@@ -112,27 +115,27 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
                 id: Date.now().toString(),
                 name,
             };
-            setData([...data, newItem]);
+            setData(prevData => [...prevData, newItem]);
             toast({ title: "Elemento agregado", description: `El nuevo elemento ha sido agregado.` });
         }
 
         setIsDialogOpen(false);
         setCurrentItem(null);
     };
-
-    const openDialog = (item: CatalogItem | null) => {
+    
+    const handleOpenDialog = (item: CatalogItem | null = null) => {
         setCurrentItem(item);
         setIsDialogOpen(true);
     };
-
-    const openAlert = (item: CatalogItem) => {
+    
+    const handleOpenAlert = (item: CatalogItem) => {
         setCurrentItem(item);
         setIsAlertOpen(true);
     };
 
     const handleDeleteConfirm = () => {
         if (!currentItem) return;
-        setData(data.filter(item => item.id !== currentItem.id));
+        setData(prevData => prevData.filter(item => item.id !== currentItem.id));
         toast({ title: "Elemento eliminado", description: "El elemento ha sido eliminado correctamente." });
         setIsAlertOpen(false);
         setCurrentItem(null);
@@ -142,7 +145,7 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
         <Card>
             <CardHeader className="flex-row items-center justify-between">
                 <CardTitle>{title}</CardTitle>
-                <Button size="sm" onClick={() => openDialog(null)}>
+                <Button size="sm" onClick={() => handleOpenDialog()}>
                     <PlusCircle className="h-4 w-4 mr-2" />
                     Agregar
                 </Button>
@@ -167,9 +170,9 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
                                             </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent>
-                                            <DropdownMenuItem onClick={() => openDialog(item)}>Editar</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => handleOpenDialog(item)}>Editar</DropdownMenuItem>
                                             <DropdownMenuItem
-                                                onClick={() => openAlert(item)}
+                                                onClick={() => handleOpenAlert(item)}
                                                 className="text-red-600 focus:text-red-600"
                                             >
                                                 Eliminar
@@ -231,6 +234,19 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
     const [filterCarrera, setFilterCarrera] = useState<string>('all');
     const [filterCuatrimestre, setFilterCuatrimestre] = useState<string>('all');
 
+    const [isCommon, setIsCommon] = useState(false);
+    const [selectedCareers, setSelectedCareers] = useState<Record<string, boolean>>({});
+
+    useEffect(() => {
+        if (isCommon) {
+            const allSelected = carreras.reduce((acc, carrera) => {
+                acc[carrera.id] = true;
+                return acc;
+            }, {} as Record<string, boolean>);
+            setSelectedCareers(allSelected);
+        }
+    }, [isCommon, carreras]);
+
     const getNameById = (id: string, list: CatalogItem[]) => list.find(item => item.id === id)?.name || 'N/A';
     
     const filteredAsignaciones = useMemo(() => {
@@ -244,26 +260,46 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
     const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
-        const data = Object.fromEntries(formData.entries()) as Omit<AsignacionMateria, 'id'>;
-
-        if (!data.materia || !data.carreraId || !data.cuatrimestreId) {
-            toast({ variant: 'destructive', title: "Error", description: "Todos los campos son requeridos." });
-            return;
-        }
-
-        if (currentItem) {
-            setAsignaciones(asignaciones.map(a => a.id === currentItem.id ? { ...a, ...data } as AsignacionMateria : a));
+    
+        if (currentItem) { // Lógica de edición (sin cambios)
+            const data = Object.fromEntries(formData.entries()) as Omit<AsignacionMateria, 'id'>;
+            if (!data.materia || !data.carreraId || !data.cuatrimestreId) {
+                toast({ variant: 'destructive', title: "Error", description: "Todos los campos son requeridos." });
+                return;
+            }
+            setAsignaciones(prev => prev.map(a => a.id === currentItem.id ? { ...a, ...data } as AsignacionMateria : a));
             toast({ title: "Asignación actualizada" });
-        } else {
-            setAsignaciones([...asignaciones, { ...data, id: Date.now().toString() } as AsignacionMateria]);
-            toast({ title: "Materia asignada" });
+        } else { // Lógica de creación
+            const materia = formData.get('materia') as string;
+            const cuatrimestreId = formData.get('cuatrimestreId') as string;
+            const selectedCarreraIds = Object.entries(selectedCareers).filter(([, checked]) => checked).map(([id]) => id);
+    
+            if (!materia || !cuatrimestreId || selectedCarreraIds.length === 0) {
+                toast({ variant: 'destructive', title: "Error", description: "Debes proporcionar un nombre, un cuatrimestre y al menos una carrera." });
+                return;
+            }
+    
+            const newAsignaciones: AsignacionMateria[] = selectedCarreraIds.map(carreraId => ({
+                id: `${Date.now()}-${carreraId}`,
+                materia,
+                carreraId,
+                cuatrimestreId
+            }));
+    
+            setAsignaciones(prev => [...prev, ...newAsignaciones]);
+            toast({ title: "Asignación(es) creada(s) exitosamente." });
         }
+    
         setIsDialogOpen(false);
         setCurrentItem(null);
     };
     
     const openDialog = (item: AsignacionMateria | null) => {
         setCurrentItem(item);
+        if (!item) {
+            setIsCommon(false);
+            setSelectedCareers(carreras.reduce((acc, c) => ({...acc, [c.id]: false}), {}));
+        }
         setIsDialogOpen(true);
     };
 
@@ -286,9 +322,6 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                 <CardHeader className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                     <div className="space-y-1.5">
                         <CardTitle>Asignación de Materias</CardTitle>
-                        <CardDescription>
-                            Asigna materias a carreras y cuatrimestres. Para materias comunes (ej. Inglés),<br className="hidden sm:block" /> simplemente crea una asignación para cada carrera donde se imparta.
-                        </CardDescription>
                     </div>
                     <Button size="sm" onClick={() => openDialog(null)} className="w-full md:w-auto">
                         <PlusCircle className="h-4 w-4 mr-2" />
@@ -344,18 +377,60 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                         <DialogTitle>{currentItem ? 'Editar' : 'Asignar'} Materia</DialogTitle>
                     </DialogHeader>
                     <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="materia">Nombre de la Materia</Label>
-                            <Input id="materia" name="materia" defaultValue={currentItem?.materia} required />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label>Carrera</Label>
-                            <Select name="carreraId" defaultValue={currentItem?.carreraId} required><SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger><SelectContent>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
-                        </div>
-                        <div className="grid gap-2">
-                            <Label>Cuatrimestre</Label>
-                            <Select name="cuatrimestreId" defaultValue={currentItem?.cuatrimestreId} required><SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger><SelectContent>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
-                        </div>
+                        {currentItem ? (
+                            <>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="materia">Nombre de la Materia</Label>
+                                    <Input id="materia" name="materia" defaultValue={currentItem?.materia} required />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label>Carrera</Label>
+                                    <Select name="carreraId" defaultValue={currentItem?.carreraId} required><SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger><SelectContent>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label>Cuatrimestre</Label>
+                                    <Select name="cuatrimestreId" defaultValue={currentItem?.cuatrimestreId} required><SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger><SelectContent>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="materia">Nombre de la Materia</Label>
+                                    <Input id="materia" name="materia" required />
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <Switch id="isCommon" checked={isCommon} onCheckedChange={setIsCommon} />
+                                    <Label htmlFor="isCommon">Materia Común (para todas las carreras)</Label>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label>Carreras</Label>
+                                    <div className="space-y-2 rounded-md border p-4 max-h-40 overflow-y-auto">
+                                        {carreras.map(carrera => (
+                                            <div key={carrera.id} className="flex items-center space-x-2">
+                                                <Checkbox
+                                                    id={`carrera-${carrera.id}`}
+                                                    checked={selectedCareers[carrera.id] || false}
+                                                    onCheckedChange={(checked) => {
+                                                        if (!isCommon) {
+                                                            setSelectedCareers(prev => ({ ...prev, [carrera.id]: !!checked }));
+                                                        }
+                                                    }}
+                                                    disabled={isCommon}
+                                                />
+                                                <Label htmlFor={`carrera-${carrera.id}`} className="font-normal">{carrera.name}</Label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label>Cuatrimestre</Label>
+                                    <Select name="cuatrimestreId" required>
+                                        <SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger>
+                                        <SelectContent>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                            </>
+                        )}
                         <DialogFooter>
                             <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
                             <Button type="submit">{currentItem ? 'Guardar Cambios' : 'Asignar'}</Button>
@@ -541,7 +616,7 @@ export default function CatalogsPage() {
     }), [carreras, grupos, cuatrimestres, horarios, materiaAsignaciones, turnos, users]);
 
     useEffect(() => {
-        if (typeof window !== 'undefined') {
+        if (typeof window !== 'undefined' && !isLoaded) {
             try {
                 Object.values(managedStates).forEach(({ setState, key, initial }) => {
                     const storedData = localStorage.getItem(key);
@@ -557,13 +632,15 @@ export default function CatalogsPage() {
             }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [isLoaded]);
 
     useEffect(() => {
         if (isLoaded && typeof window !== 'undefined') {
             try {
                 Object.values(managedStates).forEach(({ state, key }) => {
-                    localStorage.setItem(key, JSON.stringify(state));
+                    if (state.length > 0) { // Only save if there's data to avoid overwriting with empty arrays on mount
+                        localStorage.setItem(key, JSON.stringify(state));
+                    }
                 });
             } catch (error) {
                  console.error("Error al guardar en localStorage:", error);
