@@ -32,7 +32,7 @@ interface User {
 }
 interface AsignacionMateria {
     id: string;
-    materiaId: string;
+    materia: string;
     carreraId: string;
     cuatrimestreId: string;
 }
@@ -53,7 +53,6 @@ const STORAGE_KEYS = {
     grupos: 'unilink-grupos-catalogo',
     cuatrimestres: 'unilink-cuatrimestres',
     turnos: 'unilink-turnos',
-    materias: 'unilink-materias',
     materiaAsignaciones: 'unilink-materia-asignaciones',
     horarios: 'unilink-horarios',
     users: 'unilink-users',
@@ -64,7 +63,6 @@ const initialData = {
     grupos: [{ id: '1', name: 'A-101' }, { id: '2', name: 'B-202' }],
     cuatrimestres: [{ id: '1', name: 'Primer Cuatrimestre' }, { id: '2', name: 'Segundo Cuatrimestre' }],
     turnos: [{ id: '1', name: 'Matutino' }, { id: '2', name: 'Vespertino' }],
-    materias: [{ id: '1', name: 'Programación I' }, { id: '2', name: 'Diseño de Interfaces' }],
     materiaAsignaciones: [],
     horarios: [],
     users: [],
@@ -199,7 +197,7 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
 }
 
 
-function MateriasContent({ materias, asignaciones, setAsignaciones, carreras, cuatrimestres }) {
+function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestres }) {
     const { toast } = useToast();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingAsignacion, setEditingAsignacion] = useState<AsignacionMateria | null>(null);
@@ -211,7 +209,7 @@ function MateriasContent({ materias, asignaciones, setAsignaciones, carreras, cu
         const formData = new FormData(e.currentTarget);
         const data = Object.fromEntries(formData.entries()) as Omit<AsignacionMateria, 'id'>;
 
-        if (!data.materiaId || !data.carreraId || !data.cuatrimestreId) {
+        if (!data.materia || !data.carreraId || !data.cuatrimestreId) {
             toast({ variant: 'destructive', title: "Error", description: "Todos los campos son requeridos." });
             return;
         }
@@ -260,7 +258,7 @@ function MateriasContent({ materias, asignaciones, setAsignaciones, carreras, cu
                         <TableBody>
                             {asignaciones.map(asignacion => (
                                 <TableRow key={asignacion.id}>
-                                    <TableCell>{getNameById(asignacion.materiaId, materias)}</TableCell>
+                                    <TableCell>{asignacion.materia}</TableCell>
                                     <TableCell>{getNameById(asignacion.carreraId, carreras)}</TableCell>
                                     <TableCell>{getNameById(asignacion.cuatrimestreId, cuatrimestres)}</TableCell>
                                     <TableCell className="text-right">
@@ -300,8 +298,8 @@ function MateriasContent({ materias, asignaciones, setAsignaciones, carreras, cu
                         </DialogHeader>
                         <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
                             <div className="grid gap-2">
-                                <Label>Materia</Label>
-                                <Select name="materiaId" defaultValue={editingAsignacion?.materiaId} required><SelectTrigger><SelectValue placeholder="Selecciona una materia" /></SelectTrigger><SelectContent>{materias.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent></Select>
+                                <Label htmlFor="materia">Nombre de la Materia</Label>
+                                <Input id="materia" name="materia" defaultValue={editingAsignacion?.materia} required />
                             </div>
                             <div className="grid gap-2">
                                 <Label>Carrera</Label>
@@ -453,19 +451,22 @@ export default function CatalogsPage() {
     const [grupos, setGrupos] = useState<CatalogItem[]>([]);
     const [cuatrimestres, setCuatrimestres] = useState<CatalogItem[]>([]);
     const [turnos, setTurnos] = useState<CatalogItem[]>([]);
-    const [materias, setMaterias] = useState<CatalogItem[]>([]);
     const [materiaAsignaciones, setMateriaAsignaciones] = useState<AsignacionMateria[]>([]);
     const [horarios, setHorarios] = useState<Horario[]>([]);
     const [users, setUsers] = useState<User[]>([]);
 
     const docentes = useMemo(() => users.filter(u => u.role === 'Docente'), [users]);
 
+    const materias = useMemo(() => {
+        const materiaNames = [...new Set(materiaAsignaciones.map(a => a.materia).filter(Boolean))];
+        return materiaNames.map(name => ({ id: name, name: name }));
+    }, [materiaAsignaciones]);
+
     const catalogStates = {
         carreras: { state: carreras, setState: setCarreras, key: STORAGE_KEYS.carreras, initial: initialData.carreras },
         grupos: { state: grupos, setState: setGrupos, key: STORAGE_KEYS.grupos, initial: initialData.grupos },
         cuatrimestres: { state: cuatrimestres, setState: setCuatrimestres, key: STORAGE_KEYS.cuatrimestres, initial: initialData.cuatrimestres },
         turnos: { state: turnos, setState: setTurnos, key: STORAGE_KEYS.turnos, initial: initialData.turnos },
-        materias: { state: materias, setState: setMaterias, key: STORAGE_KEYS.materias, initial: initialData.materias },
         materiaAsignaciones: { state: materiaAsignaciones, setState: setMateriaAsignaciones, key: STORAGE_KEYS.materiaAsignaciones, initial: initialData.materiaAsignaciones },
         horarios: { state: horarios, setState: setHorarios, key: STORAGE_KEYS.horarios, initial: initialData.horarios },
         users: { state: users, setState: setUsers, key: STORAGE_KEYS.users, initial: initialData.users },
@@ -499,7 +500,7 @@ export default function CatalogsPage() {
                 console.error(`Failed to save to localStorage (${key}):`, error);
             }
         });
-    }, [carreras, grupos, cuatrimestres, turnos, materias, materiaAsignaciones, horarios, users]);
+    }, [carreras, grupos, cuatrimestres, turnos, materiaAsignaciones, horarios, users]);
 
 
     return (
@@ -528,8 +529,6 @@ export default function CatalogsPage() {
             </TabsContent>
              <TabsContent value="materias">
                 <MateriasContent 
-                    materias={materias} 
-                    setMaterias={setMaterias}
                     asignaciones={materiaAsignaciones}
                     setAsignaciones={setMateriaAsignaciones}
                     carreras={carreras}
