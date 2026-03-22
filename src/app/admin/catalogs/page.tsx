@@ -6,7 +6,6 @@ import {
     CardContent,
     CardHeader,
     CardTitle,
-    CardDescription
 } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -37,7 +36,8 @@ interface AsignacionMateria {
     id: string;
     materia: string;
     carreraId: string;
-    cuatrimestreId: string;
+    cuatrimestreId?: string;
+    semestreId?: string;
 }
 interface Horario {
     id: string;
@@ -55,6 +55,7 @@ const STORAGE_KEYS = {
     carreras: 'unilink-carreras',
     grupos: 'unilink-grupos-catalogo',
     cuatrimestres: 'unilink-cuatrimestres',
+    semestres: 'unilink-semestres',
     turnos: 'unilink-turnos',
     materiaAsignaciones: 'unilink-materia-asignaciones',
     horarios: 'unilink-horarios',
@@ -62,9 +63,10 @@ const STORAGE_KEYS = {
 };
 
 const initialData = {
-    carreras: [{ id: '1', name: 'Ingeniería de Software' }, { id: '2', name: 'Licenciatura en Diseño Gráfico' }],
+    carreras: [{ id: '1', name: 'Ingeniería de Software' }, { id: '2', name: 'Licenciatura en Diseño Gráfico' }, { id: '3', name: 'Odontología' }],
     grupos: [{ id: '1', name: 'A-101' }, { id: '2', name: 'B-202' }],
     cuatrimestres: [{ id: '1', name: 'Primer Cuatrimestre' }, { id: '2', name: 'Segundo Cuatrimestre' }],
+    semestres: [{ id: '1', name: 'Primer Semestre' }, { id: '2', name: 'Segundo Semestre' }],
     turnos: [{ id: '1', name: 'Matutino' }, { id: '2', name: 'Vespertino' }],
     materiaAsignaciones: [],
     horarios: [],
@@ -225,7 +227,7 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
 }
 
 
-function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestres }: { asignaciones: AsignacionMateria[], setAsignaciones: React.Dispatch<React.SetStateAction<AsignacionMateria[]>>, carreras: CatalogItem[], cuatrimestres: CatalogItem[] }) {
+function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestres, semestres }: { asignaciones: AsignacionMateria[], setAsignaciones: React.Dispatch<React.SetStateAction<AsignacionMateria[]>>, carreras: CatalogItem[], cuatrimestres: CatalogItem[], semestres: CatalogItem[] }) {
     const { toast } = useToast();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [isAlertOpen, setIsAlertOpen] = useState(false);
@@ -233,9 +235,12 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
 
     const [filterCarrera, setFilterCarrera] = useState<string>('all');
     const [filterCuatrimestre, setFilterCuatrimestre] = useState<string>('all');
+    const [filterSemestre, setFilterSemestre] = useState<string>('all');
 
     const [isCommon, setIsCommon] = useState(false);
     const [selectedCareers, setSelectedCareers] = useState<Record<string, boolean>>({});
+    const [periodoType, setPeriodoType] = useState<'cuatrimestre' | 'semestre' | 'ambos' | ''>('');
+
 
     useEffect(() => {
         if (isCommon) {
@@ -247,43 +252,70 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
         }
     }, [isCommon, carreras]);
 
-    const getNameById = (id: string, list: CatalogItem[]) => list.find(item => item.id === id)?.name || 'N/A';
+    const getNameById = (id: string, list: CatalogItem[]) => list.find(item => item.id === id)?.name || '—';
     
     const filteredAsignaciones = useMemo(() => {
         return asignaciones.filter(asignacion => {
             const carreraMatch = filterCarrera === 'all' || asignacion.carreraId === filterCarrera;
             const cuatrimestreMatch = filterCuatrimestre === 'all' || asignacion.cuatrimestreId === filterCuatrimestre;
-            return carreraMatch && cuatrimestreMatch;
+            const semestreMatch = filterSemestre === 'all' || asignacion.semestreId === filterSemestre;
+            return carreraMatch && cuatrimestreMatch && semestreMatch;
         });
-    }, [asignaciones, filterCarrera, filterCuatrimestre]);
+    }, [asignaciones, filterCarrera, filterCuatrimestre, filterSemestre]);
 
     const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
     
-        if (currentItem) { // Lógica de edición (sin cambios)
-            const data = Object.fromEntries(formData.entries()) as Omit<AsignacionMateria, 'id'>;
-            if (!data.materia || !data.carreraId || !data.cuatrimestreId) {
-                toast({ variant: 'destructive', title: "Error", description: "Todos los campos son requeridos." });
+        if (currentItem) { // Lógica de edición
+            const data = Object.fromEntries(formData.entries()) as { materia: string, carreraId: string, cuatrimestreId?: string, semestreId?: string };
+            if (!data.materia || !data.carreraId) {
+                toast({ variant: 'destructive', title: "Error", description: "Materia y carrera son campos requeridos." });
                 return;
             }
-            setAsignaciones(prev => prev.map(a => a.id === currentItem.id ? { ...a, ...data } as AsignacionMateria : a));
+             if (!data.cuatrimestreId && !data.semestreId) {
+                toast({ variant: 'destructive', title: "Error", description: "Debe seleccionar un cuatrimestre o un semestre." });
+                return;
+            }
+
+            const updatedAsignacion = {
+                ...currentItem,
+                ...data,
+                cuatrimestreId: data.cuatrimestreId || undefined,
+                semestreId: data.semestreId || undefined
+            };
+
+            setAsignaciones(prev => prev.map(a => a.id === currentItem.id ? updatedAsignacion : a));
             toast({ title: "Asignación actualizada" });
         } else { // Lógica de creación
             const materia = formData.get('materia') as string;
-            const cuatrimestreId = formData.get('cuatrimestreId') as string;
+            const cuatrimestreId = formData.get('cuatrimestreId') as string | null;
+            const semestreId = formData.get('semestreId') as string | null;
             const selectedCarreraIds = Object.entries(selectedCareers).filter(([, checked]) => checked).map(([id]) => id);
     
-            if (!materia || !cuatrimestreId || selectedCarreraIds.length === 0) {
-                toast({ variant: 'destructive', title: "Error", description: "Debes proporcionar un nombre, un cuatrimestre y al menos una carrera." });
+            if (!materia || selectedCarreraIds.length === 0) {
+                toast({ variant: 'destructive', title: "Error", description: "Debes proporcionar un nombre, y al menos una carrera." });
+                return;
+            }
+            if (!periodoType) {
+                toast({ variant: 'destructive', title: "Error", description: "Debe seleccionar un tipo de periodo." });
+                return;
+            }
+            if ((periodoType === 'cuatrimestre' || periodoType === 'ambos') && !cuatrimestreId) {
+                toast({ variant: 'destructive', title: "Error", description: "Debe seleccionar un cuatrimestre." });
+                return;
+            }
+            if ((periodoType === 'semestre' || periodoType === 'ambos') && !semestreId) {
+                toast({ variant: 'destructive', title: "Error", description: "Debe seleccionar un semestre." });
                 return;
             }
     
             const newAsignaciones: AsignacionMateria[] = selectedCarreraIds.map(carreraId => ({
-                id: `${Date.now()}-${carreraId}`,
+                id: `${Date.now()}-${carreraId}-${Math.random()}`,
                 materia,
                 carreraId,
-                cuatrimestreId
+                cuatrimestreId: cuatrimestreId || undefined,
+                semestreId: semestreId || undefined
             }));
     
             setAsignaciones(prev => [...prev, ...newAsignaciones]);
@@ -299,6 +331,7 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
         if (!item) {
             setIsCommon(false);
             setSelectedCareers(carreras.reduce((acc, c) => ({...acc, [c.id]: false}), {}));
+            setPeriodoType('');
         }
         setIsDialogOpen(true);
     };
@@ -329,9 +362,10 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                     </Button>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex flex-col sm:flex-row items-center gap-4 mb-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
                         <div className="grid gap-2 w-full"><Label>Filtrar por carrera</Label><Select value={filterCarrera} onValueChange={setFilterCarrera}><SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger><SelectContent><SelectItem value="all">Todas las carreras</SelectItem>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="grid gap-2 w-full"><Label>Filtrar por cuatrimestre</Label><Select value={filterCuatrimestre} onValueChange={setFilterCuatrimestre}><SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger><SelectContent><SelectItem value="all">Todos los cuatrimestres</SelectItem>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="grid gap-2 w-full"><Label>Filtrar por semestre</Label><Select value={filterSemestre} onValueChange={setFilterSemestre}><SelectTrigger><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger><SelectContent><SelectItem value="all">Todos los semestres</SelectItem>{semestres.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                     </div>
                     <div className="border rounded-md">
                         <Table>
@@ -340,6 +374,7 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                                     <TableHead>Materia</TableHead>
                                     <TableHead>Carrera</TableHead>
                                     <TableHead>Cuatrimestre</TableHead>
+                                    <TableHead>Semestre</TableHead>
                                     <TableHead><span className="sr-only">Acciones</span></TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -349,7 +384,8 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                                         <TableRow key={asignacion.id}>
                                             <TableCell className="font-medium">{asignacion.materia}</TableCell>
                                             <TableCell>{getNameById(asignacion.carreraId, carreras)}</TableCell>
-                                            <TableCell>{getNameById(asignacion.cuatrimestreId, cuatrimestres)}</TableCell>
+                                            <TableCell>{asignacion.cuatrimestreId ? getNameById(asignacion.cuatrimestreId, cuatrimestres) : '—'}</TableCell>
+                                            <TableCell>{asignacion.semestreId ? getNameById(asignacion.semestreId, semestres) : '—'}</TableCell>
                                             <TableCell className="text-right">
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
@@ -364,7 +400,7 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                                         </TableRow>
                                     ))
                                 ) : (
-                                    <TableRow><TableCell colSpan={4} className="text-center h-24">No hay materias que coincidan con los filtros.</TableCell></TableRow>
+                                    <TableRow><TableCell colSpan={5} className="text-center h-24">No hay materias que coincidan con los filtros.</TableCell></TableRow>
                                 )}
                             </TableBody>
                         </Table>
@@ -388,8 +424,12 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                                     <Select name="carreraId" defaultValue={currentItem?.carreraId} required><SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger><SelectContent>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
                                 </div>
                                 <div className="grid gap-2">
-                                    <Label>Cuatrimestre</Label>
-                                    <Select name="cuatrimestreId" defaultValue={currentItem?.cuatrimestreId} required><SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger><SelectContent>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
+                                    <Label>Cuatrimestre (Opcional)</Label>
+                                    <Select name="cuatrimestreId" defaultValue={currentItem?.cuatrimestreId || ''}><SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger><SelectContent>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label>Semestre (Opcional)</Label>
+                                    <Select name="semestreId" defaultValue={currentItem?.semestreId || ''}><SelectTrigger><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger><SelectContent>{semestres.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select>
                                 </div>
                             </>
                         ) : (
@@ -423,12 +463,34 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                                     </div>
                                 </div>
                                 <div className="grid gap-2">
-                                    <Label>Cuatrimestre</Label>
-                                    <Select name="cuatrimestreId" required>
-                                        <SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger>
-                                        <SelectContent>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                                    <Label>Tipo de Periodo</Label>
+                                    <Select value={periodoType} onValueChange={(value) => setPeriodoType(value as any)}>
+                                        <SelectTrigger><SelectValue placeholder="Selecciona el tipo de periodo" /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="cuatrimestre">Cuatrimestre</SelectItem>
+                                            <SelectItem value="semestre">Semestre</SelectItem>
+                                            <SelectItem value="ambos">Ambos</SelectItem>
+                                        </SelectContent>
                                     </Select>
                                 </div>
+                                {(periodoType === 'cuatrimestre' || periodoType === 'ambos') && (
+                                    <div className="grid gap-2">
+                                        <Label>Cuatrimestre</Label>
+                                        <Select name="cuatrimestreId" required={periodoType === 'cuatrimestre'}>
+                                            <SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger>
+                                            <SelectContent>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
+                                {(periodoType === 'semestre' || periodoType === 'ambos') && (
+                                    <div className="grid gap-2">
+                                        <Label>Semestre</Label>
+                                        <Select name="semestreId" required={periodoType === 'semestre'}>
+                                            <SelectTrigger><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger>
+                                            <SelectContent>{semestres.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
                             </>
                         )}
                         <DialogFooter>
@@ -592,6 +654,7 @@ export default function CatalogsPage() {
     const [carreras, setCarreras] = useState<CatalogItem[]>([]);
     const [grupos, setGrupos] = useState<CatalogItem[]>([]);
     const [cuatrimestres, setCuatrimestres] = useState<CatalogItem[]>([]);
+    const [semestres, setSemestres] = useState<CatalogItem[]>([]);
     const [turnos, setTurnos] = useState<CatalogItem[]>([]);
     const [materiaAsignaciones, setMateriaAsignaciones] = useState<AsignacionMateria[]>([]);
     const [horarios, setHorarios] = useState<Horario[]>([]);
@@ -609,11 +672,12 @@ export default function CatalogsPage() {
         carreras: { state: carreras, setState: setCarreras, key: STORAGE_KEYS.carreras, initial: initialData.carreras },
         grupos: { state: grupos, setState: setGrupos, key: STORAGE_KEYS.grupos, initial: initialData.grupos },
         cuatrimestres: { state: cuatrimestres, setState: setCuatrimestres, key: STORAGE_KEYS.cuatrimestres, initial: initialData.cuatrimestres },
+        semestres: { state: semestres, setState: setSemestres, key: STORAGE_KEYS.semestres, initial: initialData.semestres },
         turnos: { state: turnos, setState: setTurnos, key: STORAGE_KEYS.turnos, initial: initialData.turnos },
         materiaAsignaciones: { state: materiaAsignaciones, setState: setMateriaAsignaciones, key: STORAGE_KEYS.materiaAsignaciones, initial: initialData.materiaAsignaciones },
         horarios: { state: horarios, setState: setHorarios, key: STORAGE_KEYS.horarios, initial: initialData.horarios },
         users: { state: users, setState: setUsers, key: STORAGE_KEYS.users, initial: initialData.users },
-    }), [carreras, grupos, cuatrimestres, horarios, materiaAsignaciones, turnos, users]);
+    }), [carreras, grupos, cuatrimestres, semestres, horarios, materiaAsignaciones, turnos, users]);
 
     useEffect(() => {
         if (typeof window !== 'undefined' && !isLoaded) {
@@ -638,9 +702,7 @@ export default function CatalogsPage() {
         if (isLoaded && typeof window !== 'undefined') {
             try {
                 Object.values(managedStates).forEach(({ state, key }) => {
-                    if (state.length > 0) { // Only save if there's data to avoid overwriting with empty arrays on mount
-                        localStorage.setItem(key, JSON.stringify(state));
-                    }
+                    localStorage.setItem(key, JSON.stringify(state));
                 });
             } catch (error) {
                  console.error("Error al guardar en localStorage:", error);
@@ -653,10 +715,11 @@ export default function CatalogsPage() {
       <div>
         <CardTitle className="mb-4">Catálogos Institucionales</CardTitle>
         <Tabs defaultValue="carreras" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-6">
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 md:grid-cols-7">
                 <TabsTrigger value="carreras">Carreras</TabsTrigger>
                 <TabsTrigger value="grupos">Grupos</TabsTrigger>
                 <TabsTrigger value="cuatrimestres">Cuatrimestres</TabsTrigger>
+                <TabsTrigger value="semestres">Semestres</TabsTrigger>
                 <TabsTrigger value="turnos">Turnos</TabsTrigger>
                 <TabsTrigger value="materias">Materias</TabsTrigger>
                 <TabsTrigger value="horarios">Horarios</TabsTrigger>
@@ -670,6 +733,9 @@ export default function CatalogsPage() {
             <TabsContent value="cuatrimestres">
                 <CatalogTable title="Cuatrimestres" data={cuatrimestres} setData={setCuatrimestres} />
             </TabsContent>
+            <TabsContent value="semestres">
+                <CatalogTable title="Semestres" data={semestres} setData={setSemestres} />
+            </TabsContent>
             <TabsContent value="turnos">
                 <CatalogTable title="Turnos" data={turnos} setData={setTurnos} />
             </TabsContent>
@@ -679,6 +745,7 @@ export default function CatalogsPage() {
                     setAsignaciones={setMateriaAsignaciones}
                     carreras={carreras}
                     cuatrimestres={cuatrimestres}
+                    semestres={semestres}
                 />
             </TabsContent>
             <TabsContent value="horarios">
