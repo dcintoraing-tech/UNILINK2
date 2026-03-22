@@ -33,8 +33,8 @@ interface User {
 interface AsignacionMateria {
     id: string;
     materiaId: string;
-    grupoId: string;
     carreraId: string;
+    cuatrimestreId: string;
 }
 interface Horario {
     id: string;
@@ -62,7 +62,7 @@ const STORAGE_KEYS = {
 const initialData = {
     carreras: [{ id: '1', name: 'Ingeniería de Software' }, { id: '2', name: 'Licenciatura en Diseño Gráfico' }],
     grupos: [{ id: '1', name: 'A-101' }, { id: '2', name: 'B-202' }],
-    cuatrimestres: [{ id: '1', name: '2024-1' }, { id: '2', name: '2024-2' }],
+    cuatrimestres: [{ id: '1', name: 'Primer Cuatrimestre' }, { id: '2', name: 'Segundo Cuatrimestre' }],
     turnos: [{ id: '1', name: 'Matutino' }, { id: '2', name: 'Vespertino' }],
     materias: [{ id: '1', name: 'Programación I' }, { id: '2', name: 'Diseño de Interfaces' }],
     materiaAsignaciones: [],
@@ -199,7 +199,7 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
 }
 
 
-function MateriasContent({ materias, setMaterias, asignaciones, setAsignaciones, carreras, grupos }) {
+function MateriasContent({ materias, setMaterias, asignaciones, setAsignaciones, carreras, cuatrimestres }) {
     const { toast } = useToast();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingAsignacion, setEditingAsignacion] = useState<AsignacionMateria | null>(null);
@@ -211,7 +211,7 @@ function MateriasContent({ materias, setMaterias, asignaciones, setAsignaciones,
         const formData = new FormData(e.currentTarget);
         const data = Object.fromEntries(formData.entries()) as Omit<AsignacionMateria, 'id'>;
 
-        if (!data.materiaId || !data.grupoId || !data.carreraId) {
+        if (!data.materiaId || !data.carreraId || !data.cuatrimestreId) {
             toast({ variant: 'destructive', title: "Error", description: "Todos los campos son requeridos." });
             return;
         }
@@ -242,7 +242,7 @@ function MateriasContent({ materias, setMaterias, asignaciones, setAsignaciones,
             <CatalogTable title="Materias" data={materias} setData={setMaterias} />
             <Card>
                 <CardHeader className="flex-row items-center justify-between">
-                    <CardTitle>Asignación de Materias a Grupos</CardTitle>
+                    <CardTitle>Asignación de Materias a Carreras</CardTitle>
                     <Button size="sm" onClick={() => openDialog(null)}>
                         <PlusCircle className="h-4 w-4 mr-2" />
                         Asignar Materia
@@ -253,8 +253,8 @@ function MateriasContent({ materias, setMaterias, asignaciones, setAsignaciones,
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Materia</TableHead>
-                                <TableHead>Grupo</TableHead>
                                 <TableHead>Carrera</TableHead>
+                                <TableHead>Cuatrimestre</TableHead>
                                 <TableHead><span className="sr-only">Acciones</span></TableHead>
                             </TableRow>
                         </TableHeader>
@@ -262,8 +262,8 @@ function MateriasContent({ materias, setMaterias, asignaciones, setAsignaciones,
                             {asignaciones.map(asignacion => (
                                 <TableRow key={asignacion.id}>
                                     <TableCell>{getNameById(asignacion.materiaId, materias)}</TableCell>
-                                    <TableCell>{getNameById(asignacion.grupoId, grupos)}</TableCell>
                                     <TableCell>{getNameById(asignacion.carreraId, carreras)}</TableCell>
+                                    <TableCell>{getNameById(asignacion.cuatrimestreId, cuatrimestres)}</TableCell>
                                     <TableCell className="text-right">
                                          <DropdownMenu>
                                             <DropdownMenuTrigger asChild>
@@ -274,7 +274,10 @@ function MateriasContent({ materias, setMaterias, asignaciones, setAsignaciones,
                                                 <AlertDialog>
                                                     <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
                                                     <AlertDialogContent>
-                                                        <AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle></AlertDialogHeader>
+                                                        <AlertDialogHeader>
+                                                            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                                                            <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará la asignación permanentemente.</AlertDialogDescription>
+                                                        </AlertDialogHeader>
                                                         <AlertDialogFooter>
                                                             <AlertDialogCancel>Cancelar</AlertDialogCancel>
                                                             <AlertDialogAction onClick={() => handleDelete(asignacion.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction>
@@ -292,7 +295,7 @@ function MateriasContent({ materias, setMaterias, asignaciones, setAsignaciones,
                  <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>{editingAsignacion ? 'Editar' : 'Asignar'} Materia</DialogTitle>
+                            <DialogTitle>{editingAsignacion ? 'Editar' : 'Asignar'} Materia a Carrera</DialogTitle>
                         </DialogHeader>
                         <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
                             <div className="grid gap-2">
@@ -300,12 +303,12 @@ function MateriasContent({ materias, setMaterias, asignaciones, setAsignaciones,
                                 <Select name="materiaId" defaultValue={editingAsignacion?.materiaId} required><SelectTrigger><SelectValue placeholder="Selecciona una materia" /></SelectTrigger><SelectContent>{materias.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent></Select>
                             </div>
                             <div className="grid gap-2">
-                                <Label>Grupo</Label>
-                                <Select name="grupoId" defaultValue={editingAsignacion?.grupoId} required><SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger><SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent></Select>
-                            </div>
-                             <div className="grid gap-2">
                                 <Label>Carrera</Label>
                                 <Select name="carreraId" defaultValue={editingAsignacion?.carreraId} required><SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger><SelectContent>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
+                            </div>
+                             <div className="grid gap-2">
+                                <Label>Cuatrimestre</Label>
+                                <Select name="cuatrimestreId" defaultValue={editingAsignacion?.cuatrimestreId} required><SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger><SelectContent>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
                             </div>
                             <DialogFooter>
                                 <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
@@ -395,9 +398,12 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }) 
                                         <DropdownMenuContent>
                                             <DropdownMenuItem onClick={() => openDialog(horario)}>Editar</DropdownMenuItem>
                                             <AlertDialog>
-                                                <AlertDialogTrigger asChild><DropdownMenuItem onSelect={e => e.preventDefault()} className="text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
+                                                <AlertDialogTrigger asChild><DropdownMenuItem onSelect={e => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
                                                 <AlertDialogContent>
-                                                    <AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle></AlertDialogHeader>
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                                                        <AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription>
+                                                    </AlertDialogHeader>
                                                     <AlertDialogFooter>
                                                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
                                                         <AlertDialogAction onClick={() => handleDelete(horario.id)} className="bg-destructive text-destructive-foreground">Eliminar</AlertDialogAction>
@@ -524,7 +530,7 @@ export default function CatalogsPage() {
                     asignaciones={materiaAsignaciones}
                     setAsignaciones={setMateriaAsignaciones}
                     carreras={carreras}
-                    grupos={grupos}
+                    cuatrimestres={cuatrimestres}
                 />
             </TabsContent>
             <TabsContent value="horarios">
