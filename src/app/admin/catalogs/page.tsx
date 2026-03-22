@@ -12,9 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { MoreHorizontal, PlusCircle } from 'lucide-react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -92,7 +92,8 @@ const initialData = {
 
 function CatalogTable({ title, data, setData }: { title: string, data: CatalogItem[], setData: React.Dispatch<React.SetStateAction<CatalogItem[]>> }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
+    const [isAlertOpen, setIsAlertOpen] = useState(false);
+    const [currentItem, setCurrentItem] = useState<CatalogItem | null>(null);
     const { toast } = useToast();
 
     const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -102,8 +103,8 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
 
         if (!name) return;
 
-        if (editingItem) {
-            const updatedItems = data.map(item => item.id === editingItem.id ? { ...item, name } : item);
+        if (currentItem && currentItem.id) {
+            const updatedItems = data.map(item => item.id === currentItem.id ? { ...item, name } : item);
             setData(updatedItems);
             toast({ title: "Elemento actualizado", description: `El elemento ha sido actualizado.` });
         } else {
@@ -116,30 +117,32 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
         }
 
         setIsDialogOpen(false);
-        setEditingItem(null);
+        setCurrentItem(null);
     };
 
-    const openEditDialog = (item: CatalogItem) => {
-        setEditingItem(item);
+    const openDialog = (item: CatalogItem | null) => {
+        setCurrentItem(item);
         setIsDialogOpen(true);
     };
 
-    const openCreateDialog = () => {
-        setEditingItem(null);
-        setIsDialogOpen(true);
+    const openAlert = (item: CatalogItem) => {
+        setCurrentItem(item);
+        setIsAlertOpen(true);
     };
 
-    const handleDeleteConfirm = (itemId: string) => {
-        setData(data.filter(item => item.id !== itemId));
+    const handleDeleteConfirm = () => {
+        if (!currentItem) return;
+        setData(data.filter(item => item.id !== currentItem.id));
         toast({ title: "Elemento eliminado", description: "El elemento ha sido eliminado correctamente." });
+        setIsAlertOpen(false);
+        setCurrentItem(null);
     };
-
 
     return (
         <Card>
             <CardHeader className="flex-row items-center justify-between">
                 <CardTitle>{title}</CardTitle>
-                <Button size="sm" onClick={openCreateDialog}>
+                <Button size="sm" onClick={() => openDialog(null)}>
                     <PlusCircle className="h-4 w-4 mr-2" />
                     Agregar
                 </Button>
@@ -164,31 +167,13 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
                                             </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent>
-                                            <DropdownMenuItem onClick={() => openEditDialog(item)}>Editar</DropdownMenuItem>
-                                            <AlertDialog>
-                                                <AlertDialogTrigger asChild>
-                                                    <DropdownMenuItem
-                                                        onSelect={(event) => event.preventDefault()}
-                                                        className="text-red-600 focus:text-red-600"
-                                                    >
-                                                        Eliminar
-                                                    </DropdownMenuItem>
-                                                </AlertDialogTrigger>
-                                                <AlertDialogContent>
-                                                    <AlertDialogHeader>
-                                                        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                                                        <AlertDialogDescription>
-                                                            Esta acción no se puede deshacer.
-                                                        </AlertDialogDescription>
-                                                    </AlertDialogHeader>
-                                                    <AlertDialogFooter>
-                                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                        <AlertDialogAction onClick={() => handleDeleteConfirm(item.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                                            Eliminar
-                                                        </AlertDialogAction>
-                                                    </AlertDialogFooter>
-                                                </AlertDialogContent>
-                                            </AlertDialog>
+                                            <DropdownMenuItem onClick={() => openDialog(item)}>Editar</DropdownMenuItem>
+                                            <DropdownMenuItem
+                                                onClick={() => openAlert(item)}
+                                                className="text-red-600 focus:text-red-600"
+                                            >
+                                                Eliminar
+                                            </DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </TableCell>
@@ -197,34 +182,64 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
                     </TableBody>
                 </Table>
             </CardContent>
+
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>{editingItem ? 'Editar' : 'Agregar'} {title.slice(0, -1)}</DialogTitle>
+                        <DialogTitle>{currentItem ? 'Editar' : 'Agregar'} {title.slice(0, -1)}</DialogTitle>
                     </DialogHeader>
                     <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
                         <div className="grid gap-2">
                             <Label htmlFor="name">Nombre</Label>
-                            <Input id="name" name="name" defaultValue={editingItem?.name} required />
+                            <Input id="name" name="name" defaultValue={currentItem?.name} required />
                         </div>
                         <DialogFooter>
                             <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                            <Button type="submit">{editingItem ? 'Guardar Cambios' : 'Agregar'}</Button>
+                            <Button type="submit">{currentItem ? 'Guardar Cambios' : 'Agregar'}</Button>
                         </DialogFooter>
                     </form>
                 </DialogContent>
             </Dialog>
+
+            <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Esta acción no se puede deshacer.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setCurrentItem(null)}>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Eliminar
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </Card>
     );
 }
 
 
-function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestres }) {
+function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestres }: { asignaciones: AsignacionMateria[], setAsignaciones: React.Dispatch<React.SetStateAction<AsignacionMateria[]>>, carreras: CatalogItem[], cuatrimestres: CatalogItem[] }) {
     const { toast } = useToast();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [editingAsignacion, setEditingAsignacion] = useState<AsignacionMateria | null>(null);
+    const [isAlertOpen, setIsAlertOpen] = useState(false);
+    const [currentItem, setCurrentItem] = useState<AsignacionMateria | null>(null);
 
-    const getNameById = (id, list) => list.find(item => item.id === id)?.name || 'N/A';
+    const [filterCarrera, setFilterCarrera] = useState<string>('all');
+    const [filterCuatrimestre, setFilterCuatrimestre] = useState<string>('all');
+
+    const getNameById = (id: string, list: CatalogItem[]) => list.find(item => item.id === id)?.name || 'N/A';
+    
+    const filteredAsignaciones = useMemo(() => {
+        return asignaciones.filter(asignacion => {
+            const carreraMatch = filterCarrera === 'all' || asignacion.carreraId === filterCarrera;
+            const cuatrimestreMatch = filterCuatrimestre === 'all' || asignacion.cuatrimestreId === filterCuatrimestre;
+            return carreraMatch && cuatrimestreMatch;
+        });
+    }, [asignaciones, filterCarrera, filterCuatrimestre]);
 
     const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -236,124 +251,141 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
             return;
         }
 
-        if (editingAsignacion) {
-            setAsignaciones(asignaciones.map(a => a.id === editingAsignacion.id ? { ...a, ...data } : a));
+        if (currentItem) {
+            setAsignaciones(asignaciones.map(a => a.id === currentItem.id ? { ...a, ...data } as AsignacionMateria : a));
             toast({ title: "Asignación actualizada" });
         } else {
-            setAsignaciones([...asignaciones, { ...data, id: Date.now().toString() }]);
+            setAsignaciones([...asignaciones, { ...data, id: Date.now().toString() } as AsignacionMateria]);
             toast({ title: "Materia asignada" });
         }
         setIsDialogOpen(false);
-        setEditingAsignacion(null);
+        setCurrentItem(null);
     };
     
-    const openDialog = (asignacion: AsignacionMateria | null) => {
-        setEditingAsignacion(asignacion);
+    const openDialog = (item: AsignacionMateria | null) => {
+        setCurrentItem(item);
         setIsDialogOpen(true);
     };
 
-    const handleDeleteConfirm = (id: string) => {
-        setAsignaciones(asignaciones.filter(a => a.id !== id));
+    const openAlert = (item: AsignacionMateria) => {
+        setCurrentItem(item);
+        setIsAlertOpen(true);
+    };
+
+    const handleDeleteConfirm = () => {
+        if (!currentItem) return;
+        setAsignaciones(asignaciones.filter(a => a.id !== currentItem.id));
         toast({ title: "Asignación eliminada" });
+        setIsAlertOpen(false);
+        setCurrentItem(null);
     };
 
     return (
         <div className="space-y-6">
             <Card>
-                <CardHeader className="flex-row items-center justify-between">
-                    <CardTitle>Asignación de Materias por Carrera y Cuatrimestre</CardTitle>
-                    <Button size="sm" onClick={() => openDialog(null)}>
+                <CardHeader className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                    <div className="space-y-1.5">
+                        <CardTitle>Asignación de Materias</CardTitle>
+                        <CardDescription>
+                            Asigna materias a carreras y cuatrimestres. Para materias comunes (ej. Inglés),<br className="hidden sm:block" /> simplemente crea una asignación para cada carrera donde se imparta.
+                        </CardDescription>
+                    </div>
+                    <Button size="sm" onClick={() => openDialog(null)} className="w-full md:w-auto">
                         <PlusCircle className="h-4 w-4 mr-2" />
                         Asignar Materia
                     </Button>
                 </CardHeader>
                 <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Materia</TableHead>
-                                <TableHead>Carrera</TableHead>
-                                <TableHead>Cuatrimestre</TableHead>
-                                <TableHead><span className="sr-only">Acciones</span></TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {asignaciones.map(asignacion => (
-                                <TableRow key={asignacion.id}>
-                                    <TableCell>{asignacion.materia}</TableCell>
-                                    <TableCell>{getNameById(asignacion.carreraId, carreras)}</TableCell>
-                                    <TableCell>{getNameById(asignacion.cuatrimestreId, cuatrimestres)}</TableCell>
-                                    <TableCell className="text-right">
-                                         <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent>
-                                                <DropdownMenuItem onClick={() => openDialog(asignacion)}>Editar</DropdownMenuItem>
-                                                <AlertDialog>
-                                                    <AlertDialogTrigger asChild>
-                                                        <DropdownMenuItem
-                                                            onSelect={(event) => event.preventDefault()}
-                                                            className="text-red-600 focus:text-red-600"
-                                                        >
-                                                            Eliminar
-                                                        </DropdownMenuItem>
-                                                    </AlertDialogTrigger>
-                                                    <AlertDialogContent>
-                                                        <AlertDialogHeader>
-                                                            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                                                            <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará la asignación permanentemente.</AlertDialogDescription>
-                                                        </AlertDialogHeader>
-                                                        <AlertDialogFooter>
-                                                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                            <AlertDialogAction onClick={() => handleDeleteConfirm(asignacion.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction>
-                                                        </AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    </TableCell>
+                    <div className="flex flex-col sm:flex-row items-center gap-4 mb-4">
+                        <div className="grid gap-2 w-full"><Label>Filtrar por carrera</Label><Select value={filterCarrera} onValueChange={setFilterCarrera}><SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger><SelectContent><SelectItem value="all">Todas las carreras</SelectItem>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="grid gap-2 w-full"><Label>Filtrar por cuatrimestre</Label><Select value={filterCuatrimestre} onValueChange={setFilterCuatrimestre}><SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger><SelectContent><SelectItem value="all">Todos los cuatrimestres</SelectItem>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
+                    </div>
+                    <div className="border rounded-md">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Materia</TableHead>
+                                    <TableHead>Carrera</TableHead>
+                                    <TableHead>Cuatrimestre</TableHead>
+                                    <TableHead><span className="sr-only">Acciones</span></TableHead>
                                 </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                            </TableHeader>
+                            <TableBody>
+                                {filteredAsignaciones.length > 0 ? (
+                                    filteredAsignaciones.map(asignacion => (
+                                        <TableRow key={asignacion.id}>
+                                            <TableCell className="font-medium">{asignacion.materia}</TableCell>
+                                            <TableCell>{getNameById(asignacion.carreraId, carreras)}</TableCell>
+                                            <TableCell>{getNameById(asignacion.cuatrimestreId, cuatrimestres)}</TableCell>
+                                            <TableCell className="text-right">
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent>
+                                                        <DropdownMenuItem onClick={() => openDialog(asignacion)}>Editar</DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => openAlert(asignacion)} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                ) : (
+                                    <TableRow><TableCell colSpan={4} className="text-center h-24">No hay materias que coincidan con los filtros.</TableCell></TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </CardContent>
-                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>{editingAsignacion ? 'Editar' : 'Asignar'} Materia</DialogTitle>
-                        </DialogHeader>
-                        <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
-                            <div className="grid gap-2">
-                                <Label htmlFor="materia">Nombre de la Materia</Label>
-                                <Input id="materia" name="materia" defaultValue={editingAsignacion?.materia} required />
-                            </div>
-                            <div className="grid gap-2">
-                                <Label>Carrera</Label>
-                                <Select name="carreraId" defaultValue={editingAsignacion?.carreraId} required><SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger><SelectContent>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
-                            </div>
-                             <div className="grid gap-2">
-                                <Label>Cuatrimestre</Label>
-                                <Select name="cuatrimestreId" defaultValue={editingAsignacion?.cuatrimestreId} required><SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger><SelectContent>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
-                            </div>
-                            <DialogFooter>
-                                <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                                <Button type="submit">{editingAsignacion ? 'Guardar Cambios' : 'Asignar'}</Button>
-                            </DialogFooter>
-                        </form>
-                    </DialogContent>
-                </Dialog>
             </Card>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{currentItem ? 'Editar' : 'Asignar'} Materia</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="materia">Nombre de la Materia</Label>
+                            <Input id="materia" name="materia" defaultValue={currentItem?.materia} required />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Carrera</Label>
+                            <Select name="carreraId" defaultValue={currentItem?.carreraId} required><SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger><SelectContent>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Cuatrimestre</Label>
+                            <Select name="cuatrimestreId" defaultValue={currentItem?.cuatrimestreId} required><SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger><SelectContent>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                            <Button type="submit">{currentItem ? 'Guardar Cambios' : 'Asignar'}</Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+            <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                        <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará la asignación permanentemente.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setCurrentItem(null)}>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     )
 }
 
-function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }) {
+function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: { horarios: Horario[], setHorarios: React.Dispatch<React.SetStateAction<Horario[]>>, grupos: CatalogItem[], materias: CatalogItem[], docentes: User[] }) {
     const { toast } = useToast();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [editingHorario, setEditingHorario] = useState<Horario | null>(null);
+    const [isAlertOpen, setIsAlertOpen] = useState(false);
+    const [currentItem, setCurrentItem] = useState<Horario | null>(null);
 
-    const getNameById = (id, list) => list.find(item => item.id === id)?.name || 'N/A';
+    const getNameById = (id: string, list: { id: string, name: string }[]) => list.find(item => item.id === id)?.name || 'N/A';
     const diasSemana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
     const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -366,25 +398,33 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }) 
             return;
         }
 
-        if (editingHorario) {
-            setHorarios(horarios.map(h => h.id === editingHorario.id ? { ...h, ...data } : h));
+        if (currentItem) {
+            setHorarios(horarios.map(h => h.id === currentItem.id ? { ...h, ...data } as Horario : h));
             toast({ title: "Horario actualizado" });
         } else {
-            setHorarios([...horarios, { ...data, id: Date.now().toString() }]);
+            setHorarios([...horarios, { ...data, id: Date.now().toString() } as Horario]);
             toast({ title: "Horario creado" });
         }
         setIsDialogOpen(false);
-        setEditingHorario(null);
+        setCurrentItem(null);
     };
 
-    const openDialog = (horario: Horario | null) => {
-        setEditingHorario(horario);
+    const openDialog = (item: Horario | null) => {
+        setCurrentItem(item);
         setIsDialogOpen(true);
     };
+
+    const openAlert = (item: Horario) => {
+        setCurrentItem(item);
+        setIsAlertOpen(true);
+    };
     
-    const handleDeleteConfirm = (id: string) => {
-        setHorarios(horarios.filter(h => h.id !== id));
+    const handleDeleteConfirm = () => {
+        if (!currentItem) return;
+        setHorarios(horarios.filter(h => h.id !== currentItem.id));
         toast({ title: "Horario eliminado" });
+        setIsAlertOpen(false);
+        setCurrentItem(null);
     };
 
     return (
@@ -423,26 +463,7 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }) 
                                         <DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                         <DropdownMenuContent>
                                             <DropdownMenuItem onClick={() => openDialog(horario)}>Editar</DropdownMenuItem>
-                                            <AlertDialog>
-                                                <AlertDialogTrigger asChild>
-                                                     <DropdownMenuItem
-                                                        onSelect={(event) => event.preventDefault()}
-                                                        className="text-red-600 focus:text-red-600"
-                                                    >
-                                                        Eliminar
-                                                    </DropdownMenuItem>
-                                                </AlertDialogTrigger>
-                                                <AlertDialogContent>
-                                                    <AlertDialogHeader>
-                                                        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                                                        <AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription>
-                                                    </AlertDialogHeader>
-                                                    <AlertDialogFooter>
-                                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                        <AlertDialogAction onClick={() => handleDeleteConfirm(horario.id)} className="bg-destructive text-destructive-foreground">Eliminar</AlertDialogAction>
-                                                    </AlertDialogFooter>
-                                                </AlertDialogContent>
-                                            </AlertDialog>
+                                            <DropdownMenuItem onClick={() => openAlert(horario)} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </TableCell>
@@ -451,28 +472,42 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }) 
                     </TableBody>
                 </Table>
             </CardContent>
+            
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="sm:max-w-[425px]">
                     <DialogHeader>
-                        <DialogTitle>{editingHorario ? 'Editar' : 'Crear'} Horario</DialogTitle>
+                        <DialogTitle>{currentItem ? 'Editar' : 'Crear'} Horario</DialogTitle>
                     </DialogHeader>
                     <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
-                        <Select name="grupoId" defaultValue={editingHorario?.grupoId} required><SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger><SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent></Select>
-                        <Select name="materiaId" defaultValue={editingHorario?.materiaId} required><SelectTrigger><SelectValue placeholder="Selecciona una materia" /></SelectTrigger><SelectContent>{materias.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent></Select>
-                        <Select name="docenteId" defaultValue={editingHorario?.docenteId} required><SelectTrigger><SelectValue placeholder="Selecciona un docente" /></SelectTrigger><SelectContent>{docentes.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent></Select>
-                        <Select name="dia" defaultValue={editingHorario?.dia} required><SelectTrigger><SelectValue placeholder="Selecciona un día" /></SelectTrigger><SelectContent>{diasSemana.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select>
+                        <Select name="grupoId" defaultValue={currentItem?.grupoId} required><SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger><SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent></Select>
+                        <Select name="materiaId" defaultValue={currentItem?.materiaId} required><SelectTrigger><SelectValue placeholder="Selecciona una materia" /></SelectTrigger><SelectContent>{materias.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent></Select>
+                        <Select name="docenteId" defaultValue={currentItem?.docenteId} required><SelectTrigger><SelectValue placeholder="Selecciona un docente" /></SelectTrigger><SelectContent>{docentes.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent></Select>
+                        <Select name="dia" defaultValue={currentItem?.dia} required><SelectTrigger><SelectValue placeholder="Selecciona un día" /></SelectTrigger><SelectContent>{diasSemana.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select>
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="grid gap-2"><Label htmlFor="horaInicio">Hora Inicio</Label><Input id="horaInicio" name="horaInicio" type="time" defaultValue={editingHorario?.horaInicio} required /></div>
-                            <div className="grid gap-2"><Label htmlFor="horaFin">Hora Fin</Label><Input id="horaFin" name="horaFin" type="time" defaultValue={editingHorario?.horaFin} required /></div>
+                            <div className="grid gap-2"><Label htmlFor="horaInicio">Hora Inicio</Label><Input id="horaInicio" name="horaInicio" type="time" defaultValue={currentItem?.horaInicio} required /></div>
+                            <div className="grid gap-2"><Label htmlFor="horaFin">Hora Fin</Label><Input id="horaFin" name="horaFin" type="time" defaultValue={currentItem?.horaFin} required /></div>
                         </div>
-                        <div className="grid gap-2"><Label htmlFor="aula">Aula (Opcional)</Label><Input id="aula" name="aula" defaultValue={editingHorario?.aula} /></div>
+                        <div className="grid gap-2"><Label htmlFor="aula">Aula (Opcional)</Label><Input id="aula" name="aula" defaultValue={currentItem?.aula} /></div>
                         <DialogFooter>
                             <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                            <Button type="submit">{editingHorario ? 'Guardar Cambios' : 'Crear'}</Button>
+                            <Button type="submit">{currentItem ? 'Guardar Cambios' : 'Crear'}</Button>
                         </DialogFooter>
                     </form>
                 </DialogContent>
             </Dialog>
+
+            <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                        <AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setCurrentItem(null)}>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground">Eliminar</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </Card>
     )
 }
@@ -506,31 +541,32 @@ export default function CatalogsPage() {
     }), [carreras, grupos, cuatrimestres, horarios, materiaAsignaciones, turnos, users]);
 
     useEffect(() => {
-        try {
-            Object.values(managedStates).forEach(({ setState, key, initial }) => {
-                const storedData = localStorage.getItem(key);
-                if (storedData) {
-                    setState(JSON.parse(storedData));
-                } else {
+        if (typeof window !== 'undefined') {
+            try {
+                Object.values(managedStates).forEach(({ setState, key, initial }) => {
+                    const storedData = localStorage.getItem(key);
+                    setState(storedData ? JSON.parse(storedData) : initial);
+                });
+            } catch (error) {
+                console.error("Error al cargar desde localStorage:", error);
+                 Object.values(managedStates).forEach(({ setState, initial }) => {
                     setState(initial);
-                }
-            });
-        } catch (error) {
-            console.error("Failed to access localStorage for loading:", error);
-        } finally {
-            setIsLoaded(true);
+                });
+            } finally {
+                setIsLoaded(true);
+            }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
-        if (isLoaded) {
+        if (isLoaded && typeof window !== 'undefined') {
             try {
                 Object.values(managedStates).forEach(({ state, key }) => {
                     localStorage.setItem(key, JSON.stringify(state));
                 });
             } catch (error) {
-                 console.error("Failed to access localStorage for saving:", error);
+                 console.error("Error al guardar en localStorage:", error);
             }
         }
     }, [managedStates, isLoaded]);
