@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { Users, Book, BarChart, DatabaseBackup } from 'lucide-react';
+import { UserCog, School, Book, BarChart, DatabaseBackup } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { LogoutButton } from '@/components/logout-button';
 import { useState, useEffect } from 'react';
@@ -30,8 +30,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode; }
         </div>
         <nav className="flex flex-col gap-2 flex-1">
           <Link href="/admin/users" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
-            <Users className="h-4 w-4" />
+            <UserCog className="h-4 w-4" />
             Gestión de Usuarios
+          </Link>
+          <Link href="/admin/groups" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
+            <School className="h-4 w-4" />
+            Grupos
           </Link>
           <Link href="/admin/catalogs" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
             <Book className="h-4 w-4" />
