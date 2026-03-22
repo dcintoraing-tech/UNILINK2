@@ -222,11 +222,14 @@ export default function UsersPage() {
                           <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                               <DropdownMenuItem onClick={() => openEditDialog(user)}>Editar</DropdownMenuItem>
-                              <AlertDialog>
+                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
-                                  <Button variant="ghost" className="w-full justify-start p-2 h-auto font-normal text-red-600 hover:text-red-600">
+                                  <DropdownMenuItem
+                                    onSelect={(event) => event.preventDefault()}
+                                    className="text-red-600 focus:text-red-600"
+                                  >
                                     Eliminar
-                                  </Button>
+                                  </DropdownMenuItem>
                                 </AlertDialogTrigger>
                                 <AlertDialogContent>
                                   <AlertDialogHeader>
@@ -237,7 +240,7 @@ export default function UsersPage() {
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
                                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => handleDeleteUser(user.id)}>Eliminar</AlertDialogAction>
+                                    <AlertDialogAction onClick={() => handleDeleteUser(user.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction>
                                   </AlertDialogFooter>
                                 </AlertDialogContent>
                               </AlertDialog>
