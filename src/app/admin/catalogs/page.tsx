@@ -199,7 +199,7 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
 }
 
 
-function MateriasContent({ materias, setMaterias, asignaciones, setAsignaciones, carreras, cuatrimestres }) {
+function MateriasContent({ materias, asignaciones, setAsignaciones, carreras, cuatrimestres }) {
     const { toast } = useToast();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingAsignacion, setEditingAsignacion] = useState<AsignacionMateria | null>(null);
@@ -239,10 +239,9 @@ function MateriasContent({ materias, setMaterias, asignaciones, setAsignaciones,
 
     return (
         <div className="space-y-6">
-            <CatalogTable title="Materias" data={materias} setData={setMaterias} />
             <Card>
                 <CardHeader className="flex-row items-center justify-between">
-                    <CardTitle>Asignación de Materias a Carreras</CardTitle>
+                    <CardTitle>Asignación de Materias por Carrera y Cuatrimestre</CardTitle>
                     <Button size="sm" onClick={() => openDialog(null)}>
                         <PlusCircle className="h-4 w-4 mr-2" />
                         Asignar Materia
@@ -272,7 +271,9 @@ function MateriasContent({ materias, setMaterias, asignaciones, setAsignaciones,
                                             <DropdownMenuContent>
                                                 <DropdownMenuItem onClick={() => openDialog(asignacion)}>Editar</DropdownMenuItem>
                                                 <AlertDialog>
-                                                    <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
+                                                    <AlertDialogTrigger asChild>
+                                                        <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem>
+                                                    </AlertDialogTrigger>
                                                     <AlertDialogContent>
                                                         <AlertDialogHeader>
                                                             <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
@@ -295,7 +296,7 @@ function MateriasContent({ materias, setMaterias, asignaciones, setAsignaciones,
                  <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>{editingAsignacion ? 'Editar' : 'Asignar'} Materia a Carrera</DialogTitle>
+                            <DialogTitle>{editingAsignacion ? 'Editar' : 'Asignar'} Materia</DialogTitle>
                         </DialogHeader>
                         <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
                             <div className="grid gap-2">
@@ -398,7 +399,9 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }) 
                                         <DropdownMenuContent>
                                             <DropdownMenuItem onClick={() => openDialog(horario)}>Editar</DropdownMenuItem>
                                             <AlertDialog>
-                                                <AlertDialogTrigger asChild><DropdownMenuItem onSelect={e => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
+                                                <AlertDialogTrigger asChild>
+                                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem>
+                                                </AlertDialogTrigger>
                                                 <AlertDialogContent>
                                                     <AlertDialogHeader>
                                                         <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
