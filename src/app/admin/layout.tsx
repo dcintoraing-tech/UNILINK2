@@ -1,9 +1,26 @@
+"use client";
+
 import Link from 'next/link';
 import { Users, Book, BarChart, DatabaseBackup } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { LogoutButton } from '@/components/logout-button';
+import { useState, useEffect } from 'react';
 
 export default function AdminLayout({ children }: { children: React.ReactNode; }) {
+  const [userName, setUserName] = useState('');
+
+  useEffect(() => {
+    try {
+      const storedUser = sessionStorage.getItem('unilink-user');
+      if (storedUser) {
+        const user = JSON.parse(storedUser);
+        setUserName(user.name);
+      }
+    } catch (error) {
+        console.error("Failed to read user from session storage", error);
+    }
+  }, []);
+
   return (
     <div className="flex min-h-screen w-full">
       <aside className="hidden w-64 flex-col border-r bg-background p-4 sm:flex">
@@ -38,7 +55,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode; }
             <div className='sm:hidden'>
                 <Logo className="h-8 w-8" />
             </div>
-            <div className="flex-1 sm:flex-grow-0">
+            <div className="flex items-center gap-4">
+                {userName && (
+                    <div className="hidden text-right sm:block">
+                        <p className="font-semibold">{userName}</p>
+                        <p className="text-xs text-muted-foreground">Administrador</p>
+                    </div>
+                )}
                 <LogoutButton />
             </div>
         </header>

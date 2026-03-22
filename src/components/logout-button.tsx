@@ -10,6 +10,7 @@ export function LogoutButton() {
 
   const handleLogout = () => {
     // Here you would typically clear session, cookies, etc.
+    sessionStorage.removeItem('unilink-user');
     router.push("/login");
   };
 

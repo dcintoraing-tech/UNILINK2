@@ -31,16 +31,22 @@ import {
 // En una aplicación real, esto vendría de tu backend/base de datos.
 const initialUsers = [
     {
+        id: '1',
         name: 'Ana Gómez',
         email: 'ana.gomez@example.com',
         password: 'password123',
         role: 'Docente',
+        status: 'Activo',
+        createdAt: '2023-10-25'
     },
     {
+        id: '2',
         name: 'Luis Fernandez',
         email: 'luis.fernandez@example.com',
         password: 'password123',
         role: 'Admin',
+        status: 'Inactivo',
+        createdAt: '2023-10-24'
     }
 ];
 
@@ -64,20 +70,6 @@ export default function LoginPage() {
   const { toast } = useToast();
   const [users, setUsers] = useState<any[]>([]);
 
-  useEffect(() => {
-    try {
-      const storedUsers = localStorage.getItem(USERS_STORAGE_KEY);
-      if (storedUsers) {
-        setUsers(JSON.parse(storedUsers));
-      } else {
-        setUsers(initialUsers);
-      }
-    } catch (error) {
-      console.error("Failed to access localStorage:", error);
-      setUsers(initialUsers);
-    }
-  }, []);
-
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -86,8 +78,25 @@ export default function LoginPage() {
     },
   });
 
+  useEffect(() => {
+    try {
+      const storedUsers = localStorage.getItem(USERS_STORAGE_KEY);
+      if (storedUsers) {
+        setUsers(JSON.parse(storedUsers));
+      } else {
+        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(initialUsers));
+        setUsers(initialUsers);
+      }
+    } catch (error) {
+      console.error("Failed to access localStorage:", error);
+      setUsers(initialUsers);
+    }
+  }, []);
+
   function onSubmit(values: z.infer<typeof formSchema>) {
     if (values.email === "Admin" && values.password === "admin" && values.role === "Admin") {
+      const adminUser = { name: 'Super Admin', email: 'admin@unilink.com', role: 'Admin' };
+      sessionStorage.setItem('unilink-user', JSON.stringify(adminUser));
       toast({
           title: "Acceso de administrador concedido",
           description: "Redirigiendo al panel de control...",
@@ -103,6 +112,7 @@ export default function LoginPage() {
     );
 
     if (authenticatedUser) {
+        sessionStorage.setItem('unilink-user', JSON.stringify(authenticatedUser));
         toast({
             title: "Inicio de sesión exitoso",
             description: "Redirigiendo a tu panel de control...",
