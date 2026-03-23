@@ -54,10 +54,8 @@ export default function LoginPage() {
           // Hardcoded super-admin login
           const adminUser = users.find((u: any) => u.role === 'Admin');
           if (adminUser) {
-            // If an admin exists, use their profile for the session
             userToSession = adminUser;
           } else {
-            // If no admin exists, create a default admin profile for the session
             userToSession = {
               id: 'superuser',
               name: 'Admin',
@@ -69,11 +67,11 @@ export default function LoginPage() {
           // Logic for regular users
           const foundUser = users.find((u: any) => (u.email === values.username || u.name === values.username));
 
-          // For demo, we are not checking passwords for regular users.
-          // But we must ensure the admin can only log in with admin/admin.
-          if (foundUser && foundUser.role !== 'Admin') {
-            userToSession = foundUser;
+          if (!foundUser || foundUser.password !== values.password) {
+            throw new Error("Credenciales incorrectas. Por favor, verifica tu usuario y contraseña.");
           }
+          
+          userToSession = foundUser;
         }
         
         if (!userToSession) {

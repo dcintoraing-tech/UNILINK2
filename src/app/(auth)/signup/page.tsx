@@ -95,6 +95,7 @@ export default function SignupPage() {
             id: new Date().toISOString(),
             name: values.name,
             email: values.email,
+            password: values.password,
             role: values.role,
             status: 'Activo',
             createdAt: new Date().toISOString(),
