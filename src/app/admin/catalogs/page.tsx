@@ -20,6 +20,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+
 
 // --- DATA PERSISTENCE HOOK ---
 const useLocalStorage = <T,>(key: string, initialValue: T) => {
@@ -77,7 +79,7 @@ const useLocalStorage = <T,>(key: string, initialValue: T) => {
 // --- INTERFACES ---
 interface CatalogItem { id: string; name: string; }
 interface User { id: string; name: string; email: string; role: 'Docente' | 'Admin'; status: 'Activo' | 'Inactivo'; createdAt: string; }
-interface AsignacionMateria { id: string; materia: string; carreraId: string; periodoId: string; }
+interface AsignacionMateria { id: string; materia: string; carreraId: string; periodoId: string; periodoType: 'cuatrimestre' | 'semestre'; }
 interface Horario { id: string; grupoId: string; materiaId: string; docenteId: string; dia: string; horaInicio: string; horaFin: string; aula: string; }
 
 
@@ -159,33 +161,63 @@ function CatalogTable<T extends CatalogItem>({ title, data, setData }: { title: 
     );
 }
 
-function MateriasContent({ asignaciones, setAsignaciones, carreras, periodos }: { asignaciones: AsignacionMateria[], setAsignaciones: (value: AsignacionMateria[] | ((val: AsignacionMateria[]) => AsignacionMateria[])) => void, carreras: CatalogItem[], periodos: CatalogItem[] }) {
+function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestres, semestres }: { asignaciones: AsignacionMateria[], setAsignaciones: (value: AsignacionMateria[] | ((val: AsignacionMateria[]) => AsignacionMateria[])) => void, carreras: CatalogItem[], cuatrimestres: CatalogItem[], semestres: CatalogItem[] }) {
     const { toast } = useToast();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<AsignacionMateria | null>(null);
     const [filterCarrera, setFilterCarrera] = useState<string>('all');
-    const [filterPeriodo, setFilterPeriodo] = useState<string>('all');
+    const [filterPeriodoType, setFilterPeriodoType] = useState<'all' | 'cuatrimestre' | 'semestre'>('all');
+    const [filterPeriodoId, setFilterPeriodoId] = useState<string>('all');
     const [isCommon, setIsCommon] = useState(false);
     const [selectedCareers, setSelectedCareers] = useState<Record<string, boolean>>({});
+    const [dialogPeriodoType, setDialogPeriodoType] = useState<'cuatrimestre' | 'semestre'>('cuatrimestre');
+    
     const getNameById = (id: string, list: CatalogItem[]) => list.find(item => item.id === id)?.name || '—';
 
-    const filteredAsignaciones = useMemo(() => asignaciones.filter(a => (filterCarrera === 'all' || a.carreraId === filterCarrera) && (filterPeriodo === 'all' || a.periodoId === filterPeriodo)), [asignaciones, filterCarrera, filterPeriodo]);
+    const filteredAsignaciones = useMemo(() => asignaciones.filter(a => 
+        (filterCarrera === 'all' || a.carreraId === filterCarrera) &&
+        (filterPeriodoType === 'all' || a.periodoType === filterPeriodoType) &&
+        (filterPeriodoId === 'all' || a.periodoId === filterPeriodoId)
+    ), [asignaciones, filterCarrera, filterPeriodoType, filterPeriodoId]);
+    
+    const periodosFiltrar = useMemo(() => {
+        if (filterPeriodoType === 'cuatrimestre') return cuatrimestres;
+        if (filterPeriodoType === 'semestre') return semestres;
+        return [];
+    }, [filterPeriodoType, cuatrimestres, semestres]);
+    
+    const periodosDialogo = useMemo(() => {
+        return dialogPeriodoType === 'cuatrimestre' ? cuatrimestres : semestres;
+    }, [dialogPeriodoType, cuatrimestres, semestres]);
+    
+    const getPeriodoName = (item: AsignacionMateria) => {
+        const list = item.periodoType === 'cuatrimestre' ? cuatrimestres : semestres;
+        return getNameById(item.periodoId, list);
+    };
 
     const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         if (currentItem) {
-            const data = Object.fromEntries(formData.entries()) as any;
-            if (!data.materia || !data.carreraId || !data.periodoId) { toast({ variant: 'destructive', title: "Error", description: "Faltan campos requeridos." }); return; }
-            const updatedAsignacion = { materia: data.materia, carreraId: data.carreraId, periodoId: data.periodoId };
+            const materia = formData.get('materia') as string;
+            const carreraId = formData.get('carreraId') as string;
+            const periodoType = formData.get('periodoType') as 'cuatrimestre' | 'semestre';
+            const periodoId = formData.get('periodoId') as string;
+
+            if (!materia || !carreraId || !periodoType || !periodoId) { toast({ variant: 'destructive', title: "Error", description: "Faltan campos requeridos." }); return; }
+            
+            const updatedAsignacion = { materia, carreraId, periodoType, periodoId };
             setAsignaciones(prev => prev.map(a => a.id === currentItem.id ? { ...a, ...updatedAsignacion } : a));
             toast({ title: "Asignación actualizada" });
         } else {
             const materia = formData.get('materia') as string;
+            const periodoType = formData.get('periodoType') as 'cuatrimestre' | 'semestre';
             const periodoId = formData.get('periodoId') as string;
             const carrerasAsignar = isCommon ? carreras.map(c => c.id) : Object.entries(selectedCareers).filter(([, checked]) => checked).map(([id]) => id);
-            if (!materia || carrerasAsignar.length === 0 || !periodoId) { toast({ variant: 'destructive', title: "Error", description: "Rellena todos los campos obligatorios." }); return; }
-            const newAsignaciones = carrerasAsignar.map(carreraId => ({ id: new Date().toISOString() + Math.random(), materia, carreraId, periodoId }));
+
+            if (!materia || carrerasAsignar.length === 0 || !periodoType || !periodoId) { toast({ variant: 'destructive', title: "Error", description: "Rellena todos los campos obligatorios." }); return; }
+            
+            const newAsignaciones = carrerasAsignar.map(carreraId => ({ id: new Date().toISOString() + Math.random(), materia, carreraId, periodoId, periodoType }));
             setAsignaciones(prev => [...prev, ...newAsignaciones]);
             toast({ title: `Asignación(es) creada(s) exitosamente.` });
         }
@@ -198,6 +230,9 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, periodos }: 
         if (!item) {
             setIsCommon(false);
             setSelectedCareers(carreras.reduce((acc, c) => ({ ...acc, [c.id]: false }), {}));
+            setDialogPeriodoType('cuatrimestre');
+        } else {
+            setDialogPeriodoType(item.periodoType);
         }
         setIsDialogOpen(true);
     };
@@ -215,12 +250,13 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, periodos }: 
                     <Button size="sm" onClick={() => openDialog(null)} className="w-full md:w-auto"><PlusCircle className="h-4 w-4 mr-2" />Asignar Materia</Button>
                 </CardHeader>
                 <CardContent>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                         <Select value={filterCarrera} onValueChange={setFilterCarrera}><SelectTrigger><SelectValue placeholder="Filtrar por carrera" /></SelectTrigger><SelectContent><SelectItem value="all">Todas las carreras</SelectItem>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
-                        <Select value={filterPeriodo} onValueChange={setFilterPeriodo}><SelectTrigger><SelectValue placeholder="Filtrar por periodo" /></SelectTrigger><SelectContent><SelectItem value="all">Todos los periodos</SelectItem>{periodos.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
+                        <Select value={filterPeriodoType} onValueChange={(v) => { setFilterPeriodoType(v as any); setFilterPeriodoId('all'); }}><SelectTrigger><SelectValue placeholder="Filtrar por tipo de periodo" /></SelectTrigger><SelectContent><SelectItem value="all">Todos los Periodos</SelectItem><SelectItem value="cuatrimestre">Cuatrimestre</SelectItem><SelectItem value="semestre">Semestre</SelectItem></SelectContent></Select>
+                        <Select value={filterPeriodoId} onValueChange={setFilterPeriodoId} disabled={filterPeriodoType === 'all'}><SelectTrigger><SelectValue placeholder="Filtrar por periodo" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem>{periodosFiltrar.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
                     </div>
                     <div className="border rounded-md"><Table><TableHeader><TableRow><TableHead>Materia</TableHead><TableHead>Carrera</TableHead><TableHead>Periodo</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader><TableBody>
-                        {filteredAsignaciones.length > 0 ? (filteredAsignaciones.map(a => (<TableRow key={a.id}><TableCell className="font-medium">{a.materia}</TableCell><TableCell>{getNameById(a.carreraId, carreras)}</TableCell><TableCell>{getNameById(a.periodoId, periodos)}</TableCell><TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent><DropdownMenuItem onSelect={() => openDialog(a)}>Editar</DropdownMenuItem><AlertDialog><AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(a.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></DropdownMenuContent></DropdownMenu></TableCell></TableRow>))) : (<TableRow><TableCell colSpan={4} className="text-center h-24">No hay materias que coincidan con los filtros.</TableCell></TableRow>)}
+                        {filteredAsignaciones.length > 0 ? (filteredAsignaciones.map(a => (<TableRow key={a.id}><TableCell className="font-medium">{a.materia}</TableCell><TableCell>{getNameById(a.carreraId, carreras)}</TableCell><TableCell>{getPeriodoName(a)}</TableCell><TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent><DropdownMenuItem onSelect={() => openDialog(a)}>Editar</DropdownMenuItem><AlertDialog><AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(a.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></DropdownMenuContent></DropdownMenu></TableCell></TableRow>))) : (<TableRow><TableCell colSpan={4} className="text-center h-24">No hay materias que coincidan con los filtros.</TableCell></TableRow>)}
                     </TableBody></Table></div>
                 </CardContent>
             </Card>
@@ -231,7 +267,8 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, periodos }: 
                         <div className="flex items-center space-x-2"><Switch id="isCommon" checked={isCommon} onCheckedChange={checked => { setIsCommon(checked); setSelectedCareers(checked ? carreras.reduce((acc, c) => ({ ...acc, [c.id]: true }), {}) : {}); }} /><Label htmlFor="isCommon">Materia Común (para todas las carreras)</Label></div>
                         <div className="grid gap-2"><Label>Carreras</Label><div className="space-y-2 rounded-md border p-4 max-h-40 overflow-y-auto">{carreras.map(c => (<div key={c.id} className="flex items-center space-x-2"><Checkbox id={`carrera-${c.id}`} checked={selectedCareers[c.id] || false} onCheckedChange={checked => !isCommon && setSelectedCareers(p => ({ ...p, [c.id]: !!checked }))} disabled={isCommon} /><Label htmlFor={`carrera-${c.id}`} className="font-normal">{c.name}</Label></div>))}</div></div>
                     </>)}
-                    <div className="grid gap-2"><Label>Periodo</Label><Select name="periodoId" defaultValue={currentItem?.periodoId ?? undefined} required><SelectTrigger><SelectValue placeholder="Selecciona un periodo" /></SelectTrigger><SelectContent>{periodos?.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="grid gap-2"><Label>Tipo de Periodo</Label><RadioGroup name="periodoType" value={dialogPeriodoType} onValueChange={(val) => setDialogPeriodoType(val as any)} className="flex space-x-4"><div className="flex items-center space-x-2"><RadioGroupItem value="cuatrimestre" id="r1" /><Label htmlFor="r1">Cuatrimestre</Label></div><div className="flex items-center space-x-2"><RadioGroupItem value="semestre" id="r2" /><Label htmlFor="r2">Semestre</Label></div></RadioGroup></div>
+                    <div className="grid gap-2"><Label>Periodo</Label><Select name="periodoId" defaultValue={currentItem?.periodoId ?? undefined} required><SelectTrigger><SelectValue placeholder="Selecciona un periodo" /></SelectTrigger><SelectContent>{periodosDialogo.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
                     <DialogFooter><Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button><Button type="submit">{currentItem ? 'Guardar Cambios' : 'Asignar'}</Button></DialogFooter>
                 </form>
             </DialogContent></Dialog>
@@ -304,29 +341,34 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: 
 export default function CatalogsPage() {
     const [carreras, setCarreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
     const [grupos, setGrupos] = useLocalStorage<CatalogItem[]>('unilink-grupos', []);
+    const [cuatrimestres, setCuatrimestres] = useLocalStorage<CatalogItem[]>('unilink-cuatrimestres', []);
+    const [semestres, setSemestres] = useLocalStorage<CatalogItem[]>('unilink-semestres', []);
     const [turnos, setTurnos] = useLocalStorage<CatalogItem[]>('unilink-turnos', []);
     const [materiaAsignaciones, setMateriaAsignaciones] = useLocalStorage<AsignacionMateria[]>('unilink-materia-asignaciones', []);
     const [horarios, setHorarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
     const [users, setUsers] = useLocalStorage<User[]>('unilink-users', []);
 
-    const periodos = Array.from({ length: 9 }, (_, i) => ({ id: (i + 1).toString(), name: `Periodo ${i + 1}` }));
     const docentes = useMemo(() => users.filter(u => u.role === 'Docente'), [users]);
 
     return (
       <div>
         <CardTitle className="mb-4">Catálogos Institucionales</CardTitle>
         <Tabs defaultValue="carreras" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 md:grid-cols-7">
                 <TabsTrigger value="carreras">Carreras</TabsTrigger>
                 <TabsTrigger value="grupos">Grupos</TabsTrigger>
+                <TabsTrigger value="cuatrimestres">Cuatrimestres</TabsTrigger>
+                <TabsTrigger value="semestres">Semestres</TabsTrigger>
                 <TabsTrigger value="turnos">Turnos</TabsTrigger>
                 <TabsTrigger value="materias">Materias</TabsTrigger>
                 <TabsTrigger value="horarios">Horarios</TabsTrigger>
             </TabsList>
             <TabsContent value="carreras"><CatalogTable title="Carreras" data={carreras} setData={setCarreras} /></TabsContent>
             <TabsContent value="grupos"><CatalogTable title="Grupos" data={grupos} setData={setGrupos} /></TabsContent>
+            <TabsContent value="cuatrimestres"><CatalogTable title="Cuatrimestres" data={cuatrimestres} setData={setCuatrimestres} /></TabsContent>
+            <TabsContent value="semestres"><CatalogTable title="Semestres" data={semestres} setData={setSemestres} /></TabsContent>
             <TabsContent value="turnos"><CatalogTable title="Turnos" data={turnos} setData={setTurnos} /></TabsContent>
-            <TabsContent value="materias"><MateriasContent asignaciones={materiaAsignaciones} setAsignaciones={setMateriaAsignaciones} carreras={carreras} periodos={periodos} /></TabsContent>
+            <TabsContent value="materias"><MateriasContent asignaciones={materiaAsignaciones} setAsignaciones={setMateriaAsignaciones} carreras={carreras} cuatrimestres={cuatrimestres} semestres={semestres} /></TabsContent>
             <TabsContent value="horarios"><HorariosContent horarios={horarios} setHorarios={setHorarios} grupos={grupos} materias={materiaAsignaciones} docentes={docentes} /></TabsContent>
         </Tabs>
       </div>
