@@ -48,29 +48,43 @@ export default function LoginPage() {
       if (typeof window !== 'undefined') {
         const storedUsersRaw = window.localStorage.getItem('unilink-users');
         const users = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
-        let user;
+        let userToSession;
 
-        // Special case for admin/admin login
         if (values.username === 'admin' && values.password === 'admin') {
-            user = users.find((u: any) => u.name === 'admin' && u.role === 'Admin');
+          // Hardcoded super-admin login
+          const adminUser = users.find((u: any) => u.role === 'Admin');
+          if (adminUser) {
+            // If an admin exists, use their profile for the session
+            userToSession = adminUser;
+          } else {
+            // If no admin exists, create a default admin profile for the session
+            userToSession = {
+              id: 'superuser',
+              name: 'Admin',
+              email: 'admin@unilink.com',
+              role: 'Admin',
+            };
+          }
         } else {
-            // Existing logic for other users
-            const foundUser = users.find((u: any) => u.email === values.username || u.name === values.username);
-            // For demo purposes, any password works for non-admin users if they exist, except for the admin user.
-            if (foundUser && foundUser.name !== 'admin') {
-                user = foundUser;
-            }
+          // Logic for regular users
+          const foundUser = users.find((u: any) => (u.email === values.username || u.name === values.username));
+
+          // For demo, we are not checking passwords for regular users.
+          // But we must ensure the admin can only log in with admin/admin.
+          if (foundUser && foundUser.role !== 'Admin') {
+            userToSession = foundUser;
+          }
         }
         
-        if (!user) {
+        if (!userToSession) {
            throw new Error("Credenciales incorrectas. Por favor, verifica tu usuario y contraseña.");
         }
 
         const userProfile = {
-          uid: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
+          uid: userToSession.id,
+          name: userToSession.name,
+          email: userToSession.email,
+          role: userToSession.role,
         };
 
         sessionStorage.setItem('unilink-user', JSON.stringify(userProfile));
