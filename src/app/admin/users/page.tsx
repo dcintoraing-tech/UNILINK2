@@ -55,26 +55,25 @@ interface User {
     id: string;
     name: string;
     email: string;
+    password?: string;
     role: UserRole;
     status: UserStatus;
     createdAt: string;
 }
 
 const useLocalStorage = <T,>(key: string, initialValue: T) => {
-    const [storedValue, setStoredValue] = useState<T>(initialValue);
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const item = window.localStorage.getItem(key);
-                setStoredValue(item ? JSON.parse(item) : initialValue);
-            } catch (error) {
-                console.log(error);
-                setStoredValue(initialValue);
-            }
+    const [storedValue, setStoredValue] = useState<T>(() => {
+        if (typeof window === 'undefined') {
+            return initialValue;
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [key]);
+        try {
+            const item = window.localStorage.getItem(key);
+            return item ? JSON.parse(item) : initialValue;
+        } catch (error) {
+            console.log(error);
+            return initialValue;
+        }
+    });
 
     const setValue = (value: T | ((val: T) => T)) => {
         try {
@@ -82,11 +81,31 @@ const useLocalStorage = <T,>(key: string, initialValue: T) => {
             setStoredValue(valueToStore);
             if (typeof window !== 'undefined') {
                 window.localStorage.setItem(key, JSON.stringify(valueToStore));
+                 window.dispatchEvent(new Event('storage'));
             }
         } catch (error) {
             console.log(error);
         }
     };
+    
+    useEffect(() => {
+        const handleStorageChange = () => {
+            try {
+                const item = window.localStorage.getItem(key);
+                setStoredValue(item ? JSON.parse(item) : initialValue);
+            } catch (error) {
+                console.log(error);
+                setStoredValue(initialValue);
+            }
+        };
+
+        window.addEventListener('storage', handleStorageChange);
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key, initialValue]);
+
 
     return [storedValue, setValue] as const;
 };
@@ -111,12 +130,13 @@ export default function UsersPage() {
             id: new Date().toISOString(),
             name: userData.name,
             email: userData.email,
+            password: userData.password,
             role: userData.role,
             status: 'Activo',
             createdAt: new Date().toISOString(),
         };
         setUsers(prev => [...prev, newUser]);
-        toast({ title: "Usuario creado", description: `El usuario ${userData.name} ha sido creado. La contraseña por defecto es 'password'` });
+        toast({ title: "Usuario creado", description: `El usuario ${userData.name} ha sido creado.` });
     }
     
     setIsDialogOpen(false);
@@ -219,7 +239,12 @@ export default function UsersPage() {
           <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
               <div className="grid gap-2"><Label htmlFor="name">Nombre</Label><Input id="name" name="name" defaultValue={editingUser?.name} required /></div>
               <div className="grid gap-2"><Label htmlFor="email">Correo electrónico</Label><Input id="email" name="email" type="email" defaultValue={editingUser?.email} required /></div>
-              {!editingUser && (<p className="text-sm text-muted-foreground">La contraseña inicial para los nuevos usuarios es 'password'. El usuario podrá cambiarla más tarde.</p>)}
+              {!editingUser && (
+                <div className="grid gap-2">
+                  <Label htmlFor="password">Contraseña</Label>
+                  <Input id="password" name="password" type="password" required />
+                </div>
+              )}
               <div className="grid gap-2">
                 <Label htmlFor="role">Rol</Label>
                 <Select name="role" defaultValue={editingUser?.role || 'Docente'}>

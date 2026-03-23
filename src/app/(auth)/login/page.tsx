@@ -52,17 +52,12 @@ export default function LoginPage() {
 
         if (values.username === 'admin' && values.password === 'admin') {
           // Hardcoded super-admin login
-          const adminUser = users.find((u: any) => u.role === 'Admin');
-          if (adminUser) {
-            userToSession = adminUser;
-          } else {
-            userToSession = {
-              id: 'superuser',
-              name: 'Admin',
-              email: 'admin@unilink.com',
-              role: 'Admin',
-            };
-          }
+          userToSession = {
+            id: 'superuser',
+            name: 'Admin',
+            email: 'admin@unilink.com',
+            role: 'Admin',
+          };
         } else {
           // Logic for regular users
           const foundUser = users.find((u: any) => (u.email === values.username || u.name === values.username));
