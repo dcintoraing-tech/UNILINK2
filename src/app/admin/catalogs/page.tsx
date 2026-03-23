@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { MoreHorizontal, PlusCircle } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -97,7 +97,6 @@ const initialData = {
 
 function CatalogTable({ title, data, setData }: { title: string, data: CatalogItem[], setData: React.Dispatch<React.SetStateAction<CatalogItem[]>> }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [isAlertOpen, setIsAlertOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<CatalogItem | null>(null);
     const { toast } = useToast();
 
@@ -129,18 +128,10 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
         setCurrentItem(item);
         setIsDialogOpen(true);
     };
-    
-    const handleOpenAlert = (item: CatalogItem) => {
-        setCurrentItem(item);
-        setIsAlertOpen(true);
-    };
 
-    const handleDeleteConfirm = () => {
-        if (!currentItem) return;
-        setData(prevData => prevData.filter(item => item.id !== currentItem.id));
+    const handleDelete = (itemId: string) => {
+        setData(prevData => prevData.filter(item => item.id !== itemId));
         toast({ title: "Elemento eliminado", description: "El elemento ha sido eliminado correctamente." });
-        setIsAlertOpen(false);
-        setCurrentItem(null);
     };
 
     return (
@@ -173,12 +164,30 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent>
                                             <DropdownMenuItem onClick={() => handleOpenDialog(item)}>Editar</DropdownMenuItem>
-                                            <DropdownMenuItem
-                                                onClick={() => handleOpenAlert(item)}
-                                                className="text-red-600 focus:text-red-600"
-                                            >
-                                                Eliminar
-                                            </DropdownMenuItem>
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                  <DropdownMenuItem
+                                                    onSelect={(event) => event.preventDefault()}
+                                                    className="text-red-600 focus:text-red-600"
+                                                  >
+                                                    Eliminar
+                                                  </DropdownMenuItem>
+                                                </AlertDialogTrigger>
+                                                <AlertDialogContent>
+                                                  <AlertDialogHeader>
+                                                    <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                      Esta acción no se puede deshacer.
+                                                    </AlertDialogDescription>
+                                                  </AlertDialogHeader>
+                                                  <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={() => handleDelete(item.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                                        Eliminar
+                                                    </AlertDialogAction>
+                                                  </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                              </AlertDialog>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </TableCell>
@@ -205,23 +214,6 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
                     </form>
                 </DialogContent>
             </Dialog>
-
-            <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Esta acción no se puede deshacer.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setCurrentItem(null)}>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                            Eliminar
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
         </Card>
     );
 }
@@ -230,7 +222,6 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
 function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestres, semestres }: { asignaciones: AsignacionMateria[], setAsignaciones: React.Dispatch<React.SetStateAction<AsignacionMateria[]>>, carreras: CatalogItem[], cuatrimestres: CatalogItem[], semestres: CatalogItem[] }) {
     const { toast } = useToast();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [isAlertOpen, setIsAlertOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<AsignacionMateria | null>(null);
 
     const [filterCarrera, setFilterCarrera] = useState<string>('all');
@@ -336,17 +327,9 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
         setIsDialogOpen(true);
     };
 
-    const openAlert = (item: AsignacionMateria) => {
-        setCurrentItem(item);
-        setIsAlertOpen(true);
-    };
-
-    const handleDeleteConfirm = () => {
-        if (!currentItem) return;
-        setAsignaciones(asignaciones.filter(a => a.id !== currentItem.id));
+    const handleDelete = (itemId: string) => {
+        setAsignaciones(asignaciones.filter(a => a.id !== itemId));
         toast({ title: "Asignación eliminada" });
-        setIsAlertOpen(false);
-        setCurrentItem(null);
     };
 
     return (
@@ -393,7 +376,21 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent>
                                                         <DropdownMenuItem onClick={() => openDialog(asignacion)}>Editar</DropdownMenuItem>
-                                                        <DropdownMenuItem onClick={() => openAlert(asignacion)} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem>
+                                                        <AlertDialog>
+                                                            <AlertDialogTrigger asChild>
+                                                                <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem>
+                                                            </AlertDialogTrigger>
+                                                            <AlertDialogContent>
+                                                                <AlertDialogHeader>
+                                                                    <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                                                                    <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará la asignación permanentemente.</AlertDialogDescription>
+                                                                </AlertDialogHeader>
+                                                                <AlertDialogFooter>
+                                                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                                    <AlertDialogAction onClick={() => handleDelete(asignacion.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction>
+                                                                </AlertDialogFooter>
+                                                            </AlertDialogContent>
+                                                        </AlertDialog>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </TableCell>
@@ -500,18 +497,6 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                     </form>
                 </DialogContent>
             </Dialog>
-            <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                        <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará la asignación permanentemente.</AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setCurrentItem(null)}>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
         </div>
     )
 }
@@ -519,7 +504,6 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
 function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: { horarios: Horario[], setHorarios: React.Dispatch<React.SetStateAction<Horario[]>>, grupos: CatalogItem[], materias: CatalogItem[], docentes: User[] }) {
     const { toast } = useToast();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [isAlertOpen, setIsAlertOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<Horario | null>(null);
 
     const getNameById = (id: string, list: { id: string, name: string }[]) => list.find(item => item.id === id)?.name || 'N/A';
@@ -551,17 +535,9 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: 
         setIsDialogOpen(true);
     };
 
-    const openAlert = (item: Horario) => {
-        setCurrentItem(item);
-        setIsAlertOpen(true);
-    };
-    
-    const handleDeleteConfirm = () => {
-        if (!currentItem) return;
-        setHorarios(horarios.filter(h => h.id !== currentItem.id));
+    const handleDelete = (itemId: string) => {
+        setHorarios(horarios.filter(h => h.id !== itemId));
         toast({ title: "Horario eliminado" });
-        setIsAlertOpen(false);
-        setCurrentItem(null);
     };
 
     return (
@@ -600,7 +576,21 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: 
                                         <DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                         <DropdownMenuContent>
                                             <DropdownMenuItem onClick={() => openDialog(horario)}>Editar</DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => openAlert(horario)} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem>
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem>
+                                                </AlertDialogTrigger>
+                                                <AlertDialogContent>
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                                                        <AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription>
+                                                    </AlertDialogHeader>
+                                                    <AlertDialogFooter>
+                                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                        <AlertDialogAction onClick={() => handleDelete(horario.id)} className="bg-destructive text-destructive-foreground">Eliminar</AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </TableCell>
@@ -632,19 +622,6 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: 
                     </form>
                 </DialogContent>
             </Dialog>
-
-            <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                        <AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setCurrentItem(null)}>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground">Eliminar</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
         </Card>
     )
 }
@@ -679,8 +656,11 @@ export default function CatalogsPage() {
             try {
                 Object.values(dataStates).forEach(({ setState, key }) => {
                     const storedData = localStorage.getItem(key);
+                    const initialValue = initialData[key.replace('unilink-', '') as keyof typeof initialData];
                     if (storedData) {
                         setState(JSON.parse(storedData));
+                    } else if (initialValue) {
+                         setState(initialValue as any);
                     }
                 });
             } catch (error) {
