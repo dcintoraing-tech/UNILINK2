@@ -1,11 +1,10 @@
-
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
-import { Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { Lock, Eye, EyeOff, User as UserIcon } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -23,8 +22,8 @@ import { useToast } from "@/hooks/use-toast";
 
 
 const formSchema = z.object({
-  email: z.string().email({
-    message: "Por favor, introduce un correo válido.",
+  username: z.string().min(1, {
+    message: "Por favor, introduce tu usuario o correo.",
   }),
   password: z.string().min(1, {
     message: "La contraseña es requerida.",
@@ -39,7 +38,7 @@ export default function LoginPage() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      email: "",
+      username: "",
       password: "",
     },
   });
@@ -49,12 +48,12 @@ export default function LoginPage() {
       if (typeof window !== 'undefined') {
         const storedUsersRaw = window.localStorage.getItem('unilink-users');
         const users = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
-        const user = users.find((u: any) => u.email === values.email);
+        const user = users.find((u: any) => u.email === values.username || u.name === values.username);
         
         // This is a mock login. In a real app, you would check a hashed password.
         // Here we just check for the user's existence. For demo purposes, any password will work.
         if (!user) {
-           throw new Error("Credenciales incorrectas. Por favor, verifica tu correo y contraseña.");
+           throw new Error("Credenciales incorrectas. Por favor, verifica tu usuario y contraseña.");
         }
 
         const userProfile = {
@@ -102,14 +101,14 @@ export default function LoginPage() {
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
               control={form.control}
-              name="email"
+              name="username"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Correo electrónico</FormLabel>
+                  <FormLabel>Usuario o Correo Electrónico</FormLabel>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <FormControl>
-                      <Input placeholder="tu@ejemplo.com" {...field} className="pl-10"/>
+                      <Input placeholder="admin o tu@ejemplo.com" {...field} className="pl-10"/>
                     </FormControl>
                   </div>
                   <FormMessage />
