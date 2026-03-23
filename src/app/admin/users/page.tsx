@@ -62,18 +62,20 @@ interface User {
 }
 
 const useLocalStorage = <T,>(key: string, initialValue: T) => {
-    const [storedValue, setStoredValue] = useState<T>(() => {
-        if (typeof window === 'undefined') {
-            return initialValue;
+    const [storedValue, setStoredValue] = useState<T>(initialValue);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const item = window.localStorage.getItem(key);
+                setStoredValue(item ? JSON.parse(item) : initialValue);
+            } catch (error) {
+                console.log(error);
+                setStoredValue(initialValue);
+            }
         }
-        try {
-            const item = window.localStorage.getItem(key);
-            return item ? JSON.parse(item) : initialValue;
-        } catch (error) {
-            console.log(error);
-            return initialValue;
-        }
-    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key]);
 
     const setValue = (value: T | ((val: T) => T)) => {
         try {
@@ -81,7 +83,11 @@ const useLocalStorage = <T,>(key: string, initialValue: T) => {
             setStoredValue(valueToStore);
             if (typeof window !== 'undefined') {
                 window.localStorage.setItem(key, JSON.stringify(valueToStore));
-                 window.dispatchEvent(new Event('storage'));
+                // Manually dispatch a storage event to sync tabs
+                window.dispatchEvent(new StorageEvent('storage', {
+                    key,
+                    newValue: JSON.stringify(valueToStore),
+                }));
             }
         } catch (error) {
             console.log(error);
@@ -89,13 +95,15 @@ const useLocalStorage = <T,>(key: string, initialValue: T) => {
     };
     
     useEffect(() => {
-        const handleStorageChange = () => {
-            try {
-                const item = window.localStorage.getItem(key);
-                setStoredValue(item ? JSON.parse(item) : initialValue);
-            } catch (error) {
-                console.log(error);
-                setStoredValue(initialValue);
+        const handleStorageChange = (e: StorageEvent) => {
+            if (e.key === key) {
+                 try {
+                    const item = window.localStorage.getItem(key);
+                    setStoredValue(item ? JSON.parse(item) : initialValue);
+                } catch (error) {
+                    console.log(error);
+                    setStoredValue(initialValue);
+                }
             }
         };
 
@@ -104,7 +112,7 @@ const useLocalStorage = <T,>(key: string, initialValue: T) => {
             window.removeEventListener('storage', handleStorageChange);
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [key, initialValue]);
+    }, [key]);
 
 
     return [storedValue, setValue] as const;
@@ -116,14 +124,43 @@ export default function UsersPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const { toast } = useToast();
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const userData = Object.fromEntries(formData.entries()) as any;
     
+    // Password confirmation logic
+    if (userData.password || !editingUser) {
+      if (userData.password !== userData.confirmPassword) {
+        toast({
+          variant: "destructive",
+          title: "Error de contraseña",
+          description: "Las contraseñas no coinciden.",
+        });
+        return;
+      }
+    }
+    
     if (editingUser) {
-        setUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...userData } : u));
+        setUsers(prev => prev.map(u => {
+            if (u.id === editingUser.id) {
+                const updatedUser: User = {
+                    ...u,
+                    name: userData.name,
+                    email: userData.email,
+                    role: userData.role,
+                    status: userData.status,
+                };
+                if (userData.password) {
+                    updatedUser.password = userData.password;
+                }
+                return updatedUser;
+            }
+            return u;
+        }));
         toast({ title: "Usuario actualizado", description: `El usuario ${userData.name} ha sido actualizado.` });
     } else {
         const newUser: User = {
@@ -145,11 +182,15 @@ export default function UsersPage() {
 
   const openEditDialog = (user: User) => {
     setEditingUser(user);
+    setShowPassword(false);
+    setShowConfirmPassword(false);
     setIsDialogOpen(true);
   };
 
   const openCreateDialog = () => {
     setEditingUser(null);
+    setShowPassword(false);
+    setShowConfirmPassword(false);
     setIsDialogOpen(true);
   };
 
@@ -239,12 +280,28 @@ export default function UsersPage() {
           <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
               <div className="grid gap-2"><Label htmlFor="name">Nombre</Label><Input id="name" name="name" defaultValue={editingUser?.name} required /></div>
               <div className="grid gap-2"><Label htmlFor="email">Correo electrónico</Label><Input id="email" name="email" type="email" defaultValue={editingUser?.email} required /></div>
-              {!editingUser && (
-                <div className="grid gap-2">
-                  <Label htmlFor="password">Contraseña</Label>
-                  <Input id="password" name="password" type="password" required />
+              
+              <div className="grid gap-2">
+                <Label htmlFor="password">{editingUser ? 'Nueva Contraseña (opcional)' : 'Contraseña'}</Label>
+                <div className="relative">
+                  <Input id="password" name="password" type={showPassword ? "text" : "password"} required={!editingUser} placeholder={editingUser ? "Dejar en blanco para no cambiar" : ""} />
+                  <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground" onClick={() => setShowPassword(!showPassword)}>
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    <span className="sr-only">{showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
+                  </Button>
                 </div>
-              )}
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="confirmPassword">{editingUser ? 'Confirmar Nueva Contraseña' : 'Confirmar Contraseña'}</Label>
+                <div className="relative">
+                  <Input id="confirmPassword" name="confirmPassword" type={showConfirmPassword ? "text" : "password"} required={!editingUser} placeholder={editingUser ? "Dejar en blanco para no cambiar" : ""} />
+                   <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    <span className="sr-only">{showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
+                  </Button>
+                </div>
+              </div>
+
               <div className="grid gap-2">
                 <Label htmlFor="role">Rol</Label>
                 <Select name="role" defaultValue={editingUser?.role || 'Docente'}>
