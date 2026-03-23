@@ -48,10 +48,20 @@ export default function LoginPage() {
       if (typeof window !== 'undefined') {
         const storedUsersRaw = window.localStorage.getItem('unilink-users');
         const users = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
-        const user = users.find((u: any) => u.email === values.username || u.name === values.username);
+        let user;
+
+        // Special case for admin/admin login
+        if (values.username === 'admin' && values.password === 'admin') {
+            user = users.find((u: any) => u.name === 'admin' && u.role === 'Admin');
+        } else {
+            // Existing logic for other users
+            const foundUser = users.find((u: any) => u.email === values.username || u.name === values.username);
+            // For demo purposes, any password works for non-admin users if they exist, except for the admin user.
+            if (foundUser && foundUser.name !== 'admin') {
+                user = foundUser;
+            }
+        }
         
-        // This is a mock login. In a real app, you would check a hashed password.
-        // Here we just check for the user's existence. For demo purposes, any password will work.
         if (!user) {
            throw new Error("Credenciales incorrectas. Por favor, verifica tu usuario y contraseña.");
         }
@@ -108,7 +118,7 @@ export default function LoginPage() {
                   <div className="relative">
                     <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <FormControl>
-                      <Input placeholder="admin o tu@ejemplo.com" {...field} className="pl-10"/>
+                      <Input placeholder="tu@ejemplo.com" {...field} className="pl-10"/>
                     </FormControl>
                   </div>
                   <FormMessage />
