@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import {
     Card,
     CardContent,
@@ -20,7 +20,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-
+import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { collection, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 // --- INTERFACES ---
 interface CatalogItem {
@@ -50,88 +51,53 @@ interface Horario {
     aula: string;
 }
 
-// --- STORAGE ---
-const STORAGE_KEYS = {
-    carreras: 'unilink-carreras',
-    grupos: 'unilink-grupos-catalogo',
-    cuatrimestres: 'unilink-cuatrimestres',
-    semestres: 'unilink-semestres',
-    turnos: 'unilink-turnos',
-    materiaAsignaciones: 'unilink-materia-asignaciones',
-    horarios: 'unilink-horarios',
-    users: 'unilink-users',
-};
-
-const initialData = {
-    carreras: [{ id: '1', name: 'Ingeniería de Software' }, { id: '2', name: 'Licenciatura en Diseño Gráfico' }, { id: '3', name: 'Odontología' }],
-    grupos: [{ id: '1', name: 'A-101' }, { id: '2', name: 'B-202' }],
-    cuatrimestres: [{ id: '1', name: 'Primer Cuatrimestre' }, { id: '2', name: 'Segundo Cuatrimestre' }],
-    semestres: [{ id: '1', name: 'Primer Semestre' }, { id: '2', name: 'Segundo Semestre' }],
-    turnos: [{ id: '1', name: 'Matutino' }, { id: '2', name: 'Vespertino' }],
-    materiaAsignaciones: [],
-    horarios: [],
-    users: [
-        {
-            id: '1',
-            name: 'Ana Gómez',
-            email: 'ana.gomez@example.com',
-            password: 'password123',
-            role: 'Docente',
-            status: 'Activo',
-            createdAt: '2023-10-25'
-        },
-        {
-            id: '2',
-            name: 'Luis Fernandez',
-            email: 'luis.fernandez@example.com',
-            password: 'password123',
-            role: 'Admin',
-            status: 'Inactivo',
-            createdAt: '2023-10-24'
-        }
-    ],
-};
-
-
 // --- COMPONENTES DE GESTIÓN ---
 
-function CatalogTable({ title, data, setData }: { title: string, data: CatalogItem[], setData: React.Dispatch<React.SetStateAction<CatalogItem[]>> }) {
+function CatalogTable({ title, data, collectionName }: { title: string, data: CatalogItem[] | null, collectionName: string }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<CatalogItem | null>(null);
     const { toast } = useToast();
+    const firestore = useFirestore();
 
-    const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const name = formData.get('name') as string;
 
         if (!name) return;
 
-        if (currentItem && currentItem.id) {
-            const updatedItems = data.map(item => item.id === currentItem.id ? { ...item, name } : item);
-            setData(updatedItems);
-            toast({ title: "Elemento actualizado", description: `El elemento ha sido actualizado.` });
-        } else {
-            const newItem: CatalogItem = {
-                id: Date.now().toString(),
-                name,
-            };
-            setData(prevData => [...prevData, newItem]);
-            toast({ title: "Elemento agregado", description: `El nuevo elemento ha sido agregado.` });
+        try {
+            if (currentItem && currentItem.id) {
+                const docRef = doc(firestore, collectionName, currentItem.id);
+                await updateDoc(docRef, { name });
+                toast({ title: "Elemento actualizado", description: `El elemento ha sido actualizado.` });
+            } else {
+                await addDoc(collection(firestore, collectionName), { name });
+                toast({ title: "Elemento agregado", description: `El nuevo elemento ha sido agregado.` });
+            }
+        } catch (error) {
+            console.error("Error saving to Firestore: ", error);
+            toast({ variant: 'destructive', title: "Error", description: "No se pudo guardar el elemento." });
         }
+
 
         setIsDialogOpen(false);
         setCurrentItem(null);
     };
-    
+
     const handleOpenDialog = (item: CatalogItem | null = null) => {
         setCurrentItem(item);
         setIsDialogOpen(true);
     };
 
-    const handleDelete = (itemId: string) => {
-        setData(prevData => prevData.filter(item => item.id !== itemId));
-        toast({ title: "Elemento eliminado", description: "El elemento ha sido eliminado correctamente." });
+    const handleDelete = async (itemId: string) => {
+        try {
+            await deleteDoc(doc(firestore, collectionName, itemId));
+            toast({ title: "Elemento eliminado", description: "El elemento ha sido eliminado correctamente." });
+        } catch (error) {
+            console.error("Error deleting from Firestore: ", error);
+            toast({ variant: 'destructive', title: "Error", description: "No se pudo eliminar el elemento." });
+        }
     };
 
     return (
@@ -152,11 +118,11 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {data.map((item) => (
+                        {data?.map((item) => (
                             <TableRow key={item.id}>
                                 <TableCell className="font-medium">{item.name}</TableCell>
                                 <TableCell className="text-right">
-                                    <DropdownMenu>
+                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
                                             <Button size="icon" variant="ghost">
                                                 <MoreHorizontal className="h-4 w-4" />
@@ -219,10 +185,11 @@ function CatalogTable({ title, data, setData }: { title: string, data: CatalogIt
 }
 
 
-function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestres, semestres }: { asignaciones: AsignacionMateria[], setAsignaciones: React.Dispatch<React.SetStateAction<AsignacionMateria[]>>, carreras: CatalogItem[], cuatrimestres: CatalogItem[], semestres: CatalogItem[] }) {
+function MateriasContent({ asignaciones, carreras, cuatrimestres, semestres }: { asignaciones: AsignacionMateria[] | null, carreras: CatalogItem[] | null, cuatrimestres: CatalogItem[] | null, semestres: CatalogItem[] | null }) {
     const { toast } = useToast();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<AsignacionMateria | null>(null);
+    const firestore = useFirestore();
 
     const [filterCarrera, setFilterCarrera] = useState<string>('all');
     const [filterCuatrimestre, setFilterCuatrimestre] = useState<string>('all');
@@ -233,28 +200,18 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
     const [periodoType, setPeriodoType] = useState<'cuatrimestre' | 'semestre' | 'ambos' | ''>('');
 
 
-    useEffect(() => {
-        if (isCommon) {
-            const allSelected = carreras.reduce((acc, carrera) => {
-                acc[carrera.id] = true;
-                return acc;
-            }, {} as Record<string, boolean>);
-            setSelectedCareers(allSelected);
-        }
-    }, [isCommon, carreras]);
-
-    const getNameById = (id: string, list: CatalogItem[]) => list.find(item => item.id === id)?.name || '—';
+    const getNameById = (id: string, list: CatalogItem[] | null) => list?.find(item => item.id === id)?.name || '—';
     
     const filteredAsignaciones = useMemo(() => {
-        return asignaciones.filter(asignacion => {
+        return asignaciones?.filter(asignacion => {
             const carreraMatch = filterCarrera === 'all' || asignacion.carreraId === filterCarrera;
-            const cuatrimestreMatch = filterCuatrimestre === 'all' || asignacion.cuatrimestreId === filterCuatrimestre;
-            const semestreMatch = filterSemestre === 'all' || asignacion.semestreId === filterSemestre;
+            const cuatrimestreMatch = filterCuatrimestre === 'all' || !asignacion.cuatrimestreId || asignacion.cuatrimestreId === filterCuatrimestre;
+            const semestreMatch = filterSemestre === 'all' || !asignacion.semestreId || asignacion.semestreId === filterSemestre;
             return carreraMatch && cuatrimestreMatch && semestreMatch;
-        });
+        }) || [];
     }, [asignaciones, filterCarrera, filterCuatrimestre, filterSemestre]);
 
-    const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
     
@@ -270,21 +227,24 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
             }
 
             const updatedAsignacion = {
-                ...currentItem,
-                ...data,
-                cuatrimestreId: data.cuatrimestreId || undefined,
-                semestreId: data.semestreId || undefined
+                materia: data.materia,
+                carreraId: data.carreraId,
+                cuatrimestreId: data.cuatrimestreId || null,
+                semestreId: data.semestreId || null
             };
 
-            setAsignaciones(prev => prev.map(a => a.id === currentItem.id ? updatedAsignacion : a));
+            await updateDoc(doc(firestore, "materiaAsignaciones", currentItem.id), updatedAsignacion);
             toast({ title: "Asignación actualizada" });
         } else { // Lógica de creación
             const materia = formData.get('materia') as string;
             const cuatrimestreId = formData.get('cuatrimestreId') as string | null;
             const semestreId = formData.get('semestreId') as string | null;
-            const selectedCarreraIds = Object.entries(selectedCareers).filter(([, checked]) => checked).map(([id]) => id);
-    
-            if (!materia || selectedCarreraIds.length === 0) {
+            
+            const carrerasAsignar = isCommon 
+                ? carreras?.map(c => c.id) || []
+                : Object.entries(selectedCareers).filter(([, checked]) => checked).map(([id]) => id);
+
+            if (!materia || carrerasAsignar.length === 0) {
                 toast({ variant: 'destructive', title: "Error", description: "Debes proporcionar un nombre, y al menos una carrera." });
                 return;
             }
@@ -301,15 +261,17 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                 return;
             }
     
-            const newAsignaciones: AsignacionMateria[] = selectedCarreraIds.map(carreraId => ({
-                id: `${Date.now()}-${carreraId}-${Math.random()}`,
+            const newAsignaciones = carrerasAsignar.map(carreraId => ({
                 materia,
                 carreraId,
-                cuatrimestreId: cuatrimestreId || undefined,
-                semestreId: semestreId || undefined
+                cuatrimestreId: (periodoType === 'cuatrimestre' || periodoType === 'ambos') ? cuatrimestreId : null,
+                semestreId: (periodoType === 'semestre' || periodoType === 'ambos') ? semestreId : null,
             }));
-    
-            setAsignaciones(prev => [...prev, ...newAsignaciones]);
+            
+            for (const asignacion of newAsignaciones) {
+                await addDoc(collection(firestore, "materiaAsignaciones"), asignacion);
+            }
+
             toast({ title: "Asignación(es) creada(s) exitosamente." });
         }
     
@@ -321,14 +283,16 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
         setCurrentItem(item);
         if (!item) {
             setIsCommon(false);
-            setSelectedCareers(carreras.reduce((acc, c) => ({...acc, [c.id]: false}), {}));
+            setSelectedCareers(carreras?.reduce((acc, c) => ({...acc, [c.id]: false}), {}) || {});
             setPeriodoType('');
+        } else {
+             setPeriodoType(item.cuatrimestreId && item.semestreId ? 'ambos' : item.cuatrimestreId ? 'cuatrimestre' : 'semestre');
         }
         setIsDialogOpen(true);
     };
 
-    const handleDelete = (itemId: string) => {
-        setAsignaciones(asignaciones.filter(a => a.id !== itemId));
+    const handleDelete = async (itemId: string) => {
+        await deleteDoc(doc(firestore, "materiaAsignaciones", itemId));
         toast({ title: "Asignación eliminada" });
     };
 
@@ -346,9 +310,9 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-                        <div className="grid gap-2 w-full"><Label>Filtrar por carrera</Label><Select value={filterCarrera} onValueChange={setFilterCarrera}><SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger><SelectContent><SelectItem value="all">Todas las carreras</SelectItem>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="grid gap-2 w-full"><Label>Filtrar por cuatrimestre</Label><Select value={filterCuatrimestre} onValueChange={setFilterCuatrimestre}><SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger><SelectContent><SelectItem value="all">Todos los cuatrimestres</SelectItem>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="grid gap-2 w-full"><Label>Filtrar por semestre</Label><Select value={filterSemestre} onValueChange={setFilterSemestre}><SelectTrigger><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger><SelectContent><SelectItem value="all">Todos los semestres</SelectItem>{semestres.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="grid gap-2 w-full"><Label>Filtrar por carrera</Label><Select value={filterCarrera} onValueChange={setFilterCarrera}><SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger><SelectContent><SelectItem value="all">Todas las carreras</SelectItem>{carreras?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="grid gap-2 w-full"><Label>Filtrar por cuatrimestre</Label><Select value={filterCuatrimestre} onValueChange={setFilterCuatrimestre}><SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger><SelectContent><SelectItem value="all">Todos los cuatrimestres</SelectItem>{cuatrimestres?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="grid gap-2 w-full"><Label>Filtrar por semestre</Label><Select value={filterSemestre} onValueChange={setFilterSemestre}><SelectTrigger><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger><SelectContent><SelectItem value="all">Todos los semestres</SelectItem>{semestres?.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                     </div>
                     <div className="border rounded-md">
                         <Table>
@@ -370,10 +334,8 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                                             <TableCell>{asignacion.cuatrimestreId ? getNameById(asignacion.cuatrimestreId, cuatrimestres) : '—'}</TableCell>
                                             <TableCell>{asignacion.semestreId ? getNameById(asignacion.semestreId, semestres) : '—'}</TableCell>
                                             <TableCell className="text-right">
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button>
-                                                    </DropdownMenuTrigger>
+                                                 <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                                     <DropdownMenuContent>
                                                         <DropdownMenuItem onClick={() => openDialog(asignacion)}>Editar</DropdownMenuItem>
                                                         <AlertDialog>
@@ -410,39 +372,28 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                         <DialogTitle>{currentItem ? 'Editar' : 'Asignar'} Materia</DialogTitle>
                     </DialogHeader>
                     <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="materia">Nombre de la Materia</Label>
+                            <Input id="materia" name="materia" defaultValue={currentItem?.materia} required />
+                        </div>
+                        
                         {currentItem ? (
                             <>
                                 <div className="grid gap-2">
-                                    <Label htmlFor="materia">Nombre de la Materia</Label>
-                                    <Input id="materia" name="materia" defaultValue={currentItem?.materia} required />
-                                </div>
-                                <div className="grid gap-2">
                                     <Label>Carrera</Label>
-                                    <Select name="carreraId" defaultValue={currentItem?.carreraId} required><SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger><SelectContent>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label>Cuatrimestre (Opcional)</Label>
-                                    <Select name="cuatrimestreId" defaultValue={currentItem?.cuatrimestreId || ''}><SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger><SelectContent>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label>Semestre (Opcional)</Label>
-                                    <Select name="semestreId" defaultValue={currentItem?.semestreId || ''}><SelectTrigger><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger><SelectContent>{semestres.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select>
+                                    <Select name="carreraId" defaultValue={currentItem?.carreraId} required><SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger><SelectContent>{carreras?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
                                 </div>
                             </>
                         ) : (
                             <>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="materia">Nombre de la Materia</Label>
-                                    <Input id="materia" name="materia" required />
-                                </div>
                                 <div className="flex items-center space-x-2">
-                                    <Switch id="isCommon" checked={isCommon} onCheckedChange={setIsCommon} />
+                                    <Switch id="isCommon" checked={isCommon} onCheckedChange={(checked) => { setIsCommon(checked); if(checked) { const allSelected = carreras?.reduce((acc, c) => ({...acc, [c.id]: true}), {}); setSelectedCareers(allSelected || {}); } else { setSelectedCareers({}); } }} />
                                     <Label htmlFor="isCommon">Materia Común (para todas las carreras)</Label>
                                 </div>
                                 <div className="grid gap-2">
                                     <Label>Carreras</Label>
                                     <div className="space-y-2 rounded-md border p-4 max-h-40 overflow-y-auto">
-                                        {carreras.map(carrera => (
+                                        {carreras?.map(carrera => (
                                             <div key={carrera.id} className="flex items-center space-x-2">
                                                 <Checkbox
                                                     id={`carrera-${carrera.id}`}
@@ -459,36 +410,36 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                                         ))}
                                     </div>
                                 </div>
-                                <div className="grid gap-2">
-                                    <Label>Tipo de Periodo</Label>
-                                    <Select value={periodoType} onValueChange={(value) => setPeriodoType(value as any)}>
-                                        <SelectTrigger><SelectValue placeholder="Selecciona el tipo de periodo" /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="cuatrimestre">Cuatrimestre</SelectItem>
-                                            <SelectItem value="semestre">Semestre</SelectItem>
-                                            <SelectItem value="ambos">Ambos</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                {(periodoType === 'cuatrimestre' || periodoType === 'ambos') && (
-                                    <div className="grid gap-2">
-                                        <Label>Cuatrimestre</Label>
-                                        <Select name="cuatrimestreId" required={periodoType === 'cuatrimestre'}>
-                                            <SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger>
-                                            <SelectContent>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                                        </Select>
-                                    </div>
-                                )}
-                                {(periodoType === 'semestre' || periodoType === 'ambos') && (
-                                    <div className="grid gap-2">
-                                        <Label>Semestre</Label>
-                                        <Select name="semestreId" required={periodoType === 'semestre'}>
-                                            <SelectTrigger><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger>
-                                            <SelectContent>{semestres.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                                        </Select>
-                                    </div>
-                                )}
                             </>
+                        )}
+                        <div className="grid gap-2">
+                            <Label>Tipo de Periodo</Label>
+                            <Select value={periodoType} onValueChange={(value) => setPeriodoType(value as any)}>
+                                <SelectTrigger><SelectValue placeholder="Selecciona el tipo de periodo" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="cuatrimestre">Cuatrimestre</SelectItem>
+                                    <SelectItem value="semestre">Semestre</SelectItem>
+                                    <SelectItem value="ambos">Ambos</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {(periodoType === 'cuatrimestre' || periodoType === 'ambos') && (
+                            <div className="grid gap-2">
+                                <Label>Cuatrimestre</Label>
+                                <Select name="cuatrimestreId" defaultValue={currentItem?.cuatrimestreId} required={periodoType === 'cuatrimestre'}>
+                                    <SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger>
+                                    <SelectContent>{cuatrimestres?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
+                        )}
+                        {(periodoType === 'semestre' || periodoType === 'ambos') && (
+                            <div className="grid gap-2">
+                                <Label>Semestre</Label>
+                                <Select name="semestreId" defaultValue={currentItem?.semestreId} required={periodoType === 'semestre'}>
+                                    <SelectTrigger><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger>
+                                    <SelectContent>{semestres?.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
                         )}
                         <DialogFooter>
                             <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
@@ -501,15 +452,16 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
     )
 }
 
-function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: { horarios: Horario[], setHorarios: React.Dispatch<React.SetStateAction<Horario[]>>, grupos: CatalogItem[], materias: CatalogItem[], docentes: User[] }) {
+function HorariosContent({ horarios, grupos, materias, docentes }: { horarios: Horario[] | null, grupos: CatalogItem[] | null, materias: AsignacionMateria[] | null, docentes: User[] | null }) {
     const { toast } = useToast();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<Horario | null>(null);
+    const firestore = useFirestore();
 
-    const getNameById = (id: string, list: { id: string, name: string }[]) => list.find(item => item.id === id)?.name || 'N/A';
+    const getNameById = (id: string, list: { id: string, name: string }[] | null) => list?.find(item => item.id === id)?.name || 'N/A';
     const diasSemana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
-    const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const data = Object.fromEntries(formData.entries()) as Omit<Horario, 'id'>;
@@ -520,10 +472,10 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: 
         }
 
         if (currentItem) {
-            setHorarios(horarios.map(h => h.id === currentItem.id ? { ...h, ...data } as Horario : h));
+            await updateDoc(doc(firestore, "horarios", currentItem.id), data);
             toast({ title: "Horario actualizado" });
         } else {
-            setHorarios([...horarios, { ...data, id: Date.now().toString() } as Horario]);
+            await addDoc(collection(firestore, "horarios"), data);
             toast({ title: "Horario creado" });
         }
         setIsDialogOpen(false);
@@ -535,10 +487,17 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: 
         setIsDialogOpen(true);
     };
 
-    const handleDelete = (itemId: string) => {
-        setHorarios(horarios.filter(h => h.id !== itemId));
+    const handleDelete = async (itemId: string) => {
+        await deleteDoc(doc(firestore, "horarios", itemId));
         toast({ title: "Horario eliminado" });
     };
+
+    const materiaOptions = useMemo(() => {
+        if (!materias) return [];
+        const uniqueMaterias = new Map<string, { id: string, name: string }>();
+        materias.forEach(m => uniqueMaterias.set(m.materia, { id: m.id, name: m.materia }));
+        return Array.from(uniqueMaterias.values());
+    }, [materias]);
 
     return (
         <Card>
@@ -563,10 +522,10 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: 
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {horarios.map(horario => (
+                        {horarios?.map(horario => (
                             <TableRow key={horario.id}>
                                 <TableCell>{getNameById(horario.grupoId, grupos)}</TableCell>
-                                <TableCell>{getNameById(horario.materiaId, materias)}</TableCell>
+                                <TableCell>{getNameById(horario.materiaId, materiaOptions)}</TableCell>
                                 <TableCell>{getNameById(horario.docenteId, docentes)}</TableCell>
                                 <TableCell>{horario.dia}</TableCell>
                                 <TableCell>{horario.horaInicio} - {horario.horaFin}</TableCell>
@@ -606,9 +565,9 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: 
                         <DialogTitle>{currentItem ? 'Editar' : 'Crear'} Horario</DialogTitle>
                     </DialogHeader>
                     <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
-                        <Select name="grupoId" defaultValue={currentItem?.grupoId} required><SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger><SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent></Select>
-                        <Select name="materiaId" defaultValue={currentItem?.materiaId} required><SelectTrigger><SelectValue placeholder="Selecciona una materia" /></SelectTrigger><SelectContent>{materias.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent></Select>
-                        <Select name="docenteId" defaultValue={currentItem?.docenteId} required><SelectTrigger><SelectValue placeholder="Selecciona un docente" /></SelectTrigger><SelectContent>{docentes.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent></Select>
+                        <Select name="grupoId" defaultValue={currentItem?.grupoId} required><SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger><SelectContent>{grupos?.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent></Select>
+                        <Select name="materiaId" defaultValue={currentItem?.materiaId} required><SelectTrigger><SelectValue placeholder="Selecciona una materia" /></SelectTrigger><SelectContent>{materiaOptions.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent></Select>
+                        <Select name="docenteId" defaultValue={currentItem?.docenteId} required><SelectTrigger><SelectValue placeholder="Selecciona un docente" /></SelectTrigger><SelectContent>{docentes?.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent></Select>
                         <Select name="dia" defaultValue={currentItem?.dia} required><SelectTrigger><SelectValue placeholder="Selecciona un día" /></SelectTrigger><SelectContent>{diasSemana.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="grid gap-2"><Label htmlFor="horaInicio">Hora Inicio</Label><Input id="horaInicio" name="horaInicio" type="time" defaultValue={currentItem?.horaInicio} required /></div>
@@ -628,72 +587,33 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: 
 
 
 export default function CatalogsPage() {
-    const [carreras, setCarreras] = useState<CatalogItem[]>(initialData.carreras);
-    const [grupos, setGrupos] = useState<CatalogItem[]>(initialData.grupos);
-    const [cuatrimestres, setCuatrimestres] = useState<CatalogItem[]>(initialData.cuatrimestres);
-    const [semestres, setSemestres] = useState<CatalogItem[]>(initialData.semestres);
-    const [turnos, setTurnos] = useState<CatalogItem[]>(initialData.turnos);
-    const [materiaAsignaciones, setMateriaAsignaciones] = useState<AsignacionMateria[]>(initialData.materiaAsignaciones);
-    const [horarios, setHorarios] = useState<Horario[]>(initialData.horarios);
-    const [users, setUsers] = useState<User[]>(initialData.users);
+    const firestore = useFirestore();
+
+    const carrerasQuery = useMemoFirebase(() => collection(firestore, 'carreras'), [firestore]);
+    const { data: carreras } = useCollection<CatalogItem>(carrerasQuery);
+
+    const gruposQuery = useMemoFirebase(() => collection(firestore, 'grupos'), [firestore]);
+    const { data: grupos } = useCollection<CatalogItem>(gruposQuery);
+
+    const cuatrimestresQuery = useMemoFirebase(() => collection(firestore, 'cuatrimestres'), [firestore]);
+    const { data: cuatrimestres } = useCollection<CatalogItem>(cuatrimestresQuery);
+
+    const semestresQuery = useMemoFirebase(() => collection(firestore, 'semestres'), [firestore]);
+    const { data: semestres } = useCollection<CatalogItem>(semestresQuery);
     
-    const dataStates = useMemo(() => ({
-        carreras: { state: carreras, setState: setCarreras, key: STORAGE_KEYS.carreras },
-        grupos: { state: grupos, setState: setGrupos, key: STORAGE_KEYS.grupos },
-        cuatrimestres: { state: cuatrimestres, setState: setCuatrimestres, key: STORAGE_KEYS.cuatrimestres },
-        semestres: { state: semestres, setState: setSemestres, key: STORAGE_KEYS.semestres },
-        turnos: { state: turnos, setState: setTurnos, key: STORAGE_KEYS.turnos },
-        materiaAsignaciones: { state: materiaAsignaciones, setState: setMateriaAsignaciones, key: STORAGE_KEYS.materiaAsignaciones },
-        horarios: { state: horarios, setState: setHorarios, key: STORAGE_KEYS.horarios },
-        users: { state: users, setState: setUsers, key: STORAGE_KEYS.users },
-    }), [carreras, grupos, cuatrimestres, semestres, horarios, materiaAsignaciones, turnos, users]);
+    const turnosQuery = useMemoFirebase(() => collection(firestore, 'turnos'), [firestore]);
+    const { data: turnos } = useCollection<CatalogItem>(turnosQuery);
 
-    const isInitialMount = useRef(true);
+    const materiaAsignacionesQuery = useMemoFirebase(() => collection(firestore, 'materiaAsignaciones'), [firestore]);
+    const { data: materiaAsignaciones } = useCollection<AsignacionMateria>(materiaAsignacionesQuery);
 
-    // Load state from localStorage on initial client-side render
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                Object.values(dataStates).forEach(({ setState, key }) => {
-                    const storedData = localStorage.getItem(key);
-                    const initialValue = initialData[key.replace('unilink-', '') as keyof typeof initialData];
-                    if (storedData) {
-                        setState(JSON.parse(storedData));
-                    } else if (initialValue) {
-                         setState(initialValue as any);
-                    }
-                });
-            } catch (error) {
-                console.error("Error al cargar desde localStorage:", error);
-            }
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Empty array ensures this runs only once on mount
+    const horariosQuery = useMemoFirebase(() => collection(firestore, 'horarios'), [firestore]);
+    const { data: horarios } = useCollection<Horario>(horariosQuery);
 
-    // Persist state to localStorage whenever it changes
-    useEffect(() => {
-        if (isInitialMount.current) {
-            isInitialMount.current = false;
-            return;
-        }
-        if (typeof window !== 'undefined') {
-            try {
-                Object.values(dataStates).forEach(({ state, key }) => {
-                    localStorage.setItem(key, JSON.stringify(state));
-                });
-            } catch (error) {
-                 console.error("Error al guardar en localStorage:", error);
-            }
-        }
-    }, [dataStates]);
+    const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
+    const { data: users } = useCollection<User>(usersQuery);
 
-    const docentes = useMemo(() => users.filter(u => u.role === 'Docente'), [users]);
-
-    const materias = useMemo(() => {
-        const materiaNames = [...new Set(materiaAsignaciones.map(a => a.materia).filter(Boolean))];
-        return materiaNames.map(name => ({ id: name, name: name }));
-    }, [materiaAsignaciones]);
-
+    const docentes = useMemo(() => users?.filter(u => u.role === 'Docente') || [], [users]);
 
     return (
       <div>
@@ -709,24 +629,23 @@ export default function CatalogsPage() {
                 <TabsTrigger value="horarios">Horarios</TabsTrigger>
             </TabsList>
             <TabsContent value="carreras">
-                <CatalogTable title="Carreras" data={carreras} setData={setCarreras} />
+                <CatalogTable title="Carreras" data={carreras} collectionName="carreras" />
             </TabsContent>
             <TabsContent value="grupos">
-                <CatalogTable title="Grupos" data={grupos} setData={setGrupos} />
+                <CatalogTable title="Grupos" data={grupos} collectionName="grupos" />
             </TabsContent>
             <TabsContent value="cuatrimestres">
-                <CatalogTable title="Cuatrimestres" data={cuatrimestres} setData={setCuatrimestres} />
+                <CatalogTable title="Cuatrimestres" data={cuatrimestres} collectionName="cuatrimestres" />
             </TabsContent>
             <TabsContent value="semestres">
-                <CatalogTable title="Semestres" data={semestres} setData={setSemestres} />
+                <CatalogTable title="Semestres" data={semestres} collectionName="semestres" />
             </TabsContent>
             <TabsContent value="turnos">
-                <CatalogTable title="Turnos" data={turnos} setData={setTurnos} />
+                <CatalogTable title="Turnos" data={turnos} collectionName="turnos" />
             </TabsContent>
              <TabsContent value="materias">
                 <MateriasContent 
                     asignaciones={materiaAsignaciones}
-                    setAsignaciones={setMateriaAsignaciones}
                     carreras={carreras}
                     cuatrimestres={cuatrimestres}
                     semestres={semestres}
@@ -734,10 +653,9 @@ export default function CatalogsPage() {
             </TabsContent>
             <TabsContent value="horarios">
                 <HorariosContent 
-                    horarios={horarios} 
-                    setHorarios={setHorarios}
+                    horarios={horarios}
                     grupos={grupos}
-                    materias={materias}
+                    materias={materiaAsignaciones}
                     docentes={docentes}
                 />
             </TabsContent>
