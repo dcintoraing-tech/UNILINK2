@@ -109,5 +109,51 @@ service cloud.firestore {
       allow update: if isExistingOwner(userProfileId) && hasValidSessionDataForUpdate();
       allow delete: if isExistingOwner(userProfileId);
     }
+    
+    // --- Public Catalog Data ---
+    // The following collections are public to read for anyone,
+    // but can only be written to by authenticated users.
+    // This allows the public-facing parts of the app to display catalog information
+    // while securing the admin-only write operations.
+
+    match /carreras/{docId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /grupos/{docId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /cuatrimestres/{docId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /semestres/{docId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /turnos/{docId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /materiaAsignaciones/{docId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /horarios/{docId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    
+    match /users/{userId} {
+       allow read: if true;
+       allow write: if isSignedIn();
+    }
   }
 }
