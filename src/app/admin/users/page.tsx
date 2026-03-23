@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { PlusCircle, MoreHorizontal, Eye, EyeOff } from 'lucide-react';
 import {
   Card,
@@ -47,6 +48,8 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { collection, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 
 type UserRole = 'Docente' | 'Admin';
@@ -62,63 +65,18 @@ interface User {
     createdAt: string;
 }
 
-const initialUsers: User[] = [
-    {
-        id: '1',
-        name: 'Ana Gómez',
-        email: 'ana.gomez@example.com',
-        password: 'password123',
-        role: 'Docente',
-        status: 'Activo',
-        createdAt: '2023-10-25'
-    },
-    {
-        id: '2',
-        name: 'Luis Fernandez',
-        email: 'luis.fernandez@example.com',
-        password: 'password123',
-        role: 'Admin',
-        status: 'Inactivo',
-        createdAt: '2023-10-24'
-    }
-];
-
-const USERS_STORAGE_KEY = 'unilink-users';
-
 export default function UsersPage() {
-  const [users, setUsers] = useState<User[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const { toast } = useToast();
+  const firestore = useFirestore();
 
-  useEffect(() => {
-    try {
-      const storedUsers = localStorage.getItem(USERS_STORAGE_KEY);
-      if (storedUsers) {
-        setUsers(JSON.parse(storedUsers));
-      } else {
-        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(initialUsers));
-        setUsers(initialUsers);
-      }
-    } catch (error) {
-      console.error("Failed to access localStorage:", error);
-      setUsers(initialUsers);
-    }
-  }, []);
+  const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
+  const { data: users, isLoading } = useCollection<User>(usersQuery);
 
-  useEffect(() => {
-    if (users.length > 0) {
-      try {
-        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-      } catch (error) {
-        console.error("Failed to save users to localStorage:", error);
-      }
-    }
-  }, [users]);
-
-  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const userData = Object.fromEntries(formData.entries()) as any;
@@ -138,27 +96,20 @@ export default function UsersPage() {
     const { confirmPassword, ...userToSave } = userData;
 
     if (editingUser) {
-      // Editar usuario
-      const userToUpdate = users.find(u => u.id === editingUser.id);
-      if (!userToUpdate) return;
-      
-      const updatedUser = {
-        ...userToUpdate,
-        ...userToSave,
-        password: userToSave.password ? userToSave.password : userToUpdate.password,
-      };
-
-      setUsers(users.map(u => u.id === editingUser.id ? updatedUser : u));
+      const docRef = doc(firestore, 'users', editingUser.id);
+      const dataToUpdate: Partial<User> = { ...userToSave };
+      if (!userToSave.password) {
+        delete dataToUpdate.password;
+      }
+      await updateDoc(docRef, dataToUpdate);
       toast({ title: "Usuario actualizado", description: `El usuario ${userToSave.name} ha sido actualizado.` });
     } else {
-      // Crear usuario
-      const newUser: User = {
-        id: Date.now().toString(),
+      const newUser: Omit<User, 'id'> = {
         ...userToSave,
         status: 'Activo',
         createdAt: new Date().toISOString().split('T')[0],
       };
-      setUsers([...users, newUser]);
+      await addDoc(collection(firestore, 'users'), newUser);
       toast({ title: "Usuario creado", description: `El usuario ${userToSave.name} ha sido creado.` });
     }
     
@@ -180,8 +131,8 @@ export default function UsersPage() {
     setIsDialogOpen(true);
   };
 
-  const handleDeleteUser = (userId: string) => {
-    setUsers(users.filter(u => u.id !== userId));
+  const handleDeleteUser = async (userId: string) => {
+    await deleteDoc(doc(firestore, 'users', userId));
     toast({ title: "Usuario eliminado", description: "El usuario ha sido eliminado correctamente." });
   };
 
@@ -220,7 +171,8 @@ export default function UsersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((user) => (
+              {isLoading && <TableRow><TableCell colSpan={5} className="text-center">Cargando usuarios...</TableCell></TableRow>}
+              {users?.map((user) => (
                   <TableRow key={user.id}>
                       <TableCell className="font-medium">
                           <div>{user.name}</div>
@@ -230,7 +182,7 @@ export default function UsersPage() {
                       <TableCell>
                           <Badge variant={user.status === 'Activo' ? 'default' : 'secondary'}>{user.status}</Badge>
                       </TableCell>
-                      <TableCell>{user.createdAt}</TableCell>
+                      <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
                       <TableCell>
                           <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -274,7 +226,7 @@ export default function UsersPage() {
         </CardContent>
         <CardFooter>
           <div className="text-xs text-muted-foreground">
-            Mostrando <strong>{users.length}</strong> de <strong>{users.length}</strong> usuarios
+            Mostrando <strong>{users?.length || 0}</strong> de <strong>{users?.length || 0}</strong> usuarios
           </div>
         </CardFooter>
       </Card>
@@ -352,6 +304,20 @@ export default function UsersPage() {
                   </SelectContent>
                 </Select>
               </div>
+              {editingUser && (
+                <div className="grid gap-2">
+                    <Label htmlFor="status">Estado</Label>
+                    <Select name="status" defaultValue={editingUser?.status}>
+                        <SelectTrigger id="status">
+                            <SelectValue placeholder="Selecciona un estado" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="Activo">Activo</SelectItem>
+                            <SelectItem value="Inactivo">Inactivo</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+              )}
               <DialogFooter>
                 <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
                 <Button type="submit">{editingUser ? 'Guardar Cambios' : 'Crear Usuario'}</Button>
@@ -362,3 +328,5 @@ export default function UsersPage() {
     </>
   );
 }
+
+    

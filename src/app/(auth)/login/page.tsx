@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -5,7 +6,8 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import { Mail, Lock, Shield, Eye, EyeOff } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState, useMemo } from "react";
+import { signInAnonymously } from 'firebase/auth';
 
 import { Button } from "@/components/ui/button";
 import {
@@ -26,31 +28,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-// Simulación de la base de datos de usuarios.
-// En una aplicación real, esto vendría de tu backend/base de datos.
-const initialUsers = [
-    {
-        id: '1',
-        name: 'Ana Gómez',
-        email: 'ana.gomez@example.com',
-        password: 'password123',
-        role: 'Docente',
-        status: 'Activo',
-        createdAt: '2023-10-25'
-    },
-    {
-        id: '2',
-        name: 'Luis Fernandez',
-        email: 'luis.fernandez@example.com',
-        password: 'password123',
-        role: 'Admin',
-        status: 'Inactivo',
-        createdAt: '2023-10-24'
-    }
-];
-
-const USERS_STORAGE_KEY = 'unilink-users';
+import { useAuth, useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { collection } from "firebase/firestore";
 
 
 const formSchema = z.object({
@@ -68,8 +47,12 @@ const formSchema = z.object({
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [users, setUsers] = useState<any[]>([]);
   const [showPassword, setShowPassword] = useState(false);
+  const auth = useAuth();
+  const firestore = useFirestore();
+
+  const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
+  const { data: users } = useCollection<any>(usersQuery);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -79,24 +62,24 @@ export default function LoginPage() {
     },
   });
 
-  useEffect(() => {
-    try {
-      const storedUsers = localStorage.getItem(USERS_STORAGE_KEY);
-      if (storedUsers) {
-        setUsers(JSON.parse(storedUsers));
-      } else {
-        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(initialUsers));
-        setUsers(initialUsers);
-      }
-    } catch (error) {
-      console.error("Failed to access localStorage:", error);
-      setUsers(initialUsers);
-    }
-  }, []);
-
-  function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: z.infer<typeof formSchema>) {
     if (values.email === "Admin" && values.password === "admin" && values.role === "Admin") {
       const adminUser = { name: 'Super Admin', email: 'admin@unilink.com', role: 'Admin' };
+      
+      if (!auth.currentUser) {
+          try {
+              await signInAnonymously(auth);
+          } catch (error) {
+              console.error("Anonymous sign-in failed", error);
+              toast({
+                  variant: "destructive",
+                  title: "Error de autenticación",
+                  description: "No se pudo iniciar la sesión de Firebase. Contacta al soporte.",
+              });
+              return;
+          }
+      }
+
       sessionStorage.setItem('unilink-user', JSON.stringify(adminUser));
       toast({
           title: "Acceso de administrador concedido",
@@ -108,11 +91,24 @@ export default function LoginPage() {
       return;
     }
     
-    const authenticatedUser = users.find(
-      user => user.email === values.email && user.password === values.password && user.role === values.role
+    const authenticatedUser = users?.find(
+      user => (user.email === values.email || user.name === values.email) && user.password === values.password && user.role === values.role
     );
 
     if (authenticatedUser) {
+        if (!auth.currentUser) {
+            try {
+                await signInAnonymously(auth);
+            } catch (error) {
+                console.error("Anonymous sign-in failed", error);
+                toast({
+                    variant: "destructive",
+                    title: "Error de autenticación",
+                    description: "No se pudo iniciar la sesión de Firebase. Contacta al soporte.",
+                });
+                return;
+            }
+        }
         sessionStorage.setItem('unilink-user', JSON.stringify(authenticatedUser));
         toast({
             title: "Inicio de sesión exitoso",
@@ -222,3 +218,5 @@ export default function LoginPage() {
     </Card>
   );
 }
+
+    
