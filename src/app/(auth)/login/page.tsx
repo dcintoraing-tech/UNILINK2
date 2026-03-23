@@ -5,10 +5,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
-import { Mail, Lock, Shield, Eye, EyeOff } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc } from "firebase/firestore";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -22,15 +20,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, useFirestore } from '@/firebase';
 
 
 const formSchema = z.object({
   email: z.string().email({
     message: "Por favor, introduce un correo válido.",
   }),
-  password: z.string().min(6, {
-    message: "La contraseña debe tener al menos 6 caracteres.",
+  password: z.string().min(1, {
+    message: "La contraseña es requerida.",
   }),
 });
 
@@ -38,8 +35,6 @@ export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
-  const auth = useAuth();
-  const firestore = useFirestore();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -51,50 +46,43 @@ export default function LoginPage() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-      // Step 1: Sign in with Firebase Auth
-      const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
-      const authUser = userCredential.user;
+      if (typeof window !== 'undefined') {
+        const storedUsersRaw = window.localStorage.getItem('unilink-users');
+        const users = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
+        const user = users.find((u: any) => u.email === values.email);
+        
+        // This is a mock login. In a real app, you would check a hashed password.
+        // Here we just check for the user's existence. For demo purposes, any password will work.
+        if (!user) {
+           throw new Error("Credenciales incorrectas. Por favor, verifica tu correo y contraseña.");
+        }
 
-      // Step 2: Fetch user profile from Firestore
-      const userDocRef = doc(firestore, 'users', authUser.uid);
-      const userDoc = await getDoc(userDocRef);
+        const userProfile = {
+          uid: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        };
 
-      if (!userDoc.exists()) {
-        throw new Error("No se encontró el perfil de usuario.");
+        sessionStorage.setItem('unilink-user', JSON.stringify(userProfile));
+        
+        toast({
+            title: "Inicio de sesión exitoso",
+            description: "Redirigiendo a tu panel de control...",
+        });
+
+        if (userProfile.role === 'Admin') {
+            router.push("/admin/dashboard");
+        } else {
+            router.push("/dashboard");
+        }
       }
-
-      const userData = userDoc.data();
-      const userProfile = {
-        uid: authUser.uid,
-        name: userData.name,
-        email: userData.email,
-        role: userData.role,
-      };
-
-      // Step 3: Store user profile and redirect
-      sessionStorage.setItem('unilink-user', JSON.stringify(userProfile));
-      
-      toast({
-          title: "Inicio de sesión exitoso",
-          description: "Redirigiendo a tu panel de control...",
-      });
-
-      if (userProfile.role === 'Admin') {
-          router.push("/admin/dashboard");
-      } else {
-          router.push("/dashboard");
-      }
-
     } catch (error: any) {
       console.error("Login failed", error);
-      let description = "Ocurrió un error inesperado. Por favor, inténtalo de nuevo.";
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-        description = "Credenciales incorrectas. Por favor, verifica tu correo y contraseña.";
-      }
       toast({
           variant: "destructive",
           title: "Error de inicio de sesión",
-          description,
+          description: error.message || "Ocurrió un error inesperado.",
       });
     }
   }
