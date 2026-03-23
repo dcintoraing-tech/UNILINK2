@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Card,
     CardContent,
@@ -651,15 +651,61 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: 
 
 
 export default function CatalogsPage() {
-    const [carreras, setCarreras] = useState<CatalogItem[]>([]);
-    const [grupos, setGrupos] = useState<CatalogItem[]>([]);
-    const [cuatrimestres, setCuatrimestres] = useState<CatalogItem[]>([]);
-    const [semestres, setSemestres] = useState<CatalogItem[]>([]);
-    const [turnos, setTurnos] = useState<CatalogItem[]>([]);
-    const [materiaAsignaciones, setMateriaAsignaciones] = useState<AsignacionMateria[]>([]);
-    const [horarios, setHorarios] = useState<Horario[]>([]);
-    const [users, setUsers] = useState<User[]>([]);
-    const [isLoaded, setIsLoaded] = useState(false);
+    const [carreras, setCarreras] = useState<CatalogItem[]>(initialData.carreras);
+    const [grupos, setGrupos] = useState<CatalogItem[]>(initialData.grupos);
+    const [cuatrimestres, setCuatrimestres] = useState<CatalogItem[]>(initialData.cuatrimestres);
+    const [semestres, setSemestres] = useState<CatalogItem[]>(initialData.semestres);
+    const [turnos, setTurnos] = useState<CatalogItem[]>(initialData.turnos);
+    const [materiaAsignaciones, setMateriaAsignaciones] = useState<AsignacionMateria[]>(initialData.materiaAsignaciones);
+    const [horarios, setHorarios] = useState<Horario[]>(initialData.horarios);
+    const [users, setUsers] = useState<User[]>(initialData.users);
+    
+    const dataStates = useMemo(() => ({
+        carreras: { state: carreras, setState: setCarreras, key: STORAGE_KEYS.carreras },
+        grupos: { state: grupos, setState: setGrupos, key: STORAGE_KEYS.grupos },
+        cuatrimestres: { state: cuatrimestres, setState: setCuatrimestres, key: STORAGE_KEYS.cuatrimestres },
+        semestres: { state: semestres, setState: setSemestres, key: STORAGE_KEYS.semestres },
+        turnos: { state: turnos, setState: setTurnos, key: STORAGE_KEYS.turnos },
+        materiaAsignaciones: { state: materiaAsignaciones, setState: setMateriaAsignaciones, key: STORAGE_KEYS.materiaAsignaciones },
+        horarios: { state: horarios, setState: setHorarios, key: STORAGE_KEYS.horarios },
+        users: { state: users, setState: setUsers, key: STORAGE_KEYS.users },
+    }), [carreras, grupos, cuatrimestres, semestres, horarios, materiaAsignaciones, turnos, users]);
+
+    const isInitialMount = useRef(true);
+
+    // Load state from localStorage on initial client-side render
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                Object.values(dataStates).forEach(({ setState, key }) => {
+                    const storedData = localStorage.getItem(key);
+                    if (storedData) {
+                        setState(JSON.parse(storedData));
+                    }
+                });
+            } catch (error) {
+                console.error("Error al cargar desde localStorage:", error);
+            }
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Empty array ensures this runs only once on mount
+
+    // Persist state to localStorage whenever it changes
+    useEffect(() => {
+        if (isInitialMount.current) {
+            isInitialMount.current = false;
+            return;
+        }
+        if (typeof window !== 'undefined') {
+            try {
+                Object.values(dataStates).forEach(({ state, key }) => {
+                    localStorage.setItem(key, JSON.stringify(state));
+                });
+            } catch (error) {
+                 console.error("Error al guardar en localStorage:", error);
+            }
+        }
+    }, [dataStates]);
 
     const docentes = useMemo(() => users.filter(u => u.role === 'Docente'), [users]);
 
@@ -667,48 +713,6 @@ export default function CatalogsPage() {
         const materiaNames = [...new Set(materiaAsignaciones.map(a => a.materia).filter(Boolean))];
         return materiaNames.map(name => ({ id: name, name: name }));
     }, [materiaAsignaciones]);
-
-    const managedStates = useMemo(() => ({
-        carreras: { state: carreras, setState: setCarreras, key: STORAGE_KEYS.carreras, initial: initialData.carreras },
-        grupos: { state: grupos, setState: setGrupos, key: STORAGE_KEYS.grupos, initial: initialData.grupos },
-        cuatrimestres: { state: cuatrimestres, setState: setCuatrimestres, key: STORAGE_KEYS.cuatrimestres, initial: initialData.cuatrimestres },
-        semestres: { state: semestres, setState: setSemestres, key: STORAGE_KEYS.semestres, initial: initialData.semestres },
-        turnos: { state: turnos, setState: setTurnos, key: STORAGE_KEYS.turnos, initial: initialData.turnos },
-        materiaAsignaciones: { state: materiaAsignaciones, setState: setMateriaAsignaciones, key: STORAGE_KEYS.materiaAsignaciones, initial: initialData.materiaAsignaciones },
-        horarios: { state: horarios, setState: setHorarios, key: STORAGE_KEYS.horarios, initial: initialData.horarios },
-        users: { state: users, setState: setUsers, key: STORAGE_KEYS.users, initial: initialData.users },
-    }), [carreras, grupos, cuatrimestres, semestres, horarios, materiaAsignaciones, turnos, users]);
-
-    useEffect(() => {
-        if (typeof window !== 'undefined' && !isLoaded) {
-            try {
-                Object.values(managedStates).forEach(({ setState, key, initial }) => {
-                    const storedData = localStorage.getItem(key);
-                    setState(storedData ? JSON.parse(storedData) : initial);
-                });
-            } catch (error) {
-                console.error("Error al cargar desde localStorage:", error);
-                 Object.values(managedStates).forEach(({ setState, initial }) => {
-                    setState(initial);
-                });
-            } finally {
-                setIsLoaded(true);
-            }
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isLoaded]);
-
-    useEffect(() => {
-        if (isLoaded && typeof window !== 'undefined') {
-            try {
-                Object.values(managedStates).forEach(({ state, key }) => {
-                    localStorage.setItem(key, JSON.stringify(state));
-                });
-            } catch (error) {
-                 console.error("Error al guardar en localStorage:", error);
-            }
-        }
-    }, [managedStates, isLoaded]);
 
 
     return (
