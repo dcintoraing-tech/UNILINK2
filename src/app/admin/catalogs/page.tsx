@@ -21,8 +21,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useCollection, useFirestore, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
-import { collection, doc } from 'firebase/firestore';
+import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { collection, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 // --- INTERFACES ---
 interface CatalogItem {
@@ -38,8 +38,8 @@ interface AsignacionMateria {
     id: string;
     materia: string;
     carreraId: string;
-    cuatrimestreId?: string;
-    semestreId?: string;
+    cuatrimestreId?: string | null;
+    semestreId?: string | null;
 }
 interface Horario {
     id: string;
@@ -60,21 +60,27 @@ function CatalogTable({ title, data, collectionName }: { title: string, data: Ca
     const { toast } = useToast();
     const firestore = useFirestore();
 
-    const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const name = formData.get('name') as string;
 
         if (!name) return;
-
-        if (currentItem && currentItem.id) {
-            const docRef = doc(firestore, collectionName, currentItem.id);
-            updateDocumentNonBlocking(docRef, { name });
-            toast({ title: "Elemento actualizado", description: `El elemento ha sido actualizado.` });
-        } else {
-            addDocumentNonBlocking(collection(firestore, collectionName), { name });
-            toast({ title: "Elemento agregado", description: `El nuevo elemento ha sido agregado.` });
+        
+        try {
+            if (currentItem && currentItem.id) {
+                const docRef = doc(firestore, collectionName, currentItem.id);
+                await updateDoc(docRef, { name });
+                toast({ title: "Elemento actualizado", description: `El elemento ha sido actualizado.` });
+            } else {
+                await addDoc(collection(firestore, collectionName), { name });
+                toast({ title: "Elemento agregado", description: `El nuevo elemento ha sido agregado.` });
+            }
+        } catch (error) {
+            console.error("Error writing document: ", error);
+            toast({ variant: "destructive", title: "Error al guardar", description: "No se pudo guardar el elemento. Revisa los permisos." });
         }
+
 
         setIsDialogOpen(false);
         setCurrentItem(null);
@@ -85,9 +91,14 @@ function CatalogTable({ title, data, collectionName }: { title: string, data: Ca
         setIsDialogOpen(true);
     };
 
-    const handleDelete = (itemId: string) => {
-        deleteDocumentNonBlocking(doc(firestore, collectionName, itemId));
-        toast({ title: "Elemento eliminado", description: "El elemento ha sido eliminado correctamente." });
+    const handleDelete = async (itemId: string) => {
+        try {
+            await deleteDoc(doc(firestore, collectionName, itemId));
+            toast({ title: "Elemento eliminado", description: "El elemento ha sido eliminado correctamente." });
+        } catch (error) {
+            console.error("Error deleting document: ", error);
+            toast({ variant: "destructive", title: "Error al eliminar", description: "No se pudo eliminar el elemento. Revisa los permisos." });
+        }
     };
 
     return (
@@ -201,68 +212,73 @@ function MateriasContent({ asignaciones, carreras, cuatrimestres, semestres }: {
         }) || [];
     }, [asignaciones, filterCarrera, filterCuatrimestre, filterSemestre]);
 
-    const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
     
-        if (currentItem) { // Lógica de edición
-            const data = Object.fromEntries(formData.entries()) as { materia: string, carreraId: string, cuatrimestreId?: string, semestreId?: string };
-            if (!data.materia || !data.carreraId) {
-                toast({ variant: 'destructive', title: "Error", description: "Materia y carrera son campos requeridos." });
-                return;
-            }
-             if (!data.cuatrimestreId && !data.semestreId) {
-                toast({ variant: 'destructive', title: "Error", description: "Debe seleccionar un cuatrimestre o un semestre." });
-                return;
-            }
+        try {
+            if (currentItem) { // Lógica de edición
+                const data = Object.fromEntries(formData.entries()) as { materia: string, carreraId: string, cuatrimestreId?: string, semestreId?: string };
+                if (!data.materia || !data.carreraId) {
+                    toast({ variant: 'destructive', title: "Error", description: "Materia y carrera son campos requeridos." });
+                    return;
+                }
+                 if (!data.cuatrimestreId && !data.semestreId) {
+                    toast({ variant: 'destructive', title: "Error", description: "Debe seleccionar un cuatrimestre o un semestre." });
+                    return;
+                }
 
-            const updatedAsignacion = {
-                materia: data.materia,
-                carreraId: data.carreraId,
-                cuatrimestreId: data.cuatrimestreId || null,
-                semestreId: data.semestreId || null
-            };
+                const updatedAsignacion = {
+                    materia: data.materia,
+                    carreraId: data.carreraId,
+                    cuatrimestreId: data.cuatrimestreId || null,
+                    semestreId: data.semestreId || null
+                };
 
-            updateDocumentNonBlocking(doc(firestore, "materiaAsignaciones", currentItem.id), updatedAsignacion);
-            toast({ title: "Asignación actualizada" });
-        } else { // Lógica de creación
-            const materia = formData.get('materia') as string;
-            const cuatrimestreId = formData.get('cuatrimestreId') as string | null;
-            const semestreId = formData.get('semestreId') as string | null;
-            
-            const carrerasAsignar = isCommon 
-                ? carreras?.map(c => c.id) || []
-                : Object.entries(selectedCareers).filter(([, checked]) => checked).map(([id]) => id);
+                await updateDoc(doc(firestore, "materiaAsignaciones", currentItem.id), updatedAsignacion);
+                toast({ title: "Asignación actualizada" });
+            } else { // Lógica de creación
+                const materia = formData.get('materia') as string;
+                const cuatrimestreId = formData.get('cuatrimestreId') as string | null;
+                const semestreId = formData.get('semestreId') as string | null;
+                
+                const carrerasAsignar = isCommon 
+                    ? carreras?.map(c => c.id) || []
+                    : Object.entries(selectedCareers).filter(([, checked]) => checked).map(([id]) => id);
 
-            if (!materia || carrerasAsignar.length === 0) {
-                toast({ variant: 'destructive', title: "Error", description: "Debes proporcionar un nombre, y al menos una carrera." });
-                return;
-            }
-            if (!periodoType) {
-                toast({ variant: 'destructive', title: "Error", description: "Debe seleccionar un tipo de periodo." });
-                return;
-            }
-            if ((periodoType === 'cuatrimestre' || periodoType === 'ambos') && !cuatrimestreId) {
-                toast({ variant: 'destructive', title: "Error", description: "Debe seleccionar un cuatrimestre." });
-                return;
-            }
-            if ((periodoType === 'semestre' || periodoType === 'ambos') && !semestreId) {
-                toast({ variant: 'destructive', title: "Error", description: "Debe seleccionar un semestre." });
-                return;
-            }
-    
-            const newAsignaciones = carrerasAsignar.map(carreraId => ({
-                materia,
-                carreraId,
-                cuatrimestreId: (periodoType === 'cuatrimestre' || periodoType === 'ambos') ? cuatrimestreId : null,
-                semestreId: (periodoType === 'semestre' || periodoType === 'ambos') ? semestreId : null,
-            }));
-            
-            for (const asignacion of newAsignaciones) {
-                addDocumentNonBlocking(collection(firestore, "materiaAsignaciones"), asignacion);
-            }
+                if (!materia || carrerasAsignar.length === 0) {
+                    toast({ variant: 'destructive', title: "Error", description: "Debes proporcionar un nombre, y al menos una carrera." });
+                    return;
+                }
+                if (!periodoType) {
+                    toast({ variant: 'destructive', title: "Error", description: "Debe seleccionar un tipo de periodo." });
+                    return;
+                }
+                if ((periodoType === 'cuatrimestre' || periodoType === 'ambos') && !cuatrimestreId) {
+                    toast({ variant: 'destructive', title: "Error", description: "Debe seleccionar un cuatrimestre." });
+                    return;
+                }
+                if ((periodoType === 'semestre' || periodoType === 'ambos') && !semestreId) {
+                    toast({ variant: 'destructive', title: "Error", description: "Debe seleccionar un semestre." });
+                    return;
+                }
+        
+                const newAsignaciones = carrerasAsignar.map(carreraId => ({
+                    materia,
+                    carreraId,
+                    cuatrimestreId: (periodoType === 'cuatrimestre' || periodoType === 'ambos') ? cuatrimestreId : null,
+                    semestreId: (periodoType === 'semestre' || periodoType === 'ambos') ? semestreId : null,
+                }));
+                
+                for (const asignacion of newAsignaciones) {
+                    await addDoc(collection(firestore, "materiaAsignaciones"), asignacion);
+                }
 
-            toast({ title: "Asignación(es) creada(s) exitosamente." });
+                toast({ title: "Asignación(es) creada(s) exitosamente." });
+            }
+        } catch (error) {
+            console.error("Error writing document: ", error);
+            toast({ variant: "destructive", title: "Error al guardar", description: "No se pudo guardar la asignación. Revisa los permisos." });
         }
     
         setIsDialogOpen(false);
@@ -281,9 +297,14 @@ function MateriasContent({ asignaciones, carreras, cuatrimestres, semestres }: {
         setIsDialogOpen(true);
     };
 
-    const handleDelete = (itemId: string) => {
-        deleteDocumentNonBlocking(doc(firestore, "materiaAsignaciones", itemId));
-        toast({ title: "Asignación eliminada" });
+    const handleDelete = async (itemId: string) => {
+        try {
+            await deleteDoc(doc(firestore, "materiaAsignaciones", itemId));
+            toast({ title: "Asignación eliminada" });
+        } catch (error) {
+            console.error("Error deleting document: ", error);
+            toast({ variant: "destructive", title: "Error al eliminar", description: "No se pudo eliminar la asignación. Revisa los permisos." });
+        }
     };
 
     return (
@@ -416,7 +437,7 @@ function MateriasContent({ asignaciones, carreras, cuatrimestres, semestres }: {
                         {(periodoType === 'cuatrimestre' || periodoType === 'ambos') && (
                             <div className="grid gap-2">
                                 <Label>Cuatrimestre</Label>
-                                <Select name="cuatrimestreId" defaultValue={currentItem?.cuatrimestreId} required={periodoType === 'cuatrimestre'}>
+                                <Select name="cuatrimestreId" defaultValue={currentItem?.cuatrimestreId ?? undefined} required={periodoType === 'cuatrimestre'}>
                                     <SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger>
                                     <SelectContent>{cuatrimestres?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                                 </Select>
@@ -425,7 +446,7 @@ function MateriasContent({ asignaciones, carreras, cuatrimestres, semestres }: {
                         {(periodoType === 'semestre' || periodoType === 'ambos') && (
                             <div className="grid gap-2">
                                 <Label>Semestre</Label>
-                                <Select name="semestreId" defaultValue={currentItem?.semestreId} required={periodoType === 'semestre'}>
+                                <Select name="semestreId" defaultValue={currentItem?.semestreId ?? undefined} required={periodoType === 'semestre'}>
                                     <SelectTrigger><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger>
                                     <SelectContent>{semestres?.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                                 </Select>
@@ -451,7 +472,7 @@ function HorariosContent({ horarios, grupos, materias, docentes }: { horarios: H
     const getNameById = (id: string, list: { id: string, name: string }[] | null) => list?.find(item => item.id === id)?.name || 'N/A';
     const diasSemana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
-    const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const data = Object.fromEntries(formData.entries()) as Omit<Horario, 'id'>;
@@ -461,12 +482,17 @@ function HorariosContent({ horarios, grupos, materias, docentes }: { horarios: H
             return;
         }
 
-        if (currentItem) {
-            updateDocumentNonBlocking(doc(firestore, "horarios", currentItem.id), data);
-            toast({ title: "Horario actualizado" });
-        } else {
-            addDocumentNonBlocking(collection(firestore, "horarios"), data);
-            toast({ title: "Horario creado" });
+        try {
+            if (currentItem) {
+                await updateDoc(doc(firestore, "horarios", currentItem.id), data);
+                toast({ title: "Horario actualizado" });
+            } else {
+                await addDoc(collection(firestore, "horarios"), data);
+                toast({ title: "Horario creado" });
+            }
+        } catch(error) {
+            console.error("Error writing document: ", error);
+            toast({ variant: "destructive", title: "Error al guardar", description: "No se pudo guardar el horario. Revisa los permisos." });
         }
         setIsDialogOpen(false);
         setCurrentItem(null);
@@ -477,9 +503,14 @@ function HorariosContent({ horarios, grupos, materias, docentes }: { horarios: H
         setIsDialogOpen(true);
     };
 
-    const handleDelete = (itemId: string) => {
-        deleteDocumentNonBlocking(doc(firestore, "horarios", itemId));
-        toast({ title: "Horario eliminado" });
+    const handleDelete = async (itemId: string) => {
+        try {
+            await deleteDoc(doc(firestore, "horarios", itemId));
+            toast({ title: "Horario eliminado" });
+        } catch(error) {
+            console.error("Error deleting document: ", error);
+            toast({ variant: "destructive", title: "Error al eliminar", description: "No se pudo eliminar el horario. Revisa los permisos." });
+        }
     };
 
     const materiaOptions = useMemo(() => {
