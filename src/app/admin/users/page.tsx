@@ -75,7 +75,8 @@ const useLocalStorage = <T,>(key: string, initialValue: T) => {
             }
             setIsLoaded(true);
         }
-    }, [key, initialValue]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key]);
 
     useEffect(() => {
         if (isLoaded && typeof window !== 'undefined') {
