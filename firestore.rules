@@ -1,0 +1,113 @@
+/**
+ * Core Philosophy: This ruleset enforces a strict user-ownership model. All data is private and can only be accessed by the user who owns it. The security model relies on the user's Authentication UID being present in the document path to grant access, which avoids costly database reads during authorization checks.
+ *
+ * Data Structure: The database has a top-level `userProfiles` collection where each document ID is a user's UID. All other user-specific data, such as `sessions`, is stored in subcollections under that user's profile document.
+ *
+ * Key Security Decisions:
+ * - User Isolation: A user can only ever read or write their own documents. Accessing another user's data is strictly forbidden.
+ * - No User Enumeration: Listing the top-level `userProfiles` collection is disallowed to prevent leaking user information. Users can only fetch their own profile via a direct `get` request.
+ * - Owned Subcollection Listing: Users are permitted to list documents in their own subcollections (e.g., a user can list all of their own sessions).
+ *
+ * Denormalization for Authorization: The primary security mechanism is Path-Based Authorization. The user's UID is used as the document ID for their `UserProfile` document (`/userProfiles/{userId}`). This places the authorization context directly in the path, allowing rules to simply check `request.auth.uid == userId` for all nested data without needing to perform extra `get` operations.
+ *
+ * Structural Segregation: The entire data model adheres to structural segregation by nesting all user-private data (`sessions`) within a user-owned parent document (`userProfile`). This ensures that a single, simple ownership rule can securely govern a user's entire data tree.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --------------------------------------------------------------------
+    // Helper Functions
+    // --------------------------------------------------------------------
+
+    /**
+     * Checks if the user is authenticated.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * Checks if the authenticated user's UID matches the provided userId.
+     * This is the primary function for establishing document ownership.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * For update/delete operations, checks ownership AND ensures the document exists.
+     * This prevents unauthorized writes to non-existent paths.
+     */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    /**
+     * On create, validates that the user's UID is stamped into the document's `id` field,
+     * ensuring a permanent, unchangeable link between the data and its owner.
+     */
+    function hasValidUserProfileDataForCreate(userProfileId) {
+      return request.resource.data.id == userProfileId;
+    }
+
+    /**
+     * On update, ensures the document's `id` field cannot be changed,
+     * preventing the document from being "re-assigned" to another user.
+     */
+    function hasValidUserProfileDataForUpdate() {
+      return request.resource.data.id == resource.data.id;
+    }
+
+    /**
+     * On create, validates that the session's `userId` field matches the parent user profile,
+     * ensuring relational integrity within the user's data tree.
+     */
+    function hasValidSessionDataForCreate(userProfileId) {
+      return request.resource.data.userId == userProfileId;
+    }
+
+    /**
+     * On update, ensures the session's `userId` field is immutable.
+     */
+    function hasValidSessionDataForUpdate() {
+      return request.resource.data.userId == resource.data.userId;
+    }
+
+    // --------------------------------------------------------------------
+    // Collection Rules
+    // --------------------------------------------------------------------
+
+    /**
+     * @description Controls access to a user's own profile document.
+     * @path /userProfiles/{userProfileId}
+     * @allow (get) A user with UID 'user_abc' can read their own profile at `/userProfiles/user_abc`.
+     * @deny (list) No user can list the entire `/userProfiles` collection.
+     * @deny (get) A user with UID 'user_xyz' cannot read `/userProfiles/user_abc`.
+     * @principle Restricts access to a user's own data tree.
+     */
+    match /userProfiles/{userProfileId} {
+      allow get: if isOwner(userProfileId);
+      allow list: if false;
+      allow create: if isOwner(userProfileId) && hasValidUserProfileDataForCreate(userProfileId);
+      allow update: if isExistingOwner(userProfileId) && hasValidUserProfileDataForUpdate();
+      allow delete: if isExistingOwner(userProfileId);
+    }
+
+    /**
+     * @description Controls access to a user's login sessions.
+     * @path /userProfiles/{userProfileId}/sessions/{sessionId}
+     * @allow (list) A user with UID 'user_abc' can list all sessions at `/userProfiles/user_abc/sessions`.
+     * @allow (create) A user with UID 'user_abc' can create a new session in their own subcollection.
+     * @deny (get) A user with UID 'user_xyz' cannot read a session at `/userProfiles/user_abc/sessions/session_123`.
+     * @principle Enforces document ownership for writes and reads on nested user data.
+     */
+    match /userProfiles/{userProfileId}/sessions/{sessionId} {
+      allow get: if isOwner(userProfileId);
+      allow list: if isOwner(userProfileId);
+      allow create: if isOwner(userProfileId) && hasValidSessionDataForCreate(userProfileId);
+      allow update: if isExistingOwner(userProfileId) && hasValidSessionDataForUpdate();
+      allow delete: if isExistingOwner(userProfileId);
+    }
+  }
+}

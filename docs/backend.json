@@ -1,0 +1,126 @@
+{
+  "entities": {
+    "UserProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserProfile",
+      "type": "object",
+      "description": "Represents a user's profile and basic information within the UniLink Access application. This entity stores details essential for user identification, communication, and displaying personalized content on the dashboard.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the UserProfile entity."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's unique email address, used for login and password recovery.",
+          "format": "email"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the user profile was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating the last time the user profile was updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Session": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Session",
+      "type": "object",
+      "description": "Manages user login sessions, enabling persistent access and tracking active user interactions with the UniLink Access application. This entity helps in maintaining secure and continuous user experience.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Session entity."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the UserProfile associated with this session. (Relationship: UserProfile 1:N Session)"
+        },
+        "authToken": {
+          "type": "string",
+          "description": "A unique token used to authenticate the session."
+        },
+        "expiresAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the session is set to expire, requiring re-authentication.",
+          "format": "date-time"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the session was initiated.",
+          "format": "date-time"
+        },
+        "isActive": {
+          "type": "boolean",
+          "description": "A boolean flag indicating whether the session is currently active."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "authToken",
+        "expiresAt",
+        "createdAt",
+        "isActive"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/userProfiles/{userProfileId}",
+        "definition": {
+          "entityName": "UserProfile",
+          "schema": {
+            "$ref": "#/backend/entities/UserProfile"
+          },
+          "description": "Stores individual user profiles. Each document ID (`userProfileId`) matches the authenticated user's UID. Access is restricted to the authenticated user matching `userProfileId` in the path. This structure supports Authorization Independence for user-owned data via path-based ownership and enables secure `get` operations for a specific user's profile.",
+          "params": [
+            {
+              "name": "userProfileId",
+              "description": "The unique ID of the user's profile, which directly corresponds to the Firebase Authentication UID (`request.auth.uid`)."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/userProfiles/{userProfileId}/sessions/{sessionId}",
+        "definition": {
+          "entityName": "Session",
+          "schema": {
+            "$ref": "#/backend/entities/Session"
+          },
+          "description": "Stores active login sessions for a specific user. Each session document's access is bound to its parent `userProfileId`. This structure supports Authorization Independence by providing the `userProfileId` directly in the path, allowing rules to compare `request.auth.uid` with `userProfileId`. It enables secure `list` operations for a user to retrieve all their own sessions.",
+          "params": [
+            {
+              "name": "userProfileId",
+              "description": "The unique ID of the parent user's profile, corresponding to the Firebase Authentication UID (`request.auth.uid`)."
+            },
+            {
+              "name": "sessionId",
+              "description": "The unique identifier for a specific user session."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "This Firestore structure is designed following the core principles of Authorization Independence, Structural Segregation, and Access Modeling to ensure a secure, scalable, and easily debuggable system for UniLink Access. The design prioritizes robust security rules and efficient data access.\n\n**Authorization Independence:**\n*   **User Profiles (`/userProfiles/{userProfileId}`):** Each user's profile is stored in a top-level collection, with the document ID (`userProfileId`) directly corresponding to the authenticated user's UID (`request.auth.uid`). This direct mapping means that authorization rules for reading or writing a user's profile can directly compare `request.auth.uid` to the `userProfileId` wildcard in the path, eliminating any need for `get()` operations to fetch parent documents or other user data for authorization. This ensures atomic operations and simplifies rule debugging.\n*   **User Sessions (`/userProfiles/{userProfileId}/sessions/{sessionId}`):** Session documents are stored as a subcollection under the respective user's profile. The `userProfileId` wildcard in the path inherently provides the authorization context for these documents. Although the `Session` entity itself contains a `userId` field, the primary authorization check will leverage the `userProfileId` from the path (`request.auth.uid == userProfileId`). This denormalization of the `userId` into the path (and implicitly within the document via its structure) makes session access rules simple and avoids `get()` calls, adhering to the principle of Authorization Independence.\n\n**Querying for Authorization Purposes (QAPs):**\n*   **User Profiles:** Users can `get` their own profile securely by matching `request.auth.uid` to the `userProfileId` in the path. Listing all profiles (`/userProfiles`) would typically be restricted or require specific administrative roles, as this is private data and rules are not filters. However, a user can securely `get` their specific document.\n*   **User Sessions:** Users can securely `list` their own active sessions by querying the `/userProfiles/{userProfileId}/sessions` subcollection. The security rules will ensure that `request.auth.uid` matches the `userProfileId` in the path, preventing users from accessing or listing sessions belonging to other users. This approach enables secure, efficient queries without relying on client-side filtering or inefficient server-side rule filtering.\n\n**Structural Segregation & Access Modeling:**\n*   **Private Data:** Both `UserProfile` and `Session` entities represent private, user-owned data. The chosen hierarchical path structure (`/userProfiles/{userProfileId}` and `/userProfiles/{userProfileId}/sessions/{sessionId}`) directly implements the \"Private Data\" and \"Hierarchical Paths for User-Owned Data\" mandates. All documents within `/userProfiles` share the same owner-only security posture, as do all documents within `/userProfiles/{userProfileId}/sessions` for a given user. This minimizes complexity in security rules and ensures that data with different access requirements are not co-mingled."
+  }
+}
