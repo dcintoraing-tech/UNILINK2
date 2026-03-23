@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo } from 'react';
@@ -20,8 +21,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { useCollection, useFirestore, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
+import { collection, doc } from 'firebase/firestore';
 
 // --- INTERFACES ---
 interface CatalogItem {
@@ -59,27 +60,21 @@ function CatalogTable({ title, data, collectionName }: { title: string, data: Ca
     const { toast } = useToast();
     const firestore = useFirestore();
 
-    const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const name = formData.get('name') as string;
 
         if (!name) return;
 
-        try {
-            if (currentItem && currentItem.id) {
-                const docRef = doc(firestore, collectionName, currentItem.id);
-                await updateDoc(docRef, { name });
-                toast({ title: "Elemento actualizado", description: `El elemento ha sido actualizado.` });
-            } else {
-                await addDoc(collection(firestore, collectionName), { name });
-                toast({ title: "Elemento agregado", description: `El nuevo elemento ha sido agregado.` });
-            }
-        } catch (error) {
-            console.error("Error saving to Firestore: ", error);
-            toast({ variant: 'destructive', title: "Error", description: "No se pudo guardar el elemento." });
+        if (currentItem && currentItem.id) {
+            const docRef = doc(firestore, collectionName, currentItem.id);
+            updateDocumentNonBlocking(docRef, { name });
+            toast({ title: "Elemento actualizado", description: `El elemento ha sido actualizado.` });
+        } else {
+            addDocumentNonBlocking(collection(firestore, collectionName), { name });
+            toast({ title: "Elemento agregado", description: `El nuevo elemento ha sido agregado.` });
         }
-
 
         setIsDialogOpen(false);
         setCurrentItem(null);
@@ -90,14 +85,9 @@ function CatalogTable({ title, data, collectionName }: { title: string, data: Ca
         setIsDialogOpen(true);
     };
 
-    const handleDelete = async (itemId: string) => {
-        try {
-            await deleteDoc(doc(firestore, collectionName, itemId));
-            toast({ title: "Elemento eliminado", description: "El elemento ha sido eliminado correctamente." });
-        } catch (error) {
-            console.error("Error deleting from Firestore: ", error);
-            toast({ variant: 'destructive', title: "Error", description: "No se pudo eliminar el elemento." });
-        }
+    const handleDelete = (itemId: string) => {
+        deleteDocumentNonBlocking(doc(firestore, collectionName, itemId));
+        toast({ title: "Elemento eliminado", description: "El elemento ha sido eliminado correctamente." });
     };
 
     return (
@@ -211,7 +201,7 @@ function MateriasContent({ asignaciones, carreras, cuatrimestres, semestres }: {
         }) || [];
     }, [asignaciones, filterCarrera, filterCuatrimestre, filterSemestre]);
 
-    const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
     
@@ -233,7 +223,7 @@ function MateriasContent({ asignaciones, carreras, cuatrimestres, semestres }: {
                 semestreId: data.semestreId || null
             };
 
-            await updateDoc(doc(firestore, "materiaAsignaciones", currentItem.id), updatedAsignacion);
+            updateDocumentNonBlocking(doc(firestore, "materiaAsignaciones", currentItem.id), updatedAsignacion);
             toast({ title: "Asignación actualizada" });
         } else { // Lógica de creación
             const materia = formData.get('materia') as string;
@@ -269,7 +259,7 @@ function MateriasContent({ asignaciones, carreras, cuatrimestres, semestres }: {
             }));
             
             for (const asignacion of newAsignaciones) {
-                await addDoc(collection(firestore, "materiaAsignaciones"), asignacion);
+                addDocumentNonBlocking(collection(firestore, "materiaAsignaciones"), asignacion);
             }
 
             toast({ title: "Asignación(es) creada(s) exitosamente." });
@@ -291,8 +281,8 @@ function MateriasContent({ asignaciones, carreras, cuatrimestres, semestres }: {
         setIsDialogOpen(true);
     };
 
-    const handleDelete = async (itemId: string) => {
-        await deleteDoc(doc(firestore, "materiaAsignaciones", itemId));
+    const handleDelete = (itemId: string) => {
+        deleteDocumentNonBlocking(doc(firestore, "materiaAsignaciones", itemId));
         toast({ title: "Asignación eliminada" });
     };
 
@@ -461,7 +451,7 @@ function HorariosContent({ horarios, grupos, materias, docentes }: { horarios: H
     const getNameById = (id: string, list: { id: string, name: string }[] | null) => list?.find(item => item.id === id)?.name || 'N/A';
     const diasSemana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
-    const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const data = Object.fromEntries(formData.entries()) as Omit<Horario, 'id'>;
@@ -472,10 +462,10 @@ function HorariosContent({ horarios, grupos, materias, docentes }: { horarios: H
         }
 
         if (currentItem) {
-            await updateDoc(doc(firestore, "horarios", currentItem.id), data);
+            updateDocumentNonBlocking(doc(firestore, "horarios", currentItem.id), data);
             toast({ title: "Horario actualizado" });
         } else {
-            await addDoc(collection(firestore, "horarios"), data);
+            addDocumentNonBlocking(collection(firestore, "horarios"), data);
             toast({ title: "Horario creado" });
         }
         setIsDialogOpen(false);
@@ -487,8 +477,8 @@ function HorariosContent({ horarios, grupos, materias, docentes }: { horarios: H
         setIsDialogOpen(true);
     };
 
-    const handleDelete = async (itemId: string) => {
-        await deleteDoc(doc(firestore, "horarios", itemId));
+    const handleDelete = (itemId: string) => {
+        deleteDocumentNonBlocking(doc(firestore, "horarios", itemId));
         toast({ title: "Horario eliminado" });
     };
 

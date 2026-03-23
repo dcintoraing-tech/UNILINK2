@@ -6,8 +6,9 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import { Mail, Lock, Shield, Eye, EyeOff } from "lucide-react";
-import { useState, useMemo } from "react";
-import { signInAnonymously } from 'firebase/auth';
+import { useState } from "react";
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, getDoc } from "firebase/firestore";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -21,26 +22,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useAuth, useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection } from "firebase/firestore";
+import { useAuth, useFirestore } from '@/firebase';
 
 
 const formSchema = z.object({
-  email: z.string().min(1, {
-    message: "Por favor, introduce tu correo o usuario.",
+  email: z.string().email({
+    message: "Por favor, introduce un correo válido.",
   }),
-  password: z.string().min(1, {
-    message: "Por favor, introduce tu contraseña.",
-  }),
-  role: z.enum(["Docente", "Admin"], {
-    required_error: "Por favor, selecciona un rol.",
+  password: z.string().min(6, {
+    message: "La contraseña debe tener al menos 6 caracteres.",
   }),
 });
 
@@ -51,9 +41,6 @@ export default function LoginPage() {
   const auth = useAuth();
   const firestore = useFirestore();
 
-  const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
-  const { data: users } = useCollection<any>(usersQuery);
-
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -63,70 +50,52 @@ export default function LoginPage() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (values.email === "Admin" && values.password === "admin" && values.role === "Admin") {
-      const adminUser = { name: 'Super Admin', email: 'admin@unilink.com', role: 'Admin' };
-      
-      if (!auth.currentUser) {
-          try {
-              await signInAnonymously(auth);
-          } catch (error) {
-              console.error("Anonymous sign-in failed", error);
-              toast({
-                  variant: "destructive",
-                  title: "Error de autenticación",
-                  description: "No se pudo iniciar la sesión de Firebase. Contacta al soporte.",
-              });
-              return;
-          }
+    try {
+      // Step 1: Sign in with Firebase Auth
+      const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
+      const authUser = userCredential.user;
+
+      // Step 2: Fetch user profile from Firestore
+      const userDocRef = doc(firestore, 'users', authUser.uid);
+      const userDoc = await getDoc(userDocRef);
+
+      if (!userDoc.exists()) {
+        throw new Error("No se encontró el perfil de usuario.");
       }
 
-      sessionStorage.setItem('unilink-user', JSON.stringify(adminUser));
-      toast({
-          title: "Acceso de administrador concedido",
-          description: "Redirigiendo al panel de control...",
-      });
-      setTimeout(() => {
-          router.push("/admin/dashboard");
-      }, 1000);
-      return;
-    }
-    
-    const authenticatedUser = users?.find(
-      user => (user.email === values.email || user.name === values.email) && user.password === values.password && user.role === values.role
-    );
+      const userData = userDoc.data();
+      const userProfile = {
+        uid: authUser.uid,
+        name: userData.name,
+        email: userData.email,
+        role: userData.role,
+      };
 
-    if (authenticatedUser) {
-        if (!auth.currentUser) {
-            try {
-                await signInAnonymously(auth);
-            } catch (error) {
-                console.error("Anonymous sign-in failed", error);
-                toast({
-                    variant: "destructive",
-                    title: "Error de autenticación",
-                    description: "No se pudo iniciar la sesión de Firebase. Contacta al soporte.",
-                });
-                return;
-            }
-        }
-        sessionStorage.setItem('unilink-user', JSON.stringify(authenticatedUser));
-        toast({
-            title: "Inicio de sesión exitoso",
-            description: "Redirigiendo a tu panel de control...",
-        });
-        setTimeout(() => {
-            if (values.role === 'Admin') {
-                router.push("/admin/dashboard");
-            } else {
-                router.push("/dashboard");
-            }
-        }, 1000);
-    } else {
-        toast({
-            variant: "destructive",
-            title: "Credenciales incorrectas",
-            description: "El correo, la contraseña o el rol no son correctos. Por favor, inténtalo de nuevo.",
-        });
+      // Step 3: Store user profile and redirect
+      sessionStorage.setItem('unilink-user', JSON.stringify(userProfile));
+      
+      toast({
+          title: "Inicio de sesión exitoso",
+          description: "Redirigiendo a tu panel de control...",
+      });
+
+      if (userProfile.role === 'Admin') {
+          router.push("/admin/dashboard");
+      } else {
+          router.push("/dashboard");
+      }
+
+    } catch (error: any) {
+      console.error("Login failed", error);
+      let description = "Ocurrió un error inesperado. Por favor, inténtalo de nuevo.";
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        description = "Credenciales incorrectas. Por favor, verifica tu correo y contraseña.";
+      }
+      toast({
+          variant: "destructive",
+          title: "Error de inicio de sesión",
+          description,
+      });
     }
   }
 
@@ -137,7 +106,7 @@ export default function LoginPage() {
           Bienvenido de nuevo
         </CardTitle>
         <CardDescription className="text-center">
-          Selecciona tu rol para acceder a tu cuenta
+          Ingresa tus credenciales para acceder a tu cuenta
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -148,11 +117,11 @@ export default function LoginPage() {
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Correo o Usuario</FormLabel>
+                  <FormLabel>Correo electrónico</FormLabel>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <FormControl>
-                      <Input placeholder="Admin" {...field} className="pl-10"/>
+                      <Input placeholder="tu@ejemplo.com" {...field} className="pl-10"/>
                     </FormControl>
                   </div>
                   <FormMessage />
@@ -168,7 +137,7 @@ export default function LoginPage() {
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <FormControl>
-                      <Input type={showPassword ? "text" : "password"} placeholder="admin" {...field} className="pl-10" />
+                      <Input type={showPassword ? "text" : "password"} placeholder="••••••••" {...field} className="pl-10" />
                     </FormControl>
                     <Button 
                         type="button" 
@@ -185,30 +154,6 @@ export default function LoginPage() {
                 </FormItem>
               )}
             />
-             <FormField
-              control={form.control}
-              name="role"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Rol</FormLabel>
-                  <div className="relative">
-                    <Shield className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="pl-10">
-                          <SelectValue placeholder="Selecciona un rol" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="Docente">Docente</SelectItem>
-                        <SelectItem value="Admin">Administrador</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
             <Button type="submit" className="w-full">
               Iniciar sesión
             </Button>
@@ -218,5 +163,3 @@ export default function LoginPage() {
     </Card>
   );
 }
-
-    

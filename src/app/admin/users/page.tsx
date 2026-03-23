@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { PlusCircle, MoreHorizontal, Eye, EyeOff } from 'lucide-react';
 import {
   Card,
@@ -33,8 +33,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-  DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -48,8 +46,9 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { useAuth, useCollection, useFirestore, useMemoFirebase, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
+import { collection, doc, setDoc } from 'firebase/firestore';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 
 
 type UserRole = 'Docente' | 'Admin';
@@ -59,7 +58,6 @@ interface User {
     id: string;
     name: string;
     email: string;
-    password?: string; // Es opcional para no mostrarlo siempre
     role: UserRole;
     status: UserStatus;
     createdAt: string;
@@ -72,6 +70,7 @@ export default function UsersPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const { toast } = useToast();
   const firestore = useFirestore();
+  const auth = useAuth();
 
   const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
   const { data: users, isLoading } = useCollection<User>(usersQuery);
@@ -81,7 +80,20 @@ export default function UsersPage() {
     const formData = new FormData(e.currentTarget);
     const userData = Object.fromEntries(formData.entries()) as any;
     
-    if (userData.password || !editingUser) {
+    if (editingUser) {
+        // Logic for updating a user
+        const docRef = doc(firestore, 'users', editingUser.id);
+        const dataToUpdate: Partial<User> = {
+            name: userData.name,
+            email: userData.email,
+            role: userData.role,
+            status: userData.status
+        };
+        updateDocumentNonBlocking(docRef, dataToUpdate);
+        toast({ title: "Usuario actualizado", description: `El usuario ${userData.name} ha sido actualizado.` });
+
+    } else {
+        // Logic for creating a new user
         if (userData.password !== userData.confirmPassword) {
             toast({
                 variant: "destructive",
@@ -90,27 +102,35 @@ export default function UsersPage() {
             });
             return;
         }
-    }
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { confirmPassword, ...userToSave } = userData;
+        try {
+            // Step 1: Create user in Firebase Auth
+            const userCredential = await createUserWithEmailAndPassword(auth, userData.email, userData.password);
+            const authUser = userCredential.user;
 
-    if (editingUser) {
-      const docRef = doc(firestore, 'users', editingUser.id);
-      const dataToUpdate: Partial<User> = { ...userToSave };
-      if (!userToSave.password) {
-        delete dataToUpdate.password;
-      }
-      await updateDoc(docRef, dataToUpdate);
-      toast({ title: "Usuario actualizado", description: `El usuario ${userToSave.name} ha sido actualizado.` });
-    } else {
-      const newUser: Omit<User, 'id'> = {
-        ...userToSave,
-        status: 'Activo',
-        createdAt: new Date().toISOString().split('T')[0],
-      };
-      await addDoc(collection(firestore, 'users'), newUser);
-      toast({ title: "Usuario creado", description: `El usuario ${userToSave.name} ha sido creado.` });
+            // Step 2: Create user profile in Firestore
+            const newUser: Omit<User, 'id'> = {
+                name: userData.name,
+                email: userData.email,
+                role: userData.role,
+                status: 'Activo',
+                createdAt: new Date().toISOString(),
+            };
+            await setDoc(doc(firestore, 'users', authUser.uid), newUser);
+            
+            toast({ title: "Usuario creado", description: `El usuario ${userData.name} ha sido creado.` });
+
+        } catch (error: any) {
+            console.error("Error creating user:", error);
+            let description = "Ocurrió un error inesperado.";
+            if (error.code === 'auth/email-already-in-use') {
+                description = "El correo electrónico ya está en uso por otra cuenta.";
+            } else if (error.code === 'auth/weak-password') {
+                description = "La contraseña es demasiado débil. Debe tener al menos 6 caracteres.";
+            }
+            toast({ variant: "destructive", title: "Error al crear usuario", description });
+            return; // Stop execution
+        }
     }
     
     setIsDialogOpen(false);
@@ -132,8 +152,10 @@ export default function UsersPage() {
   };
 
   const handleDeleteUser = async (userId: string) => {
-    await deleteDoc(doc(firestore, 'users', userId));
-    toast({ title: "Usuario eliminado", description: "El usuario ha sido eliminado correctamente." });
+    // Note: This only deletes the Firestore document, not the Firebase Auth user.
+    // Deleting Auth users requires admin privileges, typically from a backend.
+    deleteDocumentNonBlocking(doc(firestore, 'users', userId));
+    toast({ title: "Usuario eliminado", description: "El usuario ha sido eliminado de la base de datos." });
   };
 
   return (
@@ -207,7 +229,7 @@ export default function UsersPage() {
                                   <AlertDialogHeader>
                                     <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                      Esta acción no se puede deshacer. Esto eliminará permanentemente al usuario.
+                                      Esta acción no se puede deshacer. Esto eliminará permanentemente al usuario de la base de datos.
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
@@ -248,50 +270,52 @@ export default function UsersPage() {
                 <Label htmlFor="email">Correo electrónico</Label>
                 <Input id="email" name="email" type="email" defaultValue={editingUser?.email} required />
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="password">Contraseña</Label>
-                <div className="relative">
-                    <Input 
-                        id="password" 
-                        name="password" 
-                        type={showPassword ? "text" : "password"} 
-                        placeholder={editingUser ? "Dejar en blanco para no cambiar" : ""} 
-                        required={!editingUser} 
-                    />
-                    <Button 
-                        type="button" 
-                        variant="ghost" 
-                        size="icon" 
-                        className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground"
-                        onClick={() => setShowPassword(!showPassword)}
-                    >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        <span className="sr-only">{showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
-                    </Button>
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="confirmPassword">Confirmar Contraseña</Label>
-                <div className="relative">
-                    <Input 
-                        id="confirmPassword" 
-                        name="confirmPassword" 
-                        type={showConfirmPassword ? "text" : "password"} 
-                        placeholder="Repetir contraseña" 
-                        required={!editingUser}
-                    />
-                     <Button 
-                        type="button" 
-                        variant="ghost" 
-                        size="icon" 
-                        className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    >
-                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        <span className="sr-only">{showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
-                    </Button>
-                </div>
-              </div>
+              {!editingUser && (
+                <>
+                    <div className="grid gap-2">
+                        <Label htmlFor="password">Contraseña</Label>
+                        <div className="relative">
+                            <Input 
+                                id="password" 
+                                name="password" 
+                                type={showPassword ? "text" : "password"} 
+                                required
+                            />
+                            <Button 
+                                type="button" 
+                                variant="ghost" 
+                                size="icon" 
+                                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground"
+                                onClick={() => setShowPassword(!showPassword)}
+                            >
+                                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                <span className="sr-only">{showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
+                            </Button>
+                        </div>
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="confirmPassword">Confirmar Contraseña</Label>
+                        <div className="relative">
+                            <Input 
+                                id="confirmPassword" 
+                                name="confirmPassword" 
+                                type={showConfirmPassword ? "text" : "password"} 
+                                required
+                            />
+                            <Button 
+                                type="button" 
+                                variant="ghost" 
+                                size="icon" 
+                                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground"
+                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            >
+                                {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                <span className="sr-only">{showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
+                            </Button>
+                        </div>
+                    </div>
+                </>
+              )}
               <div className="grid gap-2">
                 <Label htmlFor="role">Rol</Label>
                 <Select name="role" defaultValue={editingUser?.role || 'Docente'}>
@@ -328,5 +352,3 @@ export default function UsersPage() {
     </>
   );
 }
-
-    
