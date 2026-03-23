@@ -62,7 +62,6 @@ interface User {
 
 const useLocalStorage = <T,>(key: string, initialValue: T) => {
     const [storedValue, setStoredValue] = useState<T>(initialValue);
-    const [isLoaded, setIsLoaded] = useState(false);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -73,27 +72,28 @@ const useLocalStorage = <T,>(key: string, initialValue: T) => {
                 console.log(error);
                 setStoredValue(initialValue);
             }
-            setIsLoaded(true);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [key]);
 
-    useEffect(() => {
-        if (isLoaded && typeof window !== 'undefined') {
-            try {
-                window.localStorage.setItem(key, JSON.stringify(storedValue));
-            } catch (error) {
-                console.log(error);
+    const setValue = (value: T | ((val: T) => T)) => {
+        try {
+            const valueToStore = value instanceof Function ? value(storedValue) : value;
+            setStoredValue(valueToStore);
+            if (typeof window !== 'undefined') {
+                window.localStorage.setItem(key, JSON.stringify(valueToStore));
             }
+        } catch (error) {
+            console.log(error);
         }
-    }, [key, storedValue, isLoaded]);
+    };
 
-    return [storedValue, setStoredValue, isLoaded] as const;
+    return [storedValue, setValue] as const;
 };
 
 
 export default function UsersPage() {
-  const [users, setUsers, isLoaded] = useLocalStorage<User[]>('unilink-users', []);
+  const [users, setUsers] = useLocalStorage<User[]>('unilink-users', []);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const { toast } = useToast();
@@ -165,8 +165,7 @@ export default function UsersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {!isLoaded && <TableRow><TableCell colSpan={5} className="text-center">Cargando usuarios...</TableCell></TableRow>}
-              {isLoaded && users.map((user) => (
+              {users.map((user) => (
                   <TableRow key={user.id}>
                       <TableCell className="font-medium">
                           <div>{user.name}</div>

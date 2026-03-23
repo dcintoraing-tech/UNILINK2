@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
@@ -25,7 +24,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 // --- DATA PERSISTENCE HOOK ---
 const useLocalStorage = <T,>(key: string, initialValue: T) => {
     const [storedValue, setStoredValue] = useState<T>(initialValue);
-    const [isLoaded, setIsLoaded] = useState(false);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -36,22 +34,23 @@ const useLocalStorage = <T,>(key: string, initialValue: T) => {
                 console.log(error);
                 setStoredValue(initialValue);
             }
-            setIsLoaded(true);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [key]);
 
-    useEffect(() => {
-        if (isLoaded && typeof window !== 'undefined') {
-            try {
-                window.localStorage.setItem(key, JSON.stringify(storedValue));
-            } catch (error) {
-                console.log(error);
+    const setValue = (value: T | ((val: T) => T)) => {
+        try {
+            const valueToStore = value instanceof Function ? value(storedValue) : value;
+            setStoredValue(valueToStore);
+            if (typeof window !== 'undefined') {
+                window.localStorage.setItem(key, JSON.stringify(valueToStore));
             }
+        } catch (error) {
+            console.log(error);
         }
-    }, [key, storedValue, isLoaded]);
+    };
 
-    return [storedValue, setStoredValue, isLoaded] as const;
+    return [storedValue, setValue] as const;
 };
 
 // --- INTERFACES ---
@@ -63,7 +62,7 @@ interface Horario { id: string; grupoId: string; materiaId: string; docenteId: s
 
 // --- COMPONENTES DE GESTIÓN ---
 
-function CatalogTable<T extends CatalogItem>({ title, data, setData }: { title: string, data: T[], setData: React.Dispatch<React.SetStateAction<T[]>> }) {
+function CatalogTable<T extends CatalogItem>({ title, data, setData }: { title: string, data: T[], setData: (value: T[] | ((val: T[]) => T[])) => void }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<T | null>(null);
     const { toast } = useToast();
@@ -139,7 +138,7 @@ function CatalogTable<T extends CatalogItem>({ title, data, setData }: { title: 
     );
 }
 
-function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestres, semestres }: { asignaciones: AsignacionMateria[], setAsignaciones: React.Dispatch<React.SetStateAction<AsignacionMateria[]>>, carreras: CatalogItem[], cuatrimestres: CatalogItem[], semestres: CatalogItem[] }) {
+function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestres, semestres }: { asignaciones: AsignacionMateria[], setAsignaciones: (value: AsignacionMateria[] | ((val: AsignacionMateria[]) => AsignacionMateria[])) => void, carreras: CatalogItem[], cuatrimestres: CatalogItem[], semestres: CatalogItem[] }) {
     const { toast } = useToast();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<AsignacionMateria | null>(null);
@@ -228,7 +227,7 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
     );
 }
 
-function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: { horarios: Horario[], setHorarios: React.Dispatch<React.SetStateAction<Horario[]>>, grupos: CatalogItem[], materias: AsignacionMateria[], docentes: User[] }) {
+function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: { horarios: Horario[], setHorarios: (value: Horario[] | ((val: Horario[]) => Horario[])) => void, grupos: CatalogItem[], materias: AsignacionMateria[], docentes: User[] }) {
     const { toast } = useToast();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<Horario | null>(null);
