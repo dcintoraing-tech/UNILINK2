@@ -5,12 +5,14 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Mail, Lock } from "lucide-react";
+import { Mail, Lock, User as UserIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -19,15 +21,20 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+
 
 const formSchema = z.object({
+  name: z.string().min(2, { message: "El nombre debe tener al menos 2 caracteres." }),
   email: z.string().email({
     message: "Por favor, introduce una dirección de correo electrónico válida.",
   }),
   password: z.string().min(6, {
     message: "La contraseña debe tener al menos 6 caracteres.",
   }),
-  confirmPassword: z.string()
+  confirmPassword: z.string(),
+  role: z.enum(['Docente', 'Admin'], { required_error: "Debes seleccionar un rol." })
 }).refine(data => data.password === data.confirmPassword, {
   message: "Las contraseñas no coinciden",
   path: ["confirmPassword"],
@@ -36,26 +43,81 @@ const formSchema = z.object({
 export default function SignupPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const [isFirstUser, setIsFirstUser] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const storedUsers = window.localStorage.getItem('unilink-users');
+        setIsFirstUser(!storedUsers || JSON.parse(storedUsers).length === 0);
+      } catch (error) {
+        console.error("Failed to parse users from localStorage", error);
+        setIsFirstUser(true);
+      } finally {
+        setIsChecking(false);
+      }
+    }
+  }, []);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      name: "",
       email: "",
       password: "",
       confirmPassword: "",
     },
   });
 
+  useEffect(() => {
+    if (isFirstUser && !isChecking) {
+      form.setValue('role', 'Admin');
+    }
+  }, [isFirstUser, isChecking, form]);
+
   function onSubmit(values: z.infer<typeof formSchema>) {
-    // Simulate API call
-    console.log(values);
-    toast({
-      title: "Cuenta creada",
-      description: "Ahora puedes iniciar sesión con tu nueva cuenta.",
-    });
-    setTimeout(() => {
+    try {
+        const storedUsersRaw = window.localStorage.getItem('unilink-users');
+        const users = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
+
+        const emailExists = users.some((u: any) => u.email === values.email);
+        if (emailExists) {
+            toast({
+                variant: "destructive",
+                title: "Error de registro",
+                description: "Este correo electrónico ya está en uso. Por favor, utiliza otro.",
+            });
+            return;
+        }
+
+        const newUser = {
+            id: new Date().toISOString(),
+            name: values.name,
+            email: values.email,
+            role: values.role,
+            status: 'Activo',
+            createdAt: new Date().toISOString(),
+        };
+
+        users.push(newUser);
+        window.localStorage.setItem('unilink-users', JSON.stringify(users));
+
+        toast({
+            title: "Cuenta creada",
+            description: "Ahora puedes iniciar sesión con tu nueva cuenta.",
+        });
+        
         router.push("/login");
-    }, 1000);
+
+    } catch (error: any) {
+        console.error("Signup failed", error);
+        toast({
+            variant: "destructive",
+            title: "Error de registro",
+            description: error.message || "Ocurrió un error inesperado.",
+        });
+    }
   }
 
   return (
@@ -70,7 +132,23 @@ export default function SignupPage() {
       </CardHeader>
       <CardContent>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Nombre completo</FormLabel>
+                  <div className="relative">
+                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <FormControl>
+                      <Input placeholder="Tu Nombre" {...field} className="pl-10"/>
+                    </FormControl>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="email"
@@ -119,6 +197,34 @@ export default function SignupPage() {
                 </FormItem>
               )}
             />
+            {isChecking ? <Skeleton className="h-10 w-full" /> : (
+              <FormField
+                control={form.control}
+                name="role"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tipo de usuario</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value} disabled={isFirstUser}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona un tipo de usuario" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="Docente">Docente</SelectItem>
+                        <SelectItem value="Admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {isFirstUser && (
+                        <FormDescription>
+                            El primer usuario registrado debe ser un Administrador.
+                        </FormDescription>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
             <Button type="submit" className="w-full">
               Registrarse
             </Button>
