@@ -1,8 +1,9 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
-import { PlusCircle, MoreHorizontal, Eye, EyeOff } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { PlusCircle, MoreHorizontal, Eye, EyeOff, Upload, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import {
   Card,
   CardContent,
@@ -63,31 +64,31 @@ interface User {
 
 const useLocalStorage = <T,>(key: string, initialValue: T) => {
     const [storedValue, setStoredValue] = useState<T>(initialValue);
+    const [isInitialized, setIsInitialized] = useState(false);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
             try {
                 const item = window.localStorage.getItem(key);
-                setStoredValue(item ? JSON.parse(item) : initialValue);
+                if (item) {
+                    setStoredValue(JSON.parse(item));
+                }
             } catch (error) {
                 console.log(error);
-                setStoredValue(initialValue);
             }
+            setIsInitialized(true); 
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [key]);
 
     const setValue = (value: T | ((val: T) => T)) => {
+        if (!isInitialized) return;
         try {
             const valueToStore = value instanceof Function ? value(storedValue) : value;
             setStoredValue(valueToStore);
             if (typeof window !== 'undefined') {
                 window.localStorage.setItem(key, JSON.stringify(valueToStore));
-                // Manually dispatch a storage event to sync tabs
-                window.dispatchEvent(new StorageEvent('storage', {
-                    key,
-                    newValue: JSON.stringify(valueToStore),
-                }));
+                window.dispatchEvent(new StorageEvent('storage', { key, newValue: JSON.stringify(valueToStore) }));
             }
         } catch (error) {
             console.log(error);
@@ -96,13 +97,11 @@ const useLocalStorage = <T,>(key: string, initialValue: T) => {
     
     useEffect(() => {
         const handleStorageChange = (e: StorageEvent) => {
-            if (e.key === key) {
+            if (e.key === key && e.newValue) {
                  try {
-                    const item = window.localStorage.getItem(key);
-                    setStoredValue(item ? JSON.parse(item) : initialValue);
+                    setStoredValue(JSON.parse(e.newValue));
                 } catch (error) {
                     console.log(error);
-                    setStoredValue(initialValue);
                 }
             }
         };
@@ -111,7 +110,6 @@ const useLocalStorage = <T,>(key: string, initialValue: T) => {
         return () => {
             window.removeEventListener('storage', handleStorageChange);
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [key]);
 
 
@@ -126,13 +124,13 @@ export default function UsersPage() {
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const userData = Object.fromEntries(formData.entries()) as any;
     
-    // Password confirmation logic
     if (userData.password || !editingUser) {
       if (userData.password !== userData.confirmPassword) {
         toast({
@@ -199,6 +197,104 @@ export default function UsersPage() {
     toast({ title: "Usuario eliminado", description: "El usuario ha sido eliminado." });
   };
 
+  const handleExport = () => {
+    if (users.length === 0) {
+        toast({
+            variant: "destructive",
+            title: "No hay usuarios para exportar",
+        });
+        return;
+    }
+    const usersToExport = users.map(({ password, ...user }) => user);
+    const worksheet = XLSX.utils.json_to_sheet(usersToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Users");
+    XLSX.writeFile(workbook, "usuarios.xlsx");
+    toast({ title: "Usuarios exportados correctamente" });
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const data = event.target?.result;
+            const workbook = XLSX.read(data, { type: 'binary' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const json = XLSX.utils.sheet_to_json<any>(worksheet);
+
+            if (!json.length) {
+                throw new Error("El archivo de Excel está vacío o tiene un formato incorrecto.");
+            }
+
+            const requiredFields = ['name', 'email', 'password', 'role'];
+            const firstRow = json[0];
+            if (!requiredFields.every(field => Object.keys(firstRow).includes(field))) {
+                 throw new Error(`El archivo debe contener las columnas: ${requiredFields.join(', ')}.`);
+            }
+
+            let newUsersCount = 0;
+            let skippedCount = 0;
+
+            setUsers(prevUsers => {
+                const updatedUsers = [...prevUsers];
+                const existingEmails = new Set(prevUsers.map(u => u.email));
+
+                for (const importedUser of json) {
+                    if (existingEmails.has(importedUser.email)) {
+                        skippedCount++;
+                        continue;
+                    }
+
+                    if (
+                        !importedUser.name ||
+                        !importedUser.email ||
+                        !importedUser.password ||
+                        !['Docente', 'Admin'].includes(importedUser.role)
+                    ) {
+                        console.warn("Omitiendo usuario inválido:", importedUser);
+                        skippedCount++;
+                        continue;
+                    }
+                    
+                    updatedUsers.push({
+                        id: new Date().toISOString() + Math.random(),
+                        name: String(importedUser.name),
+                        email: String(importedUser.email),
+                        password: String(importedUser.password),
+                        role: importedUser.role as UserRole,
+                        status: 'Activo',
+                        createdAt: new Date().toISOString(),
+                    });
+                    existingEmails.add(importedUser.email);
+                    newUsersCount++;
+                }
+                return updatedUsers;
+            });
+
+            toast({
+                title: "Importación completada",
+                description: `${newUsersCount} usuarios nuevos importados. ${skippedCount} usuarios omitidos (duplicados o inválidos).`,
+            });
+
+        } catch (error: any) {
+            toast({
+                variant: "destructive",
+                title: "Error en la importación",
+                description: error.message || "No se pudo procesar el archivo.",
+            });
+        } finally {
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
+    reader.readAsBinaryString(file);
+  };
+
   return (
     <>
       <Card>
@@ -206,12 +302,29 @@ export default function UsersPage() {
           <div className="flex items-center justify-between">
               <div>
                   <CardTitle>Gestión de Usuarios</CardTitle>
-                  <CardDescription>Crea, edita y elimina usuarios de tipo Docente y Admin.</CardDescription>
+                  <CardDescription>Crea, edita, elimina, importa y exporta usuarios.</CardDescription>
               </div>
-              <Button size="sm" onClick={openCreateDialog}>
-                  <PlusCircle className="h-3.5 w-3.5 mr-1" />
-                  <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Crear Usuario</span>
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                    <Upload className="h-3.5 w-3.5 mr-2" />
+                    Importar
+                </Button>
+                <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleImport}
+                    className="hidden"
+                    accept=".xlsx, .xls"
+                />
+                <Button size="sm" variant="outline" onClick={handleExport}>
+                    <Download className="h-3.5 w-3.5 mr-2" />
+                    Exportar
+                </Button>
+                <Button size="sm" onClick={openCreateDialog}>
+                    <PlusCircle className="h-3.5 w-3.5 mr-1" />
+                    <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Crear Usuario</span>
+                </Button>
+              </div>
           </div>
         </CardHeader>
         <CardContent>
