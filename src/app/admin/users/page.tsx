@@ -198,14 +198,26 @@ export default function UsersPage() {
   };
 
   const handleExport = () => {
+    const fields = ['name', 'email', 'password', 'role'];
+    
     if (users.length === 0) {
-        toast({
-            variant: "destructive",
-            title: "No hay usuarios para exportar",
-        });
+        // Create an empty worksheet with just the headers
+        const worksheet = XLSX.utils.json_to_sheet([], { header: fields });
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Users");
+        XLSX.writeFile(workbook, "plantilla_usuarios.xlsx");
+        toast({ title: "Plantilla generada", description: "Se ha descargado una plantilla vacía para la importación." });
         return;
     }
-    const usersToExport = users.map(({ password, ...user }) => user);
+
+    // Export existing users with passwords
+    const usersToExport = users.map(user => ({
+        name: user.name,
+        email: user.email,
+        password: user.password || '',
+        role: user.role,
+    }));
+    
     const worksheet = XLSX.utils.json_to_sheet(usersToExport);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Users");
@@ -306,7 +318,7 @@ export default function UsersPage() {
               </div>
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                    <Download className="h-3.5 w-3.5 mr-2" />
+                    <Upload className="h-3.5 w-3.5 mr-2" />
                     Importar
                 </Button>
                 <input
@@ -317,7 +329,7 @@ export default function UsersPage() {
                     accept=".xlsx, .xls"
                 />
                 <Button size="sm" variant="outline" onClick={handleExport}>
-                    <Upload className="h-3.5 w-3.5 mr-2" />
+                    <Download className="h-3.5 w-3.5 mr-2" />
                     Exportar
                 </Button>
                 <Button size="sm" onClick={openCreateDialog}>
