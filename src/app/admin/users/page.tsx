@@ -306,7 +306,7 @@ export default function UsersPage() {
               </div>
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                    <Upload className="h-3.5 w-3.5 mr-2" />
+                    <Download className="h-3.5 w-3.5 mr-2" />
                     Importar
                 </Button>
                 <input
@@ -317,7 +317,7 @@ export default function UsersPage() {
                     accept=".xlsx, .xls"
                 />
                 <Button size="sm" variant="outline" onClick={handleExport}>
-                    <Download className="h-3.5 w-3.5 mr-2" />
+                    <Upload className="h-3.5 w-3.5 mr-2" />
                     Exportar
                 </Button>
                 <Button size="sm" onClick={openCreateDialog}>
