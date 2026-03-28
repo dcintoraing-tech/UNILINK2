@@ -20,7 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Separator } from '@/components/ui/separator';
 
 
 // --- DATA PERSISTENCE HOOK ---
@@ -86,7 +86,7 @@ interface Grupo {
 }
 interface User { id: string; name: string; email: string; role: 'Docente' | 'Admin'; status: 'Activo' | 'Inactivo'; createdAt: string; }
 interface AsignacionMateria { id: string; materia: string; carreraId: string; periodoNumero: string; periodoType: 'cuatrimestre' | 'semestre'; }
-interface Horario { id: string; grupoId: string; materiaId: string; docenteId: string; dia: string; horaInicio: string; horaFin: string; aula: string; }
+interface Horario { id: string; grupoId: string; materiaId: string; docenteId: string; dia: string; horaInicio: string; horaFin: string; }
 
 
 // --- COMPONENTES DE GESTIÓN ---
@@ -244,8 +244,10 @@ function GruposContent({ grupos, setGrupos }: { grupos: Grupo[], setGrupos: (val
                 <DialogHeader><DialogTitle>{currentItem ? 'Editar' : 'Agregar'} Grupo</DialogTitle></DialogHeader>
                 <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
                     <div className="grid gap-2"><Label htmlFor="name">Nombre</Label><Input id="name" name="name" defaultValue={currentItem?.name} required /></div>
-                    <div className="grid gap-2"><Label>Tipo de Periodo</Label><Select name="periodoType" defaultValue={currentItem?.periodoType} required><SelectTrigger><SelectValue placeholder="Selecciona un tipo" /></SelectTrigger><SelectContent><SelectItem value="Cuatrimestre">Cuatrimestre</SelectItem><SelectItem value="Semestre">Semestre</SelectItem></SelectContent></Select></div>
-                    <div className="grid gap-2"><Label>Número de Periodo</Label><Select name="periodoNumero" defaultValue={currentItem?.periodoNumero} required><SelectTrigger><SelectValue placeholder="Selecciona un número" /></SelectTrigger><SelectContent>{periodos.map(p => <SelectItem key={p} value={p}>{p}°</SelectItem>)}</SelectContent></Select></div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="grid gap-2"><Label>Tipo de Periodo</Label><Select name="periodoType" defaultValue={currentItem?.periodoType} required><SelectTrigger><SelectValue placeholder="Tipo" /></SelectTrigger><SelectContent><SelectItem value="Cuatrimestre">Cuatrimestre</SelectItem><SelectItem value="Semestre">Semestre</SelectItem></SelectContent></Select></div>
+                        <div className="grid gap-2"><Label>Número</Label><Select name="periodoNumero" defaultValue={currentItem?.periodoNumero} required><SelectTrigger><SelectValue placeholder="No." /></SelectTrigger><SelectContent>{periodos.map(p => <SelectItem key={p} value={p}>{p}°</SelectItem>)}</SelectContent></Select></div>
+                    </div>
                     <div className="grid gap-2"><Label>Turno</Label><Select name="turno" defaultValue={currentItem?.turno} required><SelectTrigger><SelectValue placeholder="Selecciona un turno" /></SelectTrigger><SelectContent><SelectItem value="Matutino">Matutino</SelectItem><SelectItem value="Vespertino">Vespertino</SelectItem></SelectContent></Select></div>
                     <div className="grid gap-2"><Label>Modalidad</Label><Select name="modalidad" defaultValue={currentItem?.modalidad} required><SelectTrigger><SelectValue placeholder="Selecciona una modalidad" /></SelectTrigger><SelectContent><SelectItem value="Presencial">Presencial</SelectItem><SelectItem value="Sabatina">Sabatina</SelectItem></SelectContent></Select></div>
                     <DialogFooter><Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button><Button type="submit">{currentItem ? 'Guardar Cambios' : 'Agregar'}</Button></DialogFooter>
@@ -264,7 +266,6 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
     const [filterPeriodoNumero, setFilterPeriodoNumero] = useState<string>('all');
     const [isCommon, setIsCommon] = useState(false);
     const [selectedCareers, setSelectedCareers] = useState<Record<string, boolean>>({});
-    const [dialogPeriodoType, setDialogPeriodoType] = useState<'cuatrimestre' | 'semestre'>('cuatrimestre');
     
     const getNameById = (id: string, list: CatalogItem[]) => list.find(item => item.id === id)?.name || '—';
     const periodos = useMemo(() => Array.from({ length: 9 }, (_, i) => (i + 1).toString()), []);
@@ -278,25 +279,19 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
     const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
-        if (currentItem) {
-            const materia = formData.get('materia') as string;
-            const carreraId = formData.get('carreraId') as string;
-            const periodoType = formData.get('periodoType') as 'cuatrimestre' | 'semestre';
-            const periodoNumero = formData.get('periodoNumero') as string;
+        const materia = formData.get('materia') as string;
+        const periodoType = formData.get('periodoType') as 'cuatrimestre' | 'semestre';
+        const periodoNumero = formData.get('periodoNumero') as string;
 
+        if (currentItem) {
+            const carreraId = formData.get('carreraId') as string;
             if (!materia || !carreraId || !periodoType || !periodoNumero) { toast({ variant: 'destructive', title: "Error", description: "Faltan campos requeridos." }); return; }
-            
             const updatedAsignacion = { materia, carreraId, periodoType, periodoNumero };
             setAsignaciones(prev => prev.map(a => a.id === currentItem.id ? { ...a, ...updatedAsignacion } : a));
             toast({ title: "Asignación actualizada" });
         } else {
-            const materia = formData.get('materia') as string;
-            const periodoType = formData.get('periodoType') as 'cuatrimestre' | 'semestre';
-            const periodoNumero = formData.get('periodoNumero') as string;
             const carrerasAsignar = isCommon ? carreras.map(c => c.id) : Object.entries(selectedCareers).filter(([, checked]) => checked).map(([id]) => id);
-
             if (!materia || carrerasAsignar.length === 0 || !periodoType || !periodoNumero) { toast({ variant: 'destructive', title: "Error", description: "Rellena todos los campos obligatorios." }); return; }
-            
             const newAsignaciones = carrerasAsignar.map(carreraId => ({ id: new Date().toISOString() + Math.random(), materia, carreraId, periodoNumero, periodoType }));
             setAsignaciones(prev => [...prev, ...newAsignaciones]);
             toast({ title: `Asignación(es) creada(s) exitosamente.` });
@@ -310,9 +305,6 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
         if (!item) {
             setIsCommon(false);
             setSelectedCareers(carreras.reduce((acc, c) => ({ ...acc, [c.id]: false }), {}));
-            setDialogPeriodoType('cuatrimestre');
-        } else {
-            setDialogPeriodoType(item.periodoType);
         }
         setIsDialogOpen(true);
     };
@@ -336,7 +328,7 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
                         <Select value={filterPeriodoNumero} onValueChange={setFilterPeriodoNumero}><SelectTrigger><SelectValue placeholder="Filtrar por periodo" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem>{periodos.map(p => <SelectItem key={p} value={p}>{p}°</SelectItem>)}</SelectContent></Select>
                     </div>
                     <div className="border rounded-md"><Table><TableHeader><TableRow><TableHead>Materia</TableHead><TableHead>Carrera</TableHead><TableHead>Periodo</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader><TableBody>
-                        {filteredAsignaciones.length > 0 ? (filteredAsignaciones.map(a => (<TableRow key={a.id}><TableCell className="font-medium">{a.materia}</TableCell><TableCell>{getNameById(a.carreraId, carreras)}</TableCell><TableCell>{a.periodoType} {a.periodoNumero}°</TableCell><TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent><DropdownMenuItem onSelect={() => openDialog(a)}>Editar</DropdownMenuItem><AlertDialog><AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(a.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></DropdownMenuContent></DropdownMenu></TableCell></TableRow>))) : (<TableRow><TableCell colSpan={4} className="text-center h-24">No hay materias que coincidan con los filtros.</TableCell></TableRow>)}
+                        {filteredAsignaciones.length > 0 ? (filteredAsignaciones.map(a => (<TableRow key={a.id}><TableCell className="font-medium">{a.materia}</TableCell><TableCell>{getNameById(a.carreraId, carreras)}</TableCell><TableCell className="capitalize">{a.periodoType} {a.periodoNumero}°</TableCell><TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent><DropdownMenuItem onSelect={() => openDialog(a)}>Editar</DropdownMenuItem><AlertDialog><AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(a.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></DropdownMenuContent></DropdownMenu></TableCell></TableRow>))) : (<TableRow><TableCell colSpan={4} className="text-center h-24">No hay materias que coincidan con los filtros.</TableCell></TableRow>)}
                     </TableBody></Table></div>
                 </CardContent>
             </Card>
@@ -347,8 +339,10 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
                         <div className="flex items-center space-x-2"><Switch id="isCommon" checked={isCommon} onCheckedChange={checked => { setIsCommon(checked); setSelectedCareers(checked ? carreras.reduce((acc, c) => ({ ...acc, [c.id]: true }), {}) : {}); }} /><Label htmlFor="isCommon">Materia Común (para todas las carreras)</Label></div>
                         <div className="grid gap-2"><Label>Carreras</Label><div className="space-y-2 rounded-md border p-4 max-h-40 overflow-y-auto">{carreras.map(c => (<div key={c.id} className="flex items-center space-x-2"><Checkbox id={`carrera-${c.id}`} checked={selectedCareers[c.id] || false} onCheckedChange={checked => !isCommon && setSelectedCareers(p => ({ ...p, [c.id]: !!checked }))} disabled={isCommon} /><Label htmlFor={`carrera-${c.id}`} className="font-normal">{c.name}</Label></div>))}</div></div>
                     </>)}
-                    <div className="grid gap-2"><Label>Tipo de Periodo</Label><RadioGroup name="periodoType" value={dialogPeriodoType} onValueChange={(val) => setDialogPeriodoType(val as any)} className="flex space-x-4"><div className="flex items-center space-x-2"><RadioGroupItem value="cuatrimestre" id="r1" /><Label htmlFor="r1">Cuatrimestre</Label></div><div className="flex items-center space-x-2"><RadioGroupItem value="semestre" id="r2" /><Label htmlFor="r2">Semestre</Label></div></RadioGroup></div>
-                    <div className="grid gap-2"><Label>Periodo</Label><Select name="periodoNumero" defaultValue={currentItem?.periodoNumero ?? undefined} required><SelectTrigger><SelectValue placeholder="Selecciona un periodo" /></SelectTrigger><SelectContent>{periodos.map(p => <SelectItem key={p} value={p}>{p}°</SelectItem>)}</SelectContent></Select></div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="grid gap-2"><Label>Tipo de Periodo</Label><Select name="periodoType" defaultValue={currentItem?.periodoType}><SelectTrigger><SelectValue placeholder="Tipo" /></SelectTrigger><SelectContent><SelectItem value="cuatrimestre">Cuatrimestre</SelectItem><SelectItem value="semestre">Semestre</SelectItem></SelectContent></Select></div>
+                        <div className="grid gap-2"><Label>Periodo</Label><Select name="periodoNumero" defaultValue={currentItem?.periodoNumero ?? undefined} required><SelectTrigger><SelectValue placeholder="No." /></SelectTrigger><SelectContent>{periodos.map(p => <SelectItem key={p} value={p}>{p}°</SelectItem>)}</SelectContent></Select></div>
+                    </div>
                     <DialogFooter><Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button><Button type="submit">{currentItem ? 'Guardar Cambios' : 'Asignar'}</Button></DialogFooter>
                 </form>
             </DialogContent></Dialog>
@@ -360,52 +354,118 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: 
     const { toast } = useToast();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<Horario | null>(null);
-    const [formData, setFormData] = useState<Partial<Horario>>({});
-    const [availableDays, setAvailableDays] = useState<string[]>([]);
 
-    const getNameById = (id: string, list: { id: string, name: string }[] | null) => list?.find(item => item.id === id)?.name || 'N/A';
+    // State for editing a single entry
+    const [editFormData, setEditFormData] = useState<Partial<Horario>>({});
+
+    // State for creating a 4-hour block
+    const [createFormState, setCreateFormState] = useState({
+        grupoId: '',
+        materiaId: '',
+        dia: '',
+        horaInicio: '07:00'
+    });
+    const [hourlyTeachers, setHourlyTeachers] = useState<string[]>(['', '', '', '']);
     
+    const [availableDays, setAvailableDays] = useState<string[]>([]);
+    
+    const getNameById = (id: string, list: { id: string, name: string }[] | null) => list?.find(item => item.id === id)?.name || 'N/A';
+
+    // Effect to update available days based on selected group in either form
     useEffect(() => {
-        if (!formData.grupoId) {
+        const grupoId = currentItem ? editFormData.grupoId : createFormState.grupoId;
+        if (!grupoId) {
             setAvailableDays([]);
             return;
         }
-        const selectedGroup = grupos.find(g => g.id === formData.grupoId);
+        const selectedGroup = grupos.find(g => g.id === grupoId);
         if (selectedGroup) {
             const days = selectedGroup.modalidad === 'Sabatina' 
                 ? ['Sábado'] 
                 : ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
             setAvailableDays(days);
             
-            if (formData.dia && !days.includes(formData.dia)) {
-                setFormData(prev => ({...prev, dia: undefined}));
+            if (currentItem) { // Edit mode
+                if (editFormData.dia && !days.includes(editFormData.dia)) {
+                    setEditFormData(prev => ({...prev, dia: undefined}));
+                }
+            } else { // Create mode
+                 if (createFormState.dia && !days.includes(createFormState.dia)) {
+                    setCreateFormState(prev => ({...prev, dia: ''}));
+                }
             }
         }
-    }, [formData.grupoId, grupos, formData.dia]);
-
-    const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        const data = formData;
-        if (!data.grupoId || !data.materiaId || !data.docenteId || !data.dia || !data.horaInicio || !data.horaFin) { toast({ variant: 'destructive', title: "Error", description: "Rellena todos los campos obligatorios." }); return; }
-        if (currentItem) {
-            setHorarios(prev => prev.map(h => h.id === currentItem.id ? { ...h, ...data } as Horario : h));
-            toast({ title: "Horario actualizado" });
-        } else {
-            setHorarios(prev => [...prev, { ...data, id: new Date().toISOString() } as Horario]);
-            toast({ title: "Horario creado" });
-        }
-        setIsDialogOpen(false);
-        setCurrentItem(null);
-        setFormData({});
-    };
+    }, [createFormState.grupoId, editFormData.grupoId, currentItem, grupos, createFormState.dia, editFormData.dia]);
     
-    const handleFieldChange = (field: keyof Horario, value: string) => {
-        setFormData(prev => ({ ...prev, [field]: value }));
+    const handleCreateSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        const { grupoId, materiaId, dia, horaInicio } = createFormState;
+
+        if (!grupoId || !materiaId || !dia || !horaInicio || hourlyTeachers.every(t => !t)) {
+            toast({ variant: 'destructive', title: "Error", description: "Rellena los campos principales y asigna al menos un docente." });
+            return;
+        }
+
+        const newHorarios: Horario[] = [];
+        const baseDate = new Date();
+        const [startH, startM] = horaInicio.split(':').map(Number);
+        
+        if (isNaN(startH) || isNaN(startM)) {
+            toast({ variant: 'destructive', title: "Error de formato", description: "La hora de inicio no es válida." });
+            return;
+        }
+
+        for (let i = 0; i < 4; i++) {
+            const docenteId = hourlyTeachers[i];
+            if (docenteId) {
+                baseDate.setHours(startH + i, startM, 0, 0);
+                const slotHoraInicio = baseDate.toTimeString().substring(0, 5);
+                
+                baseDate.setHours(startH + i + 1, startM, 0, 0);
+                const slotHoraFin = baseDate.toTimeString().substring(0, 5);
+
+                newHorarios.push({
+                    id: new Date().toISOString() + Math.random(),
+                    grupoId,
+                    materiaId,
+                    docenteId,
+                    dia,
+                    horaInicio: slotHoraInicio,
+                    horaFin: slotHoraFin
+                });
+            }
+        }
+        
+        if (newHorarios.length > 0) {
+            setHorarios(prev => [...prev, ...newHorarios]);
+            toast({ title: "Horario(s) creado(s) exitosamente" });
+        }
+        
+        setIsDialogOpen(false);
+    };
+
+    const handleEditSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+         e.preventDefault();
+        const data = editFormData;
+        if (!currentItem || !data.grupoId || !data.materiaId || !data.docenteId || !data.dia || !data.horaInicio || !data.horaFin) { 
+            toast({ variant: 'destructive', title: "Error", description: "Rellena todos los campos obligatorios." }); 
+            return; 
+        }
+        
+        setHorarios(prev => prev.map(h => h.id === currentItem.id ? { ...h, ...data } as Horario : h));
+        toast({ title: "Horario actualizado" });
+        
+        setIsDialogOpen(false);
     };
 
     const openDialog = (item: Horario | null) => { 
         setCurrentItem(item); 
-        setFormData(item || {});
+        if (item) { // Editing
+            setEditFormData(item);
+        } else { // Creating
+            setCreateFormState({ grupoId: '', materiaId: '', dia: '', horaInicio: '07:00' });
+            setHourlyTeachers(['', '', '', '']);
+        }
         setIsDialogOpen(true); 
     };
 
@@ -417,36 +477,77 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: 
         return Array.from(uniqueMaterias.values());
     }, [materias]);
 
+    const timeSlots = useMemo(() => {
+        if (!createFormState.horaInicio || !/^\d{2}:\d{2}$/.test(createFormState.horaInicio)) return ["", "", "", ""];
+        
+        const slots: string[] = [];
+        const baseDate = new Date();
+        const [startH, startM] = createFormState.horaInicio.split(':').map(Number);
+        
+        for (let i = 0; i < 4; i++) {
+            baseDate.setHours(startH + i, startM, 0, 0);
+            const slotStart = baseDate.toTimeString().substring(0, 5);
+
+            baseDate.setHours(startH + i + 1, startM, 0, 0);
+            const slotEnd = baseDate.toTimeString().substring(0, 5);
+
+            slots.push(`${slotStart} - ${slotEnd}`);
+        }
+        return slots;
+    }, [createFormState.horaInicio]);
+
     return (
         <Card>
             <CardHeader className="flex-row items-center justify-between"><CardTitle>Gestión de Horarios</CardTitle><Button size="sm" onClick={() => openDialog(null)}><PlusCircle className="h-4 w-4 mr-2" />Crear Horario</Button></CardHeader>
             <CardContent>
-                <Table><TableHeader><TableRow><TableHead>Grupo</TableHead><TableHead>Materia</TableHead><TableHead>Docente</TableHead><TableHead>Día</TableHead><TableHead>Horario</TableHead><TableHead>Aula</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
+                <Table><TableHeader><TableRow><TableHead>Grupo</TableHead><TableHead>Materia</TableHead><TableHead>Docente</TableHead><TableHead>Día</TableHead><TableHead>Horario</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
                     <TableBody>
-                        {horarios.map(h => (<TableRow key={h.id}><TableCell>{getNameById(h.grupoId, grupos)}</TableCell><TableCell>{getNameById(h.materiaId, materiaOptions)}</TableCell><TableCell>{getNameById(h.docenteId, docentes)}</TableCell><TableCell>{h.dia}</TableCell><TableCell>{h.horaInicio} - {h.horaFin}</TableCell><TableCell>{h.aula || 'N/A'}</TableCell><TableCell className="text-right">
+                        {horarios.map(h => (<TableRow key={h.id}><TableCell>{getNameById(h.grupoId, grupos)}</TableCell><TableCell>{getNameById(h.materiaId, materiaOptions)}</TableCell><TableCell>{getNameById(h.docenteId, docentes)}</TableCell><TableCell>{h.dia}</TableCell><TableCell>{h.horaInicio} - {h.horaFin}</TableCell><TableCell className="text-right">
                             <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent><DropdownMenuItem onClick={() => openDialog(h)}>Editar</DropdownMenuItem><AlertDialog><AlertDialogTrigger asChild><DropdownMenuItem onSelect={e => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(h.id)} className="bg-destructive text-destructive-foreground">Eliminar</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></DropdownMenuContent></DropdownMenu>
                         </TableCell></TableRow>))}
                     </TableBody>
                 </Table>
             </CardContent>
-            <Dialog open={isDialogOpen} onOpenChange={(isOpen) => { setIsDialogOpen(isOpen); if (!isOpen) setFormData({})}}>
-                <DialogContent className="sm:max-w-[425px]">
+            <Dialog open={isDialogOpen} onOpenChange={(isOpen) => { setIsDialogOpen(isOpen); if (!isOpen) setCurrentItem(null); }}>
+                <DialogContent className="sm:max-w-md">
                     <DialogHeader><DialogTitle>{currentItem ? 'Editar' : 'Crear'} Horario</DialogTitle></DialogHeader>
-                    <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
-                        <Select name="grupoId" value={formData.grupoId} onValueChange={(v) => handleFieldChange('grupoId', v)} required><SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger><SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent></Select>
-                        <Select name="materiaId" value={formData.materiaId} onValueChange={(v) => handleFieldChange('materiaId', v)} required><SelectTrigger><SelectValue placeholder="Selecciona una materia" /></SelectTrigger><SelectContent>{materiaOptions.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent></Select>
-                        <Select name="docenteId" value={formData.docenteId} onValueChange={(v) => handleFieldChange('docenteId', v)} required><SelectTrigger><SelectValue placeholder="Selecciona un docente" /></SelectTrigger><SelectContent>{docentes.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent></Select>
-                        <Select name="dia" value={formData.dia} onValueChange={(v) => handleFieldChange('dia', v)} required disabled={!formData.grupoId}><SelectTrigger><SelectValue placeholder="Selecciona un día" /></SelectTrigger><SelectContent>{availableDays.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="grid gap-2"><Label htmlFor="horaInicio">Hora Inicio</Label><Input id="horaInicio" name="horaInicio" type="time" value={formData.horaInicio} onChange={(e) => handleFieldChange('horaInicio', e.target.value)} required /></div>
-                            <div className="grid gap-2"><Label htmlFor="horaFin">Hora Fin</Label><Input id="horaFin" name="horaFin" type="time" value={formData.horaFin} onChange={(e) => handleFieldChange('horaFin', e.target.value)} required /></div>
-                        </div>
-                        <div className="grid gap-2"><Label htmlFor="aula">Aula (Opcional)</Label><Input id="aula" name="aula" value={formData.aula || ''} onChange={(e) => handleFieldChange('aula', e.target.value)} /></div>
-                        <DialogFooter>
-                            <Button type="button" variant="ghost" onClick={() => { setIsDialogOpen(false); setFormData({}); }}>Cancelar</Button>
-                            <Button type="submit">{currentItem ? 'Guardar Cambios' : 'Crear'}</Button>
-                        </DialogFooter>
-                    </form>
+                    {currentItem ? (
+                        // Edit Form for a single entry
+                        <form onSubmit={handleEditSubmit} className="grid gap-4 py-4">
+                            <Select name="grupoId" value={editFormData.grupoId} onValueChange={(v) => setEditFormData(p => ({...p, grupoId: v}))} required><SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger><SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent></Select>
+                            <Select name="materiaId" value={editFormData.materiaId} onValueChange={(v) => setEditFormData(p => ({...p, materiaId: v}))} required><SelectTrigger><SelectValue placeholder="Selecciona una materia" /></SelectTrigger><SelectContent>{materiaOptions.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent></Select>
+                            <Select name="docenteId" value={editFormData.docenteId} onValueChange={(v) => setEditFormData(p => ({...p, docenteId: v}))} required><SelectTrigger><SelectValue placeholder="Selecciona un docente" /></SelectTrigger><SelectContent>{docentes.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent></Select>
+                            <Select name="dia" value={editFormData.dia} onValueChange={(v) => setEditFormData(p => ({...p, dia: v}))} required disabled={!editFormData.grupoId}><SelectTrigger><SelectValue placeholder="Selecciona un día" /></SelectTrigger><SelectContent>{availableDays.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="grid gap-2"><Label htmlFor="horaInicio">Hora Inicio</Label><Input id="horaInicio" name="horaInicio" type="time" value={editFormData.horaInicio} onChange={(e) => setEditFormData(p => ({...p, horaInicio: e.target.value}))} required /></div>
+                                <div className="grid gap-2"><Label htmlFor="horaFin">Hora Fin</Label><Input id="horaFin" name="horaFin" type="time" value={editFormData.horaFin} onChange={(e) => setEditFormData(p => ({...p, horaFin: e.target.value}))} required /></div>
+                            </div>
+                            <DialogFooter><Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button><Button type="submit">Guardar Cambios</Button></DialogFooter>
+                        </form>
+                    ) : (
+                        // Create Form for a 4-hour block
+                        <form onSubmit={handleCreateSubmit} className="grid gap-4 py-4">
+                            <Select name="grupoId" value={createFormState.grupoId} onValueChange={(v) => setCreateFormState(p => ({...p, grupoId: v, dia: ''}))} required><SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger><SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent></Select>
+                            <Select name="materiaId" value={createFormState.materiaId} onValueChange={(v) => setCreateFormState(p => ({...p, materiaId: v}))} required><SelectTrigger><SelectValue placeholder="Selecciona una materia" /></SelectTrigger><SelectContent>{materiaOptions.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent></Select>
+                            <Select name="dia" value={createFormState.dia} onValueChange={(v) => setCreateFormState(p => ({...p, dia: v}))} required disabled={!createFormState.grupoId}><SelectTrigger><SelectValue placeholder="Selecciona un día" /></SelectTrigger><SelectContent>{availableDays.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select>
+                             <div className="grid gap-2"><Label htmlFor="createHoraInicio">Hora Inicio del Bloque</Label><Input id="createHoraInicio" name="horaInicio" type="time" value={createFormState.horaInicio} onChange={(e) => setCreateFormState(p => ({...p, horaInicio: e.target.value}))} required /></div>
+                            
+                            <Separator className="my-2" />
+                            <Label>Asignación de Docentes por Hora</Label>
+                            
+                            {timeSlots.map((slot, index) => (
+                                <div key={index} className="grid grid-cols-[1fr_2fr] items-center gap-4">
+                                    <Label htmlFor={`teacher-${index}`} className="text-right">{slot}</Label>
+                                    <Select value={hourlyTeachers[index]} onValueChange={(v) => { const newTeachers = [...hourlyTeachers]; newTeachers[index] = v; setHourlyTeachers(newTeachers); }}>
+                                        <SelectTrigger id={`teacher-${index}`}><SelectValue placeholder="Selecciona un docente" /></SelectTrigger>
+                                        <SelectContent>{docentes.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                            ))}
+
+                            <DialogFooter><Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button><Button type="submit">Crear Horario(s)</Button></DialogFooter>
+                        </form>
+                    )}
                 </DialogContent>
             </Dialog>
         </Card>
