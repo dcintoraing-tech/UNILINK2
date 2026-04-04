@@ -307,12 +307,12 @@ export default function UsersPage() {
     <>
       <Card>
         <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                   <CardTitle>Gestión de Usuarios</CardTitle>
                   <CardDescription>Crea, edita, importa y exporta usuarios.</CardDescription>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
                 <Button size="sm" variant="outline" onClick={handleImportClick}>
                     <Upload className="h-3.5 w-3.5 mr-1" />
                     Importar

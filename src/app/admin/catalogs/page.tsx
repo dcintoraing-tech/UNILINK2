@@ -164,9 +164,9 @@ function CatalogContent({ title, items, setItems, onAdd, onEdit, onDelete }: { t
 
     return (
         <Card>
-            <CardHeader className="flex-row items-center justify-between">
+            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle>{title}</CardTitle>
-                <Button size="sm" onClick={() => handleOpenDialog()}> <PlusCircle className="h-4 w-4 mr-2" /> Agregar </Button>
+                <Button className="w-full sm:w-auto" size="sm" onClick={() => handleOpenDialog()}> <PlusCircle className="h-4 w-4 mr-2" /> Agregar </Button>
             </CardHeader>
             <CardContent>
                 <Table>
@@ -269,9 +269,9 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
 
     return (
         <Card>
-            <CardHeader className="flex-row items-center justify-between">
+            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle>Grupos</CardTitle>
-                <Button size="sm" onClick={() => handleOpenDialog()} disabled={carreras.length === 0}>
+                <Button size="sm" onClick={() => handleOpenDialog()} disabled={carreras.length === 0} className="w-full sm:w-auto">
                      <PlusCircle className="h-4 w-4 mr-2" /> Agregar Grupo
                 </Button>
             </CardHeader>
@@ -416,9 +416,9 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
 
     return (
         <Card>
-            <CardHeader className="flex-row items-center justify-between">
+            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle>Asignación de Materias</CardTitle>
-                <Button size="sm" onClick={() => openDialog(null)}><PlusCircle className="h-4 w-4 mr-2" />Asignar Materia</Button>
+                <Button size="sm" onClick={() => openDialog(null)} className="w-full sm:w-auto"><PlusCircle className="h-4 w-4 mr-2" />Asignar Materia</Button>
             </CardHeader>
             <CardContent>
                 <Table>
@@ -598,12 +598,12 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
     return (
         <Card>
             <CardHeader>
-                <div className="flex justify-between items-start">
+                <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-start">
                     <div>
                         <CardTitle>Gestión de Horarios</CardTitle>
                         <CardDescription>Crea y visualiza los horarios semanales por grupo.</CardDescription>
                     </div>
-                    <Button size="sm" onClick={() => openDialog(null)}><PlusCircle className="h-4 w-4 mr-2" />Crear Horario</Button>
+                    <Button size="sm" onClick={() => openDialog(null)} className="w-full sm:w-auto"><PlusCircle className="h-4 w-4 mr-2" />Crear Horario</Button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
                     <Select value={filterCarrera} onValueChange={setFilterCarrera}>

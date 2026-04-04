@@ -312,13 +312,13 @@ export default function StudentsPage() {
         <>
             <Card>
                 <CardHeader>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <CardTitle>Gestión de Estudiantes</CardTitle>
                             <CardDescription>Consulta, busca y registra nuevos estudiantes.</CardDescription>
                         </div>
-                         <div className="flex flex-wrap items-center gap-2">
-                            <div className="relative flex-1 md:grow-0">
+                         <div className="flex w-full flex-col items-start gap-2 sm:w-auto sm:flex-row sm:items-center">
+                            <div className="relative w-full sm:w-auto flex-1 md:grow-0">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     type="search"
@@ -328,7 +328,7 @@ export default function StudentsPage() {
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
                             </div>
-                            <Button size="sm" onClick={() => setIsDialogOpen(true)}>
+                            <Button size="sm" onClick={() => setIsDialogOpen(true)} className="w-full sm:w-auto">
                                 <PlusCircle className="h-3.5 w-3.5 mr-1" />
                                 <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Registrar Estudiante</span>
                             </Button>

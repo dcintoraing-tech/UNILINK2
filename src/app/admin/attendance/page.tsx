@@ -323,12 +323,12 @@ export default function AttendancePage() {
         <div className="grid gap-6">
             <Card>
                 <CardHeader>
-                    <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <CardTitle>Pase de Lista por Reconocimiento Facial</CardTitle>
                             <CardDescription>Inicia el proceso para marcar la asistencia de los estudiantes.</CardDescription>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                              <Link href="/admin/dashboard" passHref><Button variant="outline" size="lg"><ArrowLeft className="mr-2 h-4 w-4" />Regresar</Button></Link>
                             <Button onClick={handleToggleAttendance} size="lg" disabled={allStudents.length === 0}>
                                 {isTakingAttendance ? 'Detener Pase de Lista' : 'Iniciar Pase de Lista'}

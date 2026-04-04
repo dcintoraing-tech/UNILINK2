@@ -66,12 +66,12 @@ export default function ReportsPage() {
             </Card>
 
             <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
+                <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                         <CardTitle>Comparativa de Grupos</CardTitle>
                         <CardDescription>Promedio de calificaciones mensuales</CardDescription>
                     </div>
-                    <Button size="sm">Exportar a Excel</Button>
+                    <Button size="sm" className="w-full sm:w-auto">Exportar a Excel</Button>
                 </CardHeader>
                 <CardContent>
                     <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
