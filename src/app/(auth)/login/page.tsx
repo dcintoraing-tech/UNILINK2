@@ -46,6 +46,22 @@ export default function LoginPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       if (typeof window !== 'undefined') {
+        // Handle Jefe de Grupo login
+        if (values.username === 'jefe' && values.password === 'jefe') {
+            const userProfile = {
+                uid: "jefe-user",
+                name: "Jefe de Grupo",
+                role: "Jefe",
+            };
+            sessionStorage.setItem("unilink-jefe-user", JSON.stringify(userProfile));
+            toast({
+                title: "Inicio de sesión exitoso",
+                description: "Redirigiendo al dashboard de jefe...",
+            });
+            router.push("/jefe/dashboard");
+            return;
+        }
+        
         const storedUsersRaw = window.localStorage.getItem('unilink-users');
         const users = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
         let userToSession;
@@ -125,7 +141,7 @@ export default function LoginPage() {
                   <div className="relative">
                     <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <FormControl>
-                      <Input placeholder="tu@ejemplo.com" {...field} className="pl-10"/>
+                      <Input placeholder="tu@ejemplo.com o 'jefe'" {...field} className="pl-10"/>
                     </FormControl>
                   </div>
                   <FormMessage />

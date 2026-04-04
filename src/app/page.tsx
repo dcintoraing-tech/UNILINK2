@@ -14,19 +14,13 @@ export default function Home() {
         <Card className="w-full shadow-lg">
           <CardHeader className="text-center">
             <CardTitle className="text-3xl font-bold tracking-tight">Bienvenido a UniLink Access</CardTitle>
-            <CardDescription>Selecciona tu tipo de acceso para continuar.</CardDescription>
+            <CardDescription>La plataforma para la gestión académica.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
               <Link href="/login" passHref>
                 <Button className="w-full justify-between" size="lg">
-                    <span>Acceso Personal (Docentes / Admin)</span>
+                    <span>Iniciar Sesión</span>
                     <ArrowRight className="h-5 w-5" />
-                </Button>
-              </Link>
-              <Link href="/jefe/login" passHref>
-                <Button className="w-full justify-between" size="lg" variant="secondary">
-                   <span>Acceso Jefe de Grupo</span>
-                   <ArrowRight className="h-5 w-5" />
                 </Button>
               </Link>
           </CardContent>
