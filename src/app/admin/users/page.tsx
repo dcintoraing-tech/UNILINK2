@@ -234,8 +234,12 @@ export default function UsersPage() {
             const worksheet = workbook.Sheets[sheetName];
             const json = XLSX.utils.sheet_to_json<any>(worksheet);
 
+            // Read directly from localStorage to ensure we have the latest user list
+            const storedUsersRaw = window.localStorage.getItem('unilink-users');
+            const currentUsers: User[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
+            const existingEmails = new Set(currentUsers.map(u => u.email));
+
             const newUsers: User[] = [];
-            const existingEmails = new Set(users.map(u => u.email));
             let skippedCount = 0;
 
             for (const item of json) {
@@ -265,7 +269,7 @@ export default function UsersPage() {
             }
             
             if (newUsers.length > 0) {
-                 setUsers(prev => [...prev, ...newUsers]);
+                 setUsers([...currentUsers, ...newUsers]);
                  toast({ title: "Importación exitosa", description: `${newUsers.length} nuevos usuarios agregados. ${skippedCount > 0 ? `${skippedCount} duplicados omitidos.` : ''}` });
             } else {
                  toast({ title: "Importación finalizada", description: `No se agregaron nuevos usuarios. ${skippedCount > 0 ? `${skippedCount} duplicados omitidos.` : ''}` });
