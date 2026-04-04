@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Combobox } from '@/components/ui/combobox';
+import { Progress } from '@/components/ui/progress';
 
 
 // --- DATA PERSISTENCE HOOK ---
@@ -558,9 +559,13 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
 function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, carreras }: { horarios: Horario[], setHorarios: (value: Horario[] | ((val: Horario[]) => Horario[])) => void, grupos: Grupo[], materias: AsignacionMateria[], docentes: User[], carreras: CatalogItem[] }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [selectedGroup, setSelectedGroup] = useState<Grupo | null>(null);
-    const [editingSchedule, setEditingSchedule] = useState<Record<string, Horario | null>>({});
     const { toast } = useToast();
 
+    // State for wizard flow
+    const [currentStep, setCurrentStep] = useState({ diaIndex: 0, bloqueIndex: 0 });
+    const [scheduleData, setScheduleData] = useState<Record<string, (HorarioBlock | undefined)[]>>({});
+
+    // Filters
     const [filterCarrera, setFilterCarrera] = useState('all');
     const [filterPeriodo, setFilterPeriodo] = useState('all');
 
@@ -588,67 +593,21 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
         return date.toTimeString().slice(0, 5);
     };
 
-    const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        const formData = new FormData(e.currentTarget);
-        const grupoId = formData.get('grupoId') as string;
-
-        if (!grupoId) {
-            toast({ variant: 'destructive', title: "Error", description: "Debes seleccionar un grupo." });
-            return;
-        }
-
-        const newHorariosForGroup: Horario[] = [];
-        
-        diasSemana.forEach(dia => {
-            const blocks: (HorarioBlock | undefined)[] = [];
-            let dayHasBlocks = false;
-
-            for (let i = 0; i < 4; i++) {
-                const docenteId = formData.get(`${dia}-docenteId-${i}`) as string;
-                const materiaAsignacionId = formData.get(`${dia}-materiaAsignacionId-${i}`) as string;
-                const horaInicio = formData.get(`${dia}-horaInicio-${i}`) as string;
-                const duracion = formData.get(`${dia}-duracion-${i}`) as string;
-
-                if (docenteId && materiaAsignacionId && horaInicio && duracion) {
-                    blocks.push({ docenteId, materiaAsignacionId, horaInicio, duracion });
-                    dayHasBlocks = true;
-                } else {
-                    blocks.push(undefined);
-                }
-            }
-            if (dayHasBlocks) {
-                newHorariosForGroup.push({
-                    id: `${grupoId}-${dia}`,
-                    grupoId,
-                    dia,
-                    blocks,
-                });
-            }
-        });
-        
-        setHorarios(prev => {
-            const otherHorarios = prev.filter(h => h.grupoId !== grupoId);
-            return [...otherHorarios, ...newHorariosForGroup];
-        });
-
-        toast({ title: "Horario guardado", description: `Se ha guardado el horario para el grupo.` });
-        setIsDialogOpen(false);
-        setSelectedGroup(null);
-    };
-    
     const openDialog = (group: Grupo | null) => { 
-        setSelectedGroup(group);
-        if (group) {
+        if (group) { // Editing existing schedule
+            setSelectedGroup(group);
             const groupSchedule = horarios.filter(h => h.grupoId === group.id);
-            const scheduleByDay: Record<string, Horario | null> = {};
+            const scheduleByDay: Record<string, (HorarioBlock | undefined)[]> = {};
             diasSemana.forEach(dia => {
-                scheduleByDay[dia] = groupSchedule.find(h => h.dia === dia) || null;
+                const diaSchedule = groupSchedule.find(h => h.dia === dia);
+                scheduleByDay[dia] = diaSchedule ? diaSchedule.blocks : [undefined, undefined, undefined, undefined];
             });
-            setEditingSchedule(scheduleByDay);
-        } else {
-            setEditingSchedule({});
+            setScheduleData(scheduleByDay);
+        } else { // Creating new schedule
+            setSelectedGroup(null);
+            setScheduleData({});
         }
+        setCurrentStep({ diaIndex: 0, bloqueIndex: 0 });
         setIsDialogOpen(true); 
     };
 
@@ -666,6 +625,87 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
     const docenteOptions = useMemo(() => docentes.map(d => ({ value: d.id, label: d.name })), [docentes]);
     const materiaOptions = useMemo(() => materias.map(m => ({ value: m.id, label: `${m.materia} (${getNameById(m.carreraId, carreras)})` })), [materias, carreras]);
 
+    // --- WIZARD LOGIC ---
+
+    const handleNextStep = () => {
+        setCurrentStep(prev => {
+            if (prev.bloqueIndex < 3) {
+                return { ...prev, bloqueIndex: prev.bloqueIndex + 1 };
+            }
+            if (prev.diaIndex < diasSemana.length - 1) {
+                return { diaIndex: prev.diaIndex + 1, bloqueIndex: 0 };
+            }
+            return prev;
+        });
+    };
+
+    const handlePrevStep = () => {
+        setCurrentStep(prev => {
+            if (prev.bloqueIndex > 0) {
+                return { ...prev, bloqueIndex: prev.bloqueIndex - 1 };
+            }
+            if (prev.diaIndex > 0) {
+                return { diaIndex: prev.diaIndex - 1, bloqueIndex: 3 };
+            }
+            return prev;
+        });
+    };
+    
+    const handleBlockDataChange = (field: keyof HorarioBlock, value: string) => {
+        const { diaIndex, bloqueIndex } = currentStep;
+        const dia = diasSemana[diaIndex];
+
+        setScheduleData(prev => {
+            const newData = { ...prev };
+            if (!newData[dia]) {
+                newData[dia] = [undefined, undefined, undefined, undefined];
+            }
+            const blocksForDay = [...newData[dia]];
+            let block = blocksForDay[bloqueIndex];
+            
+            if (!block) {
+                block = { docenteId: '', materiaAsignacionId: '', horaInicio: '', duracion: '' };
+            }
+
+            if (!value) {
+                const { [field]: _, ...rest } = block as HorarioBlock;
+                blocksForDay[bloqueIndex] = Object.keys(rest).length > 0 ? (rest as HorarioBlock) : undefined;
+            } else {
+                 (block as any)[field] = value;
+                 blocksForDay[bloqueIndex] = block;
+            }
+
+            newData[dia] = blocksForDay;
+            return newData;
+        });
+    };
+
+    const handleSave = () => {
+        const groupId = selectedGroup?.id;
+        if (!groupId) return;
+
+        const newHorariosForGroup = diasSemana.map(dia => {
+            const blocks = scheduleData[dia] || [];
+            const validBlocks = blocks.map(block => 
+                (block && block.docenteId && block.materiaAsignacionId && block.horaInicio && block.duracion) ? block : undefined
+            );
+            return {
+                id: `${groupId}-${dia}`,
+                grupoId: groupId,
+                dia,
+                blocks: validBlocks,
+            };
+        }).filter(horario => horario.blocks.some(b => b !== undefined));
+
+        setHorarios(prev => {
+            const otherHorarios = prev.filter(h => h.grupoId !== groupId);
+            return [...otherHorarios, ...newHorariosForGroup];
+        });
+
+        toast({ title: "Horario guardado correctamente" });
+        setIsDialogOpen(false);
+    };
+
     return (
         <Card>
             <CardHeader>
@@ -674,9 +714,9 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
                         <CardTitle>Gestión de Horarios</CardTitle>
                         <CardDescription>Crea y visualiza los horarios semanales por grupo.</CardDescription>
                     </div>
-                    <Button size="sm" onClick={() => openDialog(null)} className="w-full sm:w-auto"><PlusCircle className="h-4 w-4 mr-2" />Crear Horario</Button>
+                    <Button size="sm" onClick={() => openDialog(null)} disabled={grupos.length === 0} className="w-full sm:w-auto"><PlusCircle className="h-4 w-4 mr-2" />Crear Horario</Button>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
                     <Select value={filterCarrera} onValueChange={setFilterCarrera}>
                         <SelectTrigger><SelectValue placeholder="Filtrar por carrera..." /></SelectTrigger>
                         <SelectContent>
@@ -699,7 +739,7 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
             <CardContent className="space-y-6">
                 {displayedGrupos.map(group => {
                      const groupHorarios = horarios.filter(h => h.grupoId === group.id);
-                     if (groupHorarios.length === 0 && selectedGroup?.id !== group.id && !isDialogOpen) return null; // Hide if no schedule unless being edited
+                     if (groupHorarios.length === 0) return null;
                      const carrera = carreras.find(c => c.id === group.carreraId);
 
                      return (
@@ -723,38 +763,41 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Bloque</TableHead>
-                                            {diasSemana.map(dia => <TableHead key={dia} className="text-center">{dia}</TableHead>)}
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {bloques.map(bloqueIndex => (
-                                            <TableRow key={bloqueIndex}>
-                                                <TableCell className="font-semibold">Bloque {bloqueIndex + 1}</TableCell>
-                                                {diasSemana.map(dia => {
-                                                    const horarioDia = groupHorarios.find(h => h.dia === dia);
-                                                    const block = horarioDia?.blocks[bloqueIndex];
-                                                    return (
-                                                        <TableCell key={dia}>
-                                                            {block ? (
-                                                                <div className="text-xs p-2 rounded-md bg-muted border min-h-[60px]">
-                                                                    <div className="font-bold text-foreground">{block.horaInicio} - {calculateEndTime(block.horaInicio, parseInt(block.duracion))}</div>
-                                                                    <div className="font-semibold">{getMateriaName(block.materiaAsignacionId)}</div>
-                                                                    <div className="text-muted-foreground">{getNameById(block.docenteId, docentes)}</div>
-                                                                </div>
-                                                            ) : (
-                                                                <div className="text-xs text-muted-foreground text-center p-2 min-h-[60px] flex items-center justify-center">Libre</div>
-                                                            )}
-                                                        </TableCell>
-                                                    )
-                                                })}
+                                <ScrollArea className="w-full whitespace-nowrap">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Bloque</TableHead>
+                                                {diasSemana.map(dia => <TableHead key={dia} className="text-center">{dia}</TableHead>)}
                                             </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {bloques.map(bloqueIndex => (
+                                                <TableRow key={bloqueIndex}>
+                                                    <TableCell className="font-semibold">Bloque {bloqueIndex + 1}</TableCell>
+                                                    {diasSemana.map(dia => {
+                                                        const horarioDia = groupHorarios.find(h => h.dia === dia);
+                                                        const block = horarioDia?.blocks[bloqueIndex];
+                                                        return (
+                                                            <TableCell key={dia} className="min-w-[200px]">
+                                                                {block ? (
+                                                                    <div className="text-xs p-2 rounded-md bg-muted border min-h-[60px]">
+                                                                        <div className="font-bold text-foreground">{block.horaInicio} - {calculateEndTime(block.horaInicio, parseInt(block.duracion))}</div>
+                                                                        <div className="font-semibold truncate">{getMateriaName(block.materiaAsignacionId)}</div>
+                                                                        <div className="text-muted-foreground truncate">{getNameById(block.docenteId, docentes)}</div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="text-xs text-muted-foreground text-center p-2 min-h-[60px] flex items-center justify-center">Libre</div>
+                                                                )}
+                                                            </TableCell>
+                                                        )
+                                                    })}
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                    <div className="h-4"></div>
+                                </ScrollArea>
                             </CardContent>
                         </Card>
                      )
@@ -762,84 +805,59 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
                 {displayedGrupos.length === 0 && <p className="text-center text-muted-foreground">No hay horarios que coincidan con los filtros seleccionados.</p>}
             </CardContent>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="sm:max-w-6xl flex flex-col max-h-[90vh]">
+                <DialogContent className="sm:max-w-2xl">
                     <DialogHeader>
-                        <DialogTitle>{selectedGroup ? 'Editar' : 'Crear'} Horario Semanal</DialogTitle>
-                        <DialogDescription>Configura los bloques de clase para cada día de la semana.</DialogDescription>
+                        <DialogTitle>{selectedGroup ? `Editando Horario: ${selectedGroup.name}` : 'Crear Horario Semanal'}</DialogTitle>
                     </DialogHeader>
-                    <form id="horario-form" onSubmit={handleFormSubmit} className="flex-1 min-h-0">
-                        <ScrollArea className="h-full pr-4">
-                            <div className="grid gap-4 py-4">
-                                <div className="grid gap-2">
-                                    <Label>Grupo</Label>
-                                    <Select name="grupoId" defaultValue={selectedGroup?.id} required disabled={!!selectedGroup}>
-                                        <SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger>
-                                        <SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent>
-                                    </Select>
-                                </div>
-                                <Tabs defaultValue="Lunes" className="w-full">
-                                    <TabsList className="grid w-full grid-cols-5">
-                                        {diasSemana.map(dia => <TabsTrigger key={dia} value={dia}>{dia}</TabsTrigger>)}
-                                    </TabsList>
-                                    {diasSemana.map(dia => (
-                                        <TabsContent key={dia} value={dia}>
-                                            <div className="space-y-4 mt-4">
-                                                {bloques.map(i => (
-                                                    <div key={i} className="grid gap-4 border p-4 rounded-lg bg-muted/50">
-                                                        <h4 className="font-semibold">Bloque {i + 1}</h4>
-                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                            <div className="grid gap-2">
-                                                                <Label>Materia</Label>
-                                                                <Combobox
-                                                                    name={`${dia}-materiaAsignacionId-${i}`}
-                                                                    defaultValue={editingSchedule[dia]?.blocks[i]?.materiaAsignacionId}
-                                                                    options={materiaOptions}
-                                                                    placeholder="Selecciona una materia"
-                                                                    searchPlaceholder="Buscar materia..."
-                                                                    emptyMessage="No se encontró la materia."
-                                                                />
-                                                            </div>
-                                                            <div className="grid gap-2">
-                                                                <Label>Docente</Label>
-                                                                <Combobox
-                                                                    name={`${dia}-docenteId-${i}`}
-                                                                    defaultValue={editingSchedule[dia]?.blocks[i]?.docenteId}
-                                                                    options={docenteOptions}
-                                                                    placeholder="Selecciona un docente"
-                                                                    searchPlaceholder="Buscar docente..."
-                                                                    emptyMessage="No se encontró el docente."
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                            <div className="grid gap-2">
-                                                                <Label htmlFor={`${dia}-horaInicio-${i}`}>Hora Inicio</Label>
-                                                                <Input id={`${dia}-horaInicio-${i}`} name={`${dia}-horaInicio-${i}`} type="time" defaultValue={editingSchedule[dia]?.blocks[i]?.horaInicio} />
-                                                            </div>
-                                                            <div className="grid gap-2">
-                                                                <Label htmlFor={`${dia}-duracion-${i}`}>Duración</Label>
-                                                                <Select name={`${dia}-duracion-${i}`} defaultValue={editingSchedule[dia]?.blocks[i]?.duracion}>
-                                                                    <SelectTrigger id={`${dia}-duracion-${i}`}><SelectValue placeholder="Selecciona duración" /></SelectTrigger>
-                                                                    <SelectContent>
-                                                                        <SelectItem value="1">1 hora</SelectItem>
-                                                                        <SelectItem value="2">2 horas</SelectItem>
-                                                                    </SelectContent>
-                                                                </Select>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                ))}
+                    {!selectedGroup ? (
+                        <div className="pt-4">
+                            <Label>Grupo</Label>
+                            <Select onValueChange={(groupId) => setSelectedGroup(grupos.find(g => g.id === groupId) || null)}>
+                                <SelectTrigger><SelectValue placeholder="Selecciona un grupo para empezar" /></SelectTrigger>
+                                <SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent>
+                            </Select>
+                            <DialogFooter className="pt-8">
+                                <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                            </DialogFooter>
+                        </div>
+                    ) : (
+                        (() => {
+                            const { diaIndex, bloqueIndex } = currentStep;
+                            const dia = diasSemana[diaIndex];
+                            const currentBlockData = scheduleData[dia]?.[bloqueIndex];
+                            const isFirstStep = diaIndex === 0 && bloqueIndex === 0;
+                            const isLastStep = diaIndex === diasSemana.length - 1 && bloqueIndex === 3;
+                            
+                            return (
+                                <>
+                                    <div className="my-4 space-y-2">
+                                        <Progress value={((diaIndex * 4 + bloqueIndex + 1) / (diasSemana.length * 4)) * 100} />
+                                        <p className="text-center text-sm text-muted-foreground">{`Paso ${diaIndex * 4 + bloqueIndex + 1} / ${diasSemana.length * 4}`}: <strong>{dia} - Bloque {bloqueIndex + 1}</strong></p>
+                                    </div>
+                                    <div className="grid gap-4 py-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div className="grid gap-2"><Label>Materia</Label><Combobox value={currentBlockData?.materiaAsignacionId || ''} onValueChange={(value) => handleBlockDataChange('materiaAsignacionId', value)} options={materiaOptions} placeholder="Selecciona una materia" searchPlaceholder="Buscar materia..." /></div>
+                                            <div className="grid gap-2"><Label>Docente</Label><Combobox value={currentBlockData?.docenteId || ''} onValueChange={(value) => handleBlockDataChange('docenteId', value)} options={docenteOptions} placeholder="Selecciona un docente" searchPlaceholder="Buscar docente..." /></div>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div className="grid gap-2"><Label>Hora Inicio</Label><Input type="time" value={currentBlockData?.horaInicio || ''} onChange={(e) => handleBlockDataChange('horaInicio', e.target.value)} /></div>
+                                            <div className="grid gap-2"><Label>Duración</Label><Select value={currentBlockData?.duracion || ''} onValueChange={(value) => handleBlockDataChange('duracion', value)}><SelectTrigger><SelectValue placeholder="Selecciona duración" /></SelectTrigger><SelectContent><SelectItem value="1">1 hora</SelectItem><SelectItem value="2">2 horas</SelectItem></SelectContent></Select></div>
+                                        </div>
+                                    </div>
+                                    <DialogFooter className="pt-4 border-t">
+                                        <div className='flex justify-between w-full items-center'>
+                                            <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                                            <div className='flex items-center gap-2'>
+                                                <Button type="button" variant="outline" onClick={handlePrevStep} disabled={isFirstStep}>Anterior</Button>
+                                                {!isLastStep && <Button type="button" onClick={handleNextStep}>Siguiente</Button>}
+                                                {isLastStep && <Button type="button" onClick={handleSave}>Guardar Horario</Button>}
                                             </div>
-                                        </TabsContent>
-                                    ))}
-                                </Tabs>
-                            </div>
-                        </ScrollArea>
-                    </form>
-                    <DialogFooter className="pt-4 border-t">
-                        <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                        <Button type="submit" form="horario-form">{selectedGroup ? 'Guardar Cambios' : 'Crear Horario'}</Button>
-                    </DialogFooter>
+                                        </div>
+                                    </DialogFooter>
+                                </>
+                            )
+                        })()
+                    )}
                 </DialogContent>
             </Dialog>
         </Card>
