@@ -5,6 +5,12 @@
       "description": "A placeholder for a user's avatar.",
       "imageUrl": "https://picsum.photos/seed/user-avatar/128/128",
       "imageHint": "portrait person"
+    },
+    {
+      "id": "student-placeholder",
+      "description": "A placeholder for a student's photo when none has been captured.",
+      "imageUrl": "https://picsum.photos/seed/student-placeholder/200/200",
+      "imageHint": "placeholder person"
     }
   ]
 }
