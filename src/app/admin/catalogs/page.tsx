@@ -674,6 +674,24 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
     };
     
     const handleNextStep = () => {
+        const { diaIndex, bloqueIndex } = currentStep;
+        const dia = diasSemana[diaIndex];
+        const currentBlock = scheduleData[dia]?.[bloqueIndex];
+
+        // A block is "touched" if any field has a value.
+        if (currentBlock && Object.values(currentBlock).some(val => !!val)) {
+            const { docenteId, materiaAsignacionId, horaInicio, duracion } = currentBlock;
+            // A touched block is invalid if any of the required fields are missing.
+            if (!docenteId || !materiaAsignacionId || !horaInicio || !duracion) {
+                 toast({
+                    variant: "destructive",
+                    title: "Campos incompletos",
+                    description: "Debes completar todos los campos del bloque o dejarlo completamente vacío para continuar.",
+                });
+                return; // Stop navigation
+            }
+        }
+
         setCurrentStep(prev => {
             let searchIndex = (prev.diaIndex * 4 + prev.bloqueIndex) + 1;
             const totalBlocks = diasSemana.length * 4;
@@ -940,7 +958,3 @@ export default function CatalogsPage() {
         </Tabs>
     );
 }
-
-    
-
-    
