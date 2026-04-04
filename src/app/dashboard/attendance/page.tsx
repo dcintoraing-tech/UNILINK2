@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { User as UserIcon, Camera, Users } from 'lucide-react';
+import { User as UserIcon, Camera, Users, ArrowLeft } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -13,38 +14,62 @@ import { useToast } from '@/hooks/use-toast';
 
 // --- DATA PERSISTENCE & TYPES (Copied for standalone functionality) ---
 
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
-  const [storedValue, setStoredValue] = useState<T>(initialValue);
-  const [isInitialized, setIsInitialized] = useState(false);
+const useLocalStorage = <T,>(key: string, initialValue: T) => {
+    const [storedValue, setStoredValue] = useState<T>(initialValue);
+    const [isInitialized, setIsInitialized] = useState(false);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const item = window.localStorage.getItem(key);
-        setStoredValue(item ? JSON.parse(item) : initialValue);
-      } catch (error) {
-        console.log(error);
-        setStoredValue(initialValue);
-      }
-      setIsInitialized(true); 
-    }
-  }, [key, initialValue]);
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const item = window.localStorage.getItem(key);
+                if (item) {
+                    setStoredValue(JSON.parse(item));
+                }
+            } catch (error) {
+                console.log(error);
+            }
+            setIsInitialized(true); 
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key]);
 
-  const setValue = (value: T | ((val: T) => T)) => {
-    if (!isInitialized) return;
-    try {
-      const valueToStore = value instanceof Function ? value(storedValue) : value;
-      setStoredValue(valueToStore);
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(key, JSON.stringify(valueToStore));
-      }
-    } catch (error) {
-      console.log(error);
-    }
-  };
+    const setValue = (value: T | ((val: T) => T)) => {
+        if (!isInitialized) return;
+        try {
+            setStoredValue(currentStoredValue => {
+                const valueToStore = value instanceof Function ? value(currentStoredValue) : value;
+                if (typeof window !== 'undefined') {
+                    window.localStorage.setItem(key, JSON.stringify(valueToStore));
+                    window.dispatchEvent(new StorageEvent('storage', { key, newValue: JSON.stringify(valueToStore) }));
+                }
+                return valueToStore;
+            });
+        } catch (error) {
+            console.log(error);
+        }
+    };
+    
+    useEffect(() => {
+        const handleStorageChange = (e: StorageEvent) => {
+            if (e.key === key && e.newValue) {
+                 try {
+                    setStoredValue(JSON.parse(e.newValue));
+                } catch (error) {
+                    console.log(error);
+                }
+            }
+        };
 
-  return [storedValue, setValue];
+        window.addEventListener('storage', handleStorageChange);
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+        };
+    }, [key]);
+
+
+    return [storedValue, setValue] as const;
 };
+
 
 interface Student {
     id: string;
@@ -87,6 +112,7 @@ export default function AttendancePage() {
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
+    const lastRecognitionTime = useRef<number>(0);
 
     const stopCamera = useCallback(() => {
         if (streamRef.current) {
@@ -96,9 +122,8 @@ export default function AttendancePage() {
         if (videoRef.current) {
             videoRef.current.srcObject = null;
         }
-        setHasCameraPermission(null);
     }, []);
-
+    
     const handleRecognition = useCallback(() => {
         if (!videoRef.current || allStudents.length === 0) return;
 
@@ -147,6 +172,7 @@ export default function AttendancePage() {
     useEffect(() => {
         if (!isTakingAttendance) {
             stopCamera();
+            setHasCameraPermission(null);
             return;
         }
 
@@ -192,7 +218,14 @@ export default function AttendancePage() {
             return;
         }
 
-        const recognitionInterval = setInterval(handleRecognition, 2000);
+        const recognitionInterval = setInterval(() => {
+            const now = Date.now();
+            if(now - lastRecognitionTime.current > 2000) {
+                 handleRecognition();
+                 lastRecognitionTime.current = now;
+            }
+        }, 500);
+        
         const progressInterval = setInterval(() => {
             setScanProgress(prev => (prev >= 100 ? 0 : prev + 5));
         }, 100);
@@ -214,6 +247,17 @@ export default function AttendancePage() {
     const presentStudentsList = allStudents.filter(s => identifiedStudents.has(s.id));
 
     const renderCameraState = () => {
+        if (allStudents.length === 0) {
+             return (
+                <div className="flex flex-col items-center gap-4 text-muted-foreground">
+                    <Users className="w-16 h-16" />
+                    <p>No hay estudiantes registrados para pasar lista.</p>
+                    <Link href="/admin/students" passHref>
+                        <Button>Registrar Estudiantes</Button>
+                    </Link>
+                </div>
+            );
+        }
         if (!isTakingAttendance) {
             return (
                 <div className="flex flex-col items-center gap-4 text-muted-foreground">
@@ -248,12 +292,21 @@ export default function AttendancePage() {
                             <CardTitle>Pase de Lista por Reconocimiento Facial</CardTitle>
                             <CardDescription>Inicia el proceso para marcar la asistencia de los estudiantes automáticamente.</CardDescription>
                         </div>
-                        <Button 
-                            onClick={handleToggleAttendance}
-                            size="lg"
-                        >
-                            {isTakingAttendance ? 'Detener Pase de Lista' : 'Iniciar Pase de Lista'}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                             <Link href="/admin/dashboard" passHref>
+                                <Button variant="outline" size="lg">
+                                    <ArrowLeft className="mr-2 h-4 w-4" />
+                                    Regresar
+                                </Button>
+                            </Link>
+                            <Button 
+                                onClick={handleToggleAttendance}
+                                size="lg"
+                                disabled={allStudents.length === 0}
+                            >
+                                {isTakingAttendance ? 'Detener Pase de Lista' : 'Iniciar Pase de Lista'}
+                            </Button>
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -265,7 +318,7 @@ export default function AttendancePage() {
                             muted
                             playsInline
                         />
-                        <div className={cn("absolute inset-0 flex items-center justify-center", isTakingAttendance && hasCameraPermission ? 'hidden' : 'flex')}>
+                        <div className={cn("absolute inset-0 flex items-center justify-center p-4", isTakingAttendance && hasCameraPermission ? 'hidden' : 'flex')}>
                             {renderCameraState()}
                         </div>
                         
