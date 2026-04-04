@@ -673,23 +673,28 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
         });
     };
     
-    const handleNextStep = () => {
-        const { diaIndex, bloqueIndex } = currentStep;
-        const dia = diasSemana[diaIndex];
-        const currentBlock = scheduleData[dia]?.[bloqueIndex];
+    const { diaIndex, bloqueIndex } = currentStep;
+    const dia = diasSemana[diaIndex];
+    const currentBlockData = scheduleData[dia]?.[bloqueIndex];
 
-        // A block is "touched" if any field has a value.
-        if (currentBlock && Object.values(currentBlock).some(val => !!val)) {
-            const { docenteId, materiaAsignacionId, horaInicio, duracion } = currentBlock;
-            // A touched block is invalid if any of the required fields are missing.
-            if (!docenteId || !materiaAsignacionId || !horaInicio || !duracion) {
-                 toast({
-                    variant: "destructive",
-                    title: "Campos incompletos",
-                    description: "Debes completar todos los campos del bloque o dejarlo completamente vacío para continuar.",
-                });
-                return; // Stop navigation
-            }
+    const currentBlockIsValid = useMemo(() => {
+        if (!currentBlockData) return true; // Empty is valid.
+        const isPartiallyFilled = Object.values(currentBlockData).some(v => v);
+        if (!isPartiallyFilled) return true; // Completely empty is valid.
+
+        const { docenteId, materiaAsignacionId, horaInicio, duracion } = currentBlockData;
+        const isFullyFilled = docenteId && materiaAsignacionId && horaInicio && duracion;
+        return !!isFullyFilled;
+    }, [currentBlockData]);
+
+    const handleNextStep = () => {
+        if (!currentBlockIsValid) {
+             toast({
+                variant: "destructive",
+                title: "Campos incompletos",
+                description: "Debes completar todos los campos del bloque o dejarlo completamente vacío para continuar.",
+            });
+            return;
         }
 
         setCurrentStep(prev => {
@@ -845,8 +850,8 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
                                                                     {block ? (
                                                                         <div className={`text-xs p-2 rounded-md bg-muted border min-w-[180px] max-w-[180px] flex flex-col ${block.duracion === '2' ? 'h-full min-h-[125px] justify-center' : 'min-h-[60px]'}`}>
                                                                             <div className="font-bold text-foreground">{block.horaInicio} - {calculateEndTime(block.horaInicio, parseInt(block.duracion))}</div>
-                                                                            <p className="font-semibold truncate">{getMateriaName(block.materiaAsignacionId)}</p>
-                                                                            <p className="text-muted-foreground truncate">{getNameById(block.docenteId, docentes)}</p>
+                                                                            <p className="w-full font-semibold truncate">{getMateriaName(block.materiaAsignacionId)}</p>
+                                                                            <p className="w-full text-muted-foreground truncate">{getNameById(block.docenteId, docentes)}</p>
                                                                         </div>
                                                                     ) : (
                                                                         <div className="text-xs text-muted-foreground text-center p-2 min-h-[60px] flex items-center justify-center">Libre</div>
@@ -885,9 +890,6 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
                         </div>
                     ) : (
                         (() => {
-                            const { diaIndex, bloqueIndex } = currentStep;
-                            const dia = diasSemana[diaIndex];
-                            const currentBlockData = scheduleData[dia]?.[bloqueIndex];
                             const isContinuation = currentBlockData?.duracion === '-1';
                             const isFirstStep = diaIndex === 0 && bloqueIndex === 0;
                             const isLastStep = diaIndex === diasSemana.length - 1 && bloqueIndex === 3;
