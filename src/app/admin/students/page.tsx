@@ -1,16 +1,21 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Camera, User as UserIcon } from 'lucide-react';
+import { Camera, User as UserIcon, PlusCircle, MoreHorizontal, Search } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { cn } from '@/lib/utils';
 
 // --- DATA PERSISTENCE HOOK ---
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
@@ -60,13 +65,12 @@ interface Student {
     academicProgramId: string;
     assignedGroupId: string;
     facialImage: string | null;
+    embedding: number[] | null;
 }
 
-export default function StudentRegistrationPage() {
+function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished: () => void, carreras: CatalogItem[], grupos: CatalogItem[] }) {
     const { toast } = useToast();
-    const [carreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
-    const [grupos] = useLocalStorage<CatalogItem[]>('unilink-grupos', []);
-    const [students, setStudents] = useLocalStorage<Student[]>('unilink-students', []);
+    const [, setStudents] = useLocalStorage<Student[]>('unilink-students', []);
 
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
@@ -74,7 +78,6 @@ export default function StudentRegistrationPage() {
     const [academicProgram, setAcademicProgram] = useState('');
     const [assignedGroup, setAssignedGroup] = useState('');
 
-    // Biometrics state
     const [capturedImage, setCapturedImage] = useState<string | null>(null);
     const [isCapturing, setIsCapturing] = useState(false);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
@@ -84,19 +87,28 @@ export default function StudentRegistrationPage() {
 
     const studentPlaceholder = PlaceHolderImages.find(p => p.id === 'student-placeholder');
 
+    const stopCapture = () => {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+        setIsCapturing(false);
+    };
+    
     const startCapture = async () => {
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(track => track.stop());
         }
+        setCapturedImage(null);
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
             streamRef.current = stream;
             setHasCameraPermission(true);
+            setIsCapturing(true);
             if (videoRef.current) {
                 videoRef.current.srcObject = stream;
             }
-            setIsCapturing(true);
         } catch (error) {
             console.error('Error accessing camera:', error);
             setHasCameraPermission(false);
@@ -124,14 +136,6 @@ export default function StudentRegistrationPage() {
         stopCapture();
     };
 
-    const stopCapture = () => {
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
-            streamRef.current = null;
-        }
-        setIsCapturing(false);
-    };
-
     const handleRegisterStudent = (e: React.FormEvent) => {
         e.preventDefault();
         if (!firstName || !lastName || !controlNumber || !academicProgram || !assignedGroup) {
@@ -151,6 +155,7 @@ export default function StudentRegistrationPage() {
             academicProgramId: academicProgram,
             assignedGroupId: assignedGroup,
             facialImage: capturedImage,
+            embedding: null, // Placeholder for facial embeddings
         };
 
         setStudents(prev => [...prev, newStudent]);
@@ -160,16 +165,9 @@ export default function StudentRegistrationPage() {
             description: `El estudiante ${firstName} ${lastName} ha sido guardado.`,
         });
 
-        // Reset form
-        setFirstName('');
-        setLastName('');
-        setControlNumber('');
-        setAcademicProgram('');
-        setAssignedGroup('');
-        setCapturedImage(null);
+        onFinished();
     };
     
-    // Cleanup stream on component unmount
     useEffect(() => {
         return () => {
             if (streamRef.current) {
@@ -180,12 +178,8 @@ export default function StudentRegistrationPage() {
 
     return (
         <form onSubmit={handleRegisterStudent} className="grid md:grid-cols-3 gap-6">
-            <Card className="md:col-span-2">
-                <CardHeader>
-                    <CardTitle>Registro de Estudiantes</CardTitle>
-                    <CardDescription>Captura la información personal y académica del estudiante.</CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-6">
+            <Card className="md:col-span-2 border-0 shadow-none">
+                <CardContent className="grid gap-6 p-1">
                     <div className="grid sm:grid-cols-2 gap-4">
                         <div className="grid gap-2">
                             <Label htmlFor="firstName">Nombre(s)</Label>
@@ -227,22 +221,22 @@ export default function StudentRegistrationPage() {
                 </CardContent>
             </Card>
 
-            <Card className="flex flex-col">
-                <CardHeader>
-                    <CardTitle>Biometría Facial</CardTitle>
-                    <CardDescription>Registra el rostro del estudiante.</CardDescription>
-                </CardHeader>
-                <CardContent className="flex-1 flex flex-col items-center justify-center gap-4">
-                    <Avatar className="w-40 h-40 border-2 border-dashed">
-                        <AvatarImage src={capturedImage || studentPlaceholder?.imageUrl} alt="Rostro del estudiante" data-ai-hint={studentPlaceholder?.imageHint} />
-                        <AvatarFallback className="text-6xl"><UserIcon /></AvatarFallback>
-                    </Avatar>
-                    
-                    {isCapturing && (
-                        <div className="w-full aspect-video rounded-md overflow-hidden bg-muted">
-                           <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted />
-                        </div>
-                    )}
+            <Card className="flex flex-col border-0 shadow-none">
+                <CardContent className="flex-1 flex flex-col items-center justify-center gap-4 p-1">
+                    <div className="relative w-full aspect-video rounded-md overflow-hidden bg-muted border flex items-center justify-center">
+                        <video 
+                            ref={videoRef}
+                            className={cn("w-full h-full object-cover", !isCapturing && "hidden")}
+                            autoPlay
+                            muted
+                        />
+                        {!isCapturing && (
+                             <Avatar className="w-40 h-40 border-2 border-dashed">
+                                <AvatarImage src={capturedImage || studentPlaceholder?.imageUrl} alt="Rostro del estudiante" data-ai-hint={studentPlaceholder?.imageHint} />
+                                <AvatarFallback className="text-6xl"><UserIcon /></AvatarFallback>
+                            </Avatar>
+                        )}
+                    </div>
                     
                     {hasCameraPermission === false && (
                          <Alert variant="destructive">
@@ -267,11 +261,154 @@ export default function StudentRegistrationPage() {
                 </CardContent>
             </Card>
 
-            <div className="md:col-span-3 text-right">
-                <Button type="submit" size="lg">Registrar Estudiante</Button>
-            </div>
+            <DialogFooter className="md:col-span-3">
+                <Button type="button" variant="ghost" onClick={onFinished}>Cancelar</Button>
+                <Button type="submit">Registrar Estudiante</Button>
+            </DialogFooter>
 
             <canvas ref={canvasRef} className="hidden"></canvas>
         </form>
+    );
+}
+
+export default function StudentsPage() {
+    const [students, setStudents] = useLocalStorage<Student[]>('unilink-students', []);
+    const [carreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
+    const [grupos] = useLocalStorage<CatalogItem[]>('unilink-grupos', []);
+    const { toast } = useToast();
+    
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const filteredStudents = useMemo(() => {
+        if (!searchQuery) return students;
+        const lowercasedQuery = searchQuery.toLowerCase();
+        return students.filter(student => 
+            `${student.firstName} ${student.lastName}`.toLowerCase().includes(lowercasedQuery) ||
+            student.controlNumber.toLowerCase().includes(lowercasedQuery)
+        );
+    }, [students, searchQuery]);
+
+    const getProgramName = (id: string) => carreras.find(c => c.id === id)?.name || 'N/A';
+    const getGroupName = (id: string) => grupos.find(g => g.id === id)?.name || 'N/A';
+    
+    const handleDeleteStudent = (studentId: string) => {
+        setStudents(prev => prev.filter(s => s.id !== studentId));
+        toast({
+            title: "Estudiante eliminado",
+            description: "El estudiante ha sido eliminado del sistema."
+        });
+    };
+
+    return (
+        <>
+            <Card>
+                <CardHeader>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <CardTitle>Gestión de Estudiantes</CardTitle>
+                            <CardDescription>Consulta, busca y registra nuevos estudiantes.</CardDescription>
+                        </div>
+                         <div className="flex flex-wrap items-center gap-2">
+                            <div className="relative flex-1 md:grow-0">
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    type="search"
+                                    placeholder="Buscar por nombre o control..."
+                                    className="w-full rounded-lg bg-background pl-8 md:w-[200px] lg:w-[320px]"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                            </div>
+                            <Button size="sm" onClick={() => setIsDialogOpen(true)}>
+                                <PlusCircle className="h-3.5 w-3.5 mr-1" />
+                                <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Registrar Estudiante</span>
+                            </Button>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Estudiante</TableHead>
+                                <TableHead>Programa Académico</TableHead>
+                                <TableHead>Grupo</TableHead>
+                                <TableHead><span className="sr-only">Acciones</span></TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {filteredStudents.length > 0 ? filteredStudents.map((student) => (
+                                <TableRow key={student.id}>
+                                    <TableCell>
+                                        <div className="flex items-center gap-3">
+                                            <Avatar>
+                                                <AvatarImage src={student.facialImage || undefined} alt={`${student.firstName} ${student.lastName}`} />
+                                                <AvatarFallback><UserIcon /></AvatarFallback>
+                                            </Avatar>
+                                            <div>
+                                                <div className="font-medium">{student.firstName} {student.lastName}</div>
+                                                <div className="text-sm text-muted-foreground">{student.controlNumber}</div>
+                                            </div>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell>{getProgramName(student.academicProgramId)}</TableCell>
+                                    <TableCell>{getGroupName(student.assignedGroupId)}</TableCell>
+                                    <TableCell className="text-right">
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild><Button aria-haspopup="true" size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /><span className="sr-only">Menú</span></Button></DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                                <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+                                                <DropdownMenuItem disabled>Editar</DropdownMenuItem>
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild>
+                                                    <DropdownMenuItem onSelect={(event) => event.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem>
+                                                    </AlertDialogTrigger>
+                                                    <AlertDialogContent>
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                                                        <AlertDialogDescription>Esta acción no se puede deshacer y eliminará permanentemente al estudiante.</AlertDialogDescription>
+                                                    </AlertDialogHeader>
+                                                    <AlertDialogFooter>
+                                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                        <AlertDialogAction onClick={() => handleDeleteStudent(student.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </TableCell>
+                                </TableRow>
+                            )) : (
+                                <TableRow>
+                                    <TableCell colSpan={4} className="h-24 text-center">
+                                        No se encontraron estudiantes.
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+                 <CardFooter>
+                    <div className="text-xs text-muted-foreground">
+                        Mostrando <strong>{filteredStudents.length}</strong> de <strong>{students.length}</strong> estudiantes
+                    </div>
+                </CardFooter>
+            </Card>
+
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogContent className="sm:max-w-4xl">
+                    <DialogHeader>
+                        <DialogTitle>Registro de Estudiantes</DialogTitle>
+                        <DialogDescription>Captura la información personal, académica y biométrica del estudiante.</DialogDescription>
+                    </DialogHeader>
+                    <StudentRegistrationForm 
+                        onFinished={() => setIsDialogOpen(false)}
+                        carreras={carreras}
+                        grupos={grupos}
+                    />
+                </DialogContent>
+            </Dialog>
+        </>
     );
 }
