@@ -6,6 +6,7 @@ import {
     CardContent,
     CardHeader,
     CardTitle,
+    CardDescription,
 } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -24,20 +25,18 @@ import { Separator } from '@/components/ui/separator';
 
 // --- DATA PERSISTENCE HOOK ---
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
-    const [storedValue, setStoredValue] = useState<T>(initialValue);
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const item = window.localStorage.getItem(key);
-                setStoredValue(item ? JSON.parse(item) : initialValue);
-            } catch (error) {
-                console.error(`Error reading localStorage key “${key}”:`, error);
-                setStoredValue(initialValue);
-            }
+    const [storedValue, setStoredValue] = useState<T>(() => {
+        if (typeof window === 'undefined') {
+            return initialValue;
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [key]);
+        try {
+            const item = window.localStorage.getItem(key);
+            return item ? JSON.parse(item) : initialValue;
+        } catch (error) {
+            console.error(`Error reading localStorage key “${key}”:`, error);
+            return initialValue;
+        }
+    });
 
     const setValue = (value: T | ((val: T) => T)) => {
         if (typeof window === 'undefined') {
@@ -111,7 +110,6 @@ interface Horario {
     id: string;
     grupoId: string;
     dia: string;
-    aula: string;
     blocks: (HorarioBlock | undefined)[];
 }
 
@@ -215,7 +213,12 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
         const semestre = formData.get('semestre') as string;
         const turno = formData.get('turno') as string;
 
-        if (!name || !carreraId || !cuatrimestre || !semestre || !turno) return;
+        if (!name || !carreraId || !turno) return;
+        
+        if (cuatrimestre === "NONE" && semestre === "NONE") {
+             toast({ variant: "destructive", title: "Error", description: "Debe seleccionar un cuatrimestre o un semestre." });
+             return;
+        }
 
         if (currentItem) {
             setGrupos(prev => prev.map(item => item.id === currentItem.id ? { ...item, name, carreraId, cuatrimestre, semestre, turno } : item));
@@ -258,8 +261,8 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
                             <TableRow key={item.id}>
                                 <TableCell className="font-medium">{item.name}</TableCell>
                                 <TableCell>{getCarreraName(item.carreraId)}</TableCell>
-                                <TableCell>{item.cuatrimestre}</TableCell>
-                                <TableCell>{item.semestre}</TableCell>
+                                <TableCell>{item.cuatrimestre === "NONE" ? "N/A" : item.cuatrimestre}</TableCell>
+                                <TableCell>{item.semestre === "NONE" ? "N/A" : item.semestre}</TableCell>
                                 <TableCell>{item.turno}</TableCell>
                                 <TableCell className="text-right">
                                     <DropdownMenu>
@@ -376,8 +379,8 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
     };
 
     const getNameById = (id: string | undefined, list: CatalogItem[]) => {
-        if (!id) return 'N/A';
-        return list.find(item => item.id === id)?.name || 'N/A';
+        if (!id) return 'Sin Carrera Asignada';
+        return list.find(item => item.id === id)?.name || 'Carrera Desconocida';
     };
 
     return (
@@ -425,8 +428,8 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
                 <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
                     <div className="grid gap-2"><Label htmlFor="materia">Nombre de la Materia</Label><Input id="materia" name="materia" defaultValue={currentItem?.materia} required /></div>
                     <div className="grid gap-2">
-                        <Label>Carrera</Label>
-                        <Select name="carreraId" defaultValue={currentItem?.carreraId || 'NONE'} required>
+                        <Label>Carrera (Opcional)</Label>
+                        <Select name="carreraId" defaultValue={currentItem?.carreraId || 'NONE'}>
                             <SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="NONE">Ninguna</SelectItem>
@@ -443,8 +446,27 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
 
 function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, carreras }: { horarios: Horario[], setHorarios: (value: Horario[] | ((val: Horario[]) => Horario[])) => void, grupos: Grupo[], materias: AsignacionMateria[], docentes: User[], carreras: CatalogItem[] }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [currentItem, setCurrentItem] = useState<Horario | null>(null);
+    const [selectedGroup, setSelectedGroup] = useState<Grupo | null>(null);
+    const [editingSchedule, setEditingSchedule] = useState<Record<string, Horario | null>>({});
     const { toast } = useToast();
+
+    const [filterCarrera, setFilterCarrera] = useState('');
+    const [filterPeriodo, setFilterPeriodo] = useState('');
+
+    const diasSemana = useMemo(() => ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"], []);
+    const bloques = useMemo(() => [0, 1, 2, 3], []);
+
+    const displayedGrupos = useMemo(() => {
+        return grupos.filter(g => {
+            const carreraMatch = !filterCarrera || g.carreraId === filterCarrera;
+            if (!filterPeriodo || filterPeriodo === 'all') return carreraMatch;
+            
+            const [type, value] = filterPeriodo.split('-');
+            if (type === 'cuatri') return carreraMatch && g.cuatrimestre === value;
+            if (type === 'sem') return carreraMatch && g.semestre === value;
+            return carreraMatch;
+        });
+    }, [grupos, filterCarrera, filterPeriodo]);
 
     const calculateEndTime = (startTime: string, duration: number): string => {
         if (!startTime || !duration) return '';
@@ -459,176 +481,248 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const grupoId = formData.get('grupoId') as string;
-        const dia = formData.get('dia') as string;
-        const aula = formData.get('aula') as string;
 
-        if (!grupoId || !dia || !aula) {
-            toast({ variant: 'destructive', title: "Error", description: "Grupo, Día y Aula son obligatorios." });
+        if (!grupoId) {
+            toast({ variant: 'destructive', title: "Error", description: "Debes seleccionar un grupo." });
             return;
         }
 
-        const blocks: (HorarioBlock | undefined)[] = [];
-        let hasAtLeastOneBlock = false;
-        for (let i = 0; i < 4; i++) {
-            const docenteId = formData.get(`docenteId-${i}`) as string;
-            const materiaAsignacionId = formData.get(`materiaAsignacionId-${i}`) as string;
-            const horaInicio = formData.get(`horaInicio-${i}`) as string;
-            const duracion = formData.get(`duracion-${i}`) as string;
-
-            if (docenteId && materiaAsignacionId && horaInicio && duracion) {
-                blocks.push({ docenteId, materiaAsignacionId, horaInicio, duracion });
-                hasAtLeastOneBlock = true;
-            } else if (docenteId || materiaAsignacionId || horaInicio || duracion) {
-                toast({ variant: 'destructive', title: `Error en Bloque ${i+1}`, description: "Para cada bloque, debes completar todos los campos." });
-                return;
-            }
-            else {
-                blocks.push(undefined);
-            }
-        }
-
-        if (!hasAtLeastOneBlock) {
-            toast({ variant: 'destructive', title: "Error", description: "Debes definir al menos un bloque de horario completo." });
-            return;
-        }
+        const newHorariosForGroup: Horario[] = [];
         
-        const newHorarioData = {
-            grupoId,
-            dia,
-            aula,
-            blocks
-        };
+        diasSemana.forEach(dia => {
+            const blocks: (HorarioBlock | undefined)[] = [];
+            let dayHasBlocks = false;
 
-        if (currentItem) {
-            setHorarios(prev => prev.map(h => h.id === currentItem.id ? { ...h, ...newHorarioData } : h));
-            toast({ title: "Horario actualizado" });
-        } else {
-            setHorarios(prev => [...prev, { ...newHorarioData, id: new Date().toISOString() }]);
-            toast({ title: "Horario creado" });
-        }
+            for (let i = 0; i < 4; i++) {
+                const docenteId = formData.get(`${dia}-docenteId-${i}`) as string;
+                const materiaAsignacionId = formData.get(`${dia}-materiaAsignacionId-${i}`) as string;
+                const horaInicio = formData.get(`${dia}-horaInicio-${i}`) as string;
+                const duracion = formData.get(`${dia}-duracion-${i}`) as string;
+
+                if (docenteId && materiaAsignacionId && horaInicio && duracion) {
+                    blocks.push({ docenteId, materiaAsignacionId, horaInicio, duracion });
+                    dayHasBlocks = true;
+                } else {
+                    blocks.push(undefined);
+                }
+            }
+            if (dayHasBlocks) {
+                newHorariosForGroup.push({
+                    id: `${grupoId}-${dia}`,
+                    grupoId,
+                    dia,
+                    blocks,
+                });
+            }
+        });
+        
+        setHorarios(prev => {
+            const otherHorarios = prev.filter(h => h.grupoId !== grupoId);
+            return [...otherHorarios, ...newHorariosForGroup];
+        });
+
+        toast({ title: "Horario guardado", description: `Se ha guardado el horario para el grupo.` });
         setIsDialogOpen(false);
-        setCurrentItem(null);
+        setSelectedGroup(null);
     };
     
-    const openDialog = (item: Horario | null) => { setCurrentItem(item); setIsDialogOpen(true); };
-    const handleDelete = (itemId: string) => { setHorarios(prev => prev.filter(h => h.id !== itemId)); toast({ title: "Horario eliminado" }); };
+    const openDialog = (group: Grupo | null) => { 
+        setSelectedGroup(group);
+        if (group) {
+            const groupSchedule = horarios.filter(h => h.grupoId === group.id);
+            const scheduleByDay: Record<string, Horario | null> = {};
+            diasSemana.forEach(dia => {
+                scheduleByDay[dia] = groupSchedule.find(h => h.dia === dia) || null;
+            });
+            setEditingSchedule(scheduleByDay);
+        } else {
+            setEditingSchedule({});
+        }
+        setIsDialogOpen(true); 
+    };
+
+    const handleDelete = (grupoId: string) => { 
+        setHorarios(prev => prev.filter(h => h.grupoId !== grupoId)); 
+        toast({ title: "Horario eliminado" }); 
+    };
     
     const getNameById = (id: string, list: { id: string, name: string }[]) => list.find(item => item.id === id)?.name || 'N/A';
     const getMateriaName = (id: string) => materias.find(m => m.id === id)?.materia || 'N/A';
-    const diasSemana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+    
+    const allSemestres = useMemo(() => Array.from({ length: 9 }, (_, i) => `${i + 1}`), []);
+    const allCuatrimestres = useMemo(() => Array.from({ length: 9 }, (_, i) => `${i + 1}`), []);
 
     return (
         <Card>
-            <CardHeader className="flex-row items-center justify-between">
-                <CardTitle>Gestión de Horarios</CardTitle>
-                <Button size="sm" onClick={() => openDialog(null)}><PlusCircle className="h-4 w-4 mr-2" />Crear Horario</Button>
+            <CardHeader>
+                <div className="flex justify-between items-start">
+                    <div>
+                        <CardTitle>Gestión de Horarios</CardTitle>
+                        <CardDescription>Crea y visualiza los horarios semanales por grupo.</CardDescription>
+                    </div>
+                    <Button size="sm" onClick={() => openDialog(null)}><PlusCircle className="h-4 w-4 mr-2" />Crear Horario</Button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
+                    <Select value={filterCarrera} onValueChange={setFilterCarrera}>
+                        <SelectTrigger><SelectValue placeholder="Filtrar por carrera..." /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="">Todas las carreras</SelectItem>
+                            {carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                     <Select value={filterPeriodo} onValueChange={setFilterPeriodo}>
+                        <SelectTrigger><SelectValue placeholder="Filtrar por periodo..." /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todos los periodos</SelectItem>
+                            <Separator />
+                            {allCuatrimestres.map(c => <SelectItem key={`cuatri-${c}`} value={`cuatri-${c}`}>Cuatrimestre {c}</SelectItem>)}
+                            <Separator />
+                            {allSemestres.map(s => <SelectItem key={`sem-${s}`} value={`sem-${s}`}>Semestre {s}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                </div>
             </CardHeader>
-            <CardContent>
-                <Table>
-                    <TableHeader><TableRow><TableHead>Grupo</TableHead><TableHead>Día</TableHead><TableHead>Aula</TableHead><TableHead>Bloques del Horario</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
-                    <TableBody>
-                        {horarios.map(h => (
-                            <TableRow key={h.id}>
-                                <TableCell>{getNameById(h.grupoId, grupos)}</TableCell>
-                                <TableCell>{h.dia}</TableCell>
-                                <TableCell>{h.aula}</TableCell>
-                                <TableCell>
-                                    <div className="flex flex-col gap-2">
-                                    {h.blocks.map((block, index) => {
-                                        if (!block) return null;
-                                        const endTime = calculateEndTime(block.horaInicio, parseInt(block.duracion));
-                                        return (
-                                            <div key={index} className="text-xs p-2 rounded-md bg-muted border">
-                                                <div className="font-bold text-foreground">Bloque {index + 1}: {block.horaInicio} - {endTime} ({block.duracion}h)</div>
-                                                <div className="font-semibold">{getMateriaName(block.materiaAsignacionId)}</div>
-                                                <div className="text-muted-foreground">{getNameById(block.docenteId, docentes)}</div>
-                                            </div>
-                                        )
-                                    })}
+            <CardContent className="space-y-6">
+                {displayedGrupos.map(group => {
+                     const groupHorarios = horarios.filter(h => h.grupoId === group.id);
+                     if (groupHorarios.length === 0 && selectedGroup?.id !== group.id && !isDialogOpen) return null; // Hide if no schedule unless being edited
+                     const carrera = carreras.find(c => c.id === group.carreraId);
+
+                     return (
+                        <Card key={group.id}>
+                            <CardHeader>
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <CardTitle>Grupo: {group.name}</CardTitle>
+                                        <CardDescription>{carrera?.name} - Turno: {group.turno}</CardDescription>
                                     </div>
-                                </TableCell>
-                                <TableCell className="text-right">
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                         <DropdownMenuContent>
-                                            <DropdownMenuItem onClick={() => openDialog(h)}>Editar</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => openDialog(group)}>Editar</DropdownMenuItem>
                                             <AlertDialog>
                                                 <AlertDialogTrigger asChild><DropdownMenuItem onSelect={e => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
-                                                <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(h.id)} className="bg-destructive text-destructive-foreground">Eliminar</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+                                                <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Estás seguro de eliminar el horario?</AlertDialogTitle><AlertDialogDescription>Esta acción eliminará el horario completo para este grupo.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(group.id)} className="bg-destructive text-destructive-foreground">Eliminar</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
                                             </AlertDialog>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Bloque</TableHead>
+                                            {diasSemana.map(dia => <TableHead key={dia} className="text-center">{dia}</TableHead>)}
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {bloques.map(bloqueIndex => (
+                                            <TableRow key={bloqueIndex}>
+                                                <TableCell className="font-semibold">Bloque {bloqueIndex + 1}</TableCell>
+                                                {diasSemana.map(dia => {
+                                                    const horarioDia = groupHorarios.find(h => h.dia === dia);
+                                                    const block = horarioDia?.blocks[bloqueIndex];
+                                                    return (
+                                                        <TableCell key={dia}>
+                                                            {block ? (
+                                                                <div className="text-xs p-2 rounded-md bg-muted border min-h-[60px]">
+                                                                    <div className="font-bold text-foreground">{block.horaInicio} - {calculateEndTime(block.horaInicio, parseInt(block.duracion))}</div>
+                                                                    <div className="font-semibold">{getMateriaName(block.materiaAsignacionId)}</div>
+                                                                    <div className="text-muted-foreground">{getNameById(block.docenteId, docentes)}</div>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-xs text-muted-foreground text-center p-2 min-h-[60px] flex items-center justify-center">Libre</div>
+                                                            )}
+                                                        </TableCell>
+                                                    )
+                                                })}
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
+                     )
+                })}
+                {displayedGrupos.length === 0 && <p className="text-center text-muted-foreground">No hay horarios que coincidan con los filtros seleccionados.</p>}
             </CardContent>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="sm:max-w-3xl">
-                    <DialogHeader><DialogTitle>{currentItem ? 'Editar' : 'Crear'} Horario</DialogTitle></DialogHeader>
-                    <form id="horario-form" onSubmit={handleFormSubmit} className="space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <div className="grid gap-2"><Label>Grupo</Label><Select name="grupoId" defaultValue={currentItem?.grupoId} required><SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger><SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent></Select></div>
-                            <div className="grid gap-2"><Label>Día</Label><Select name="dia" defaultValue={currentItem?.dia} required><SelectTrigger><SelectValue placeholder="Selecciona un día" /></SelectTrigger><SelectContent>{diasSemana.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select></div>
-                            <div className="grid gap-2"><Label htmlFor="aula">Aula</Label><Input id="aula" name="aula" defaultValue={currentItem?.aula} required /></div>
-                        </div>
-
-                        <Separator />
-                        <p className="font-medium">Bloques del Horario</p>
-                        
-                        <ScrollArea className="h-72 pr-3">
-                            <div className="space-y-4">
-                            {[...Array(4)].map((_, i) => (
-                                <div key={i} className="grid gap-4 border p-4 rounded-lg bg-muted/50">
-                                    <h4 className="font-semibold">Bloque {i + 1}</h4>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div className="grid gap-2">
-                                            <Label htmlFor={`materiaAsignacionId-${i}`}>Materia</Label>
-                                            <Select name={`materiaAsignacionId-${i}`} defaultValue={currentItem?.blocks?.[i]?.materiaAsignacionId}>
-                                                <SelectTrigger id={`materiaAsignacionId-${i}`}><SelectValue placeholder="Selecciona una materia" /></SelectTrigger>
-                                                <SelectContent>{materias.map(m => <SelectItem key={m.id} value={m.id}>{m.materia} ({getNameById(m.carreraId, carreras)})</SelectItem>)}</SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="grid gap-2">
-                                            <Label htmlFor={`docenteId-${i}`}>Docente</Label>
-                                            <Select name={`docenteId-${i}`} defaultValue={currentItem?.blocks?.[i]?.docenteId}>
-                                                <SelectTrigger id={`docenteId-${i}`}><SelectValue placeholder="Selecciona un docente" /></SelectTrigger>
-                                                <SelectContent>{docentes.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div className="grid gap-2">
-                                            <Label htmlFor={`horaInicio-${i}`}>Hora Inicio</Label>
-                                            <Input id={`horaInicio-${i}`} name={`horaInicio-${i}`} type="time" defaultValue={currentItem?.blocks?.[i]?.horaInicio} />
-                                        </div>
-                                        <div className="grid gap-2">
-                                            <Label htmlFor={`duracion-${i}`}>Duración</Label>
-                                            <Select name={`duracion-${i}`} defaultValue={currentItem?.blocks?.[i]?.duracion}>
-                                                <SelectTrigger id={`duracion-${i}`}><SelectValue placeholder="Selecciona duración" /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="1">1 hora</SelectItem>
-                                                    <SelectItem value="2">2 horas</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
+                <DialogContent className="sm:max-w-6xl">
+                    <DialogHeader>
+                        <DialogTitle>{selectedGroup ? 'Editar' : 'Crear'} Horario Semanal</DialogTitle>
+                        <DialogDescription>Configura los bloques de clase para cada día de la semana.</DialogDescription>
+                    </DialogHeader>
+                    <form id="horario-form" onSubmit={handleFormSubmit}>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid gap-2">
+                                <Label>Grupo</Label>
+                                <Select name="grupoId" defaultValue={selectedGroup?.id} required disabled={!!selectedGroup}>
+                                    <SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger>
+                                    <SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent>
+                                </Select>
                             </div>
-                        </ScrollArea>
-                    </form>
+                            <Tabs defaultValue="Lunes" className="w-full">
+                                <TabsList className="grid w-full grid-cols-5">
+                                    {diasSemana.map(dia => <TabsTrigger key={dia} value={dia}>{dia}</TabsTrigger>)}
+                                </TabsList>
+                                {diasSemana.map(dia => (
+                                    <TabsContent key={dia} value={dia}>
+                                        <ScrollArea className="h-72 pr-3 mt-4">
+                                            <div className="space-y-4">
+                                            {bloques.map(i => (
+                                                <div key={i} className="grid gap-4 border p-4 rounded-lg bg-muted/50">
+                                                    <h4 className="font-semibold">Bloque {i + 1}</h4>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                        <div className="grid gap-2">
+                                                            <Label htmlFor={`${dia}-materiaAsignacionId-${i}`}>Materia</Label>
+                                                            <Select name={`${dia}-materiaAsignacionId-${i}`} defaultValue={editingSchedule[dia]?.blocks[i]?.materiaAsignacionId}>
+                                                                <SelectTrigger id={`${dia}-materiaAsignacionId-${i}`}><SelectValue placeholder="Selecciona una materia" /></SelectTrigger>
+                                                                <SelectContent>{materias.map(m => <SelectItem key={m.id} value={m.id}>{m.materia} ({getNameById(m.carreraId, carreras)})</SelectItem>)}</SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="grid gap-2">
+                                                            <Label htmlFor={`${dia}-docenteId-${i}`}>Docente</Label>
+                                                            <Select name={`${dia}-docenteId-${i}`} defaultValue={editingSchedule[dia]?.blocks[i]?.docenteId}>
+                                                                <SelectTrigger id={`${dia}-docenteId-${i}`}><SelectValue placeholder="Selecciona un docente" /></SelectTrigger>
+                                                                <SelectContent>{docentes.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                        <div className="grid gap-2">
+                                                            <Label htmlFor={`${dia}-horaInicio-${i}`}>Hora Inicio</Label>
+                                                            <Input id={`${dia}-horaInicio-${i}`} name={`${dia}-horaInicio-${i}`} type="time" defaultValue={editingSchedule[dia]?.blocks[i]?.horaInicio} />
+                                                        </div>
+                                                        <div className="grid gap-2">
+                                                            <Label htmlFor={`${dia}-duracion-${i}`}>Duración</Label>
+                                                            <Select name={`${dia}-duracion-${i}`} defaultValue={editingSchedule[dia]?.blocks[i]?.duracion}>
+                                                                <SelectTrigger id={`${dia}-duracion-${i}`}><SelectValue placeholder="Selecciona duración" /></SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="1">1 hora</SelectItem>
+                                                                    <SelectItem value="2">2 horas</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            </div>
+                                        </ScrollArea>
+                                    </TabsContent>
+                                ))}
+                            </Tabs>
+                        </div>
                      <DialogFooter>
                         <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                        <Button type="submit" form="horario-form">{currentItem ? 'Guardar Cambios' : 'Crear'}</Button>
+                        <Button type="submit" form="horario-form">{selectedGroup ? 'Guardar Cambios' : 'Crear Horario'}</Button>
                     </DialogFooter>
+                    </form>
                 </DialogContent>
             </Dialog>
         </Card>
     );
 }
-
 
 export default function CatalogsPage() {
     const [carreras, setCarreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
@@ -641,7 +735,7 @@ export default function CatalogsPage() {
 
     return (
         <Tabs defaultValue="carreras" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4">
                 <TabsTrigger value="carreras">Carreras</TabsTrigger>
                 <TabsTrigger value="grupos">Grupos</TabsTrigger>
                 <TabsTrigger value="materias">Materias</TabsTrigger>
