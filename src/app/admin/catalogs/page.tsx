@@ -86,13 +86,14 @@ interface User {
 
 interface Grupo extends CatalogItem {
     carreraId: string;
+    cuatrimestre: string;
+    semestre: string;
+    turno: string;
 }
 
 interface AsignacionMateria {
     id: string;
     materia: string;
-    cuatrimestreId?: string;
-    semestreId?: string;
     carreraId: string;
 }
 
@@ -194,18 +195,26 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
     const [currentItem, setCurrentItem] = useState<Grupo | null>(null);
     const { toast } = useToast();
 
+    const cuatrimestres = Array.from({ length: 9 }, (_, i) => `${i + 1}`);
+    const semestres = Array.from({ length: 9 }, (_, i) => `${i + 1}`);
+    const turnos = ["Matutino", "Vespertino", "Nocturno"];
+
     const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const name = formData.get('name') as string;
         const carreraId = formData.get('carreraId') as string;
-        if (!name || !carreraId) return;
+        const cuatrimestre = formData.get('cuatrimestre') as string;
+        const semestre = formData.get('semestre') as string;
+        const turno = formData.get('turno') as string;
+
+        if (!name || !carreraId || !cuatrimestre || !semestre || !turno) return;
 
         if (currentItem) {
-            setGrupos(prev => prev.map(item => item.id === currentItem.id ? { ...item, name, carreraId } : item));
+            setGrupos(prev => prev.map(item => item.id === currentItem.id ? { ...item, name, carreraId, cuatrimestre, semestre, turno } : item));
             toast({ title: "Grupo actualizado" });
         } else {
-            setGrupos(prev => [...prev, { id: new Date().toISOString(), name, carreraId }]);
+            setGrupos(prev => [...prev, { id: new Date().toISOString(), name, carreraId, cuatrimestre, semestre, turno }]);
             toast({ title: "Grupo agregado" });
         }
         setIsDialogOpen(false);
@@ -236,12 +245,15 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
             </CardHeader>
             <CardContent>
                 <Table>
-                    <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Carrera</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Carrera</TableHead><TableHead>Cuatrimestre</TableHead><TableHead>Semestre</TableHead><TableHead>Turno</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
                     <TableBody>
                         {grupos.map((item) => (
                             <TableRow key={item.id}>
                                 <TableCell className="font-medium">{item.name}</TableCell>
                                 <TableCell>{getCarreraName(item.carreraId)}</TableCell>
+                                <TableCell>{item.cuatrimestre}</TableCell>
+                                <TableCell>{item.semestre}</TableCell>
+                                <TableCell>{item.turno}</TableCell>
                                 <TableCell className="text-right">
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
@@ -274,6 +286,27 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
                             <SelectContent>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                         </Select>
                     </div>
+                     <div className="grid gap-2">
+                        <Label htmlFor="cuatrimestre">Cuatrimestre</Label>
+                        <Select name="cuatrimestre" defaultValue={currentItem?.cuatrimestre} required>
+                            <SelectTrigger id="cuatrimestre"><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger>
+                            <SelectContent>{cuatrimestres.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                        </Select>
+                    </div>
+                     <div className="grid gap-2">
+                        <Label htmlFor="semestre">Semestre</Label>
+                        <Select name="semestre" defaultValue={currentItem?.semestre} required>
+                            <SelectTrigger id="semestre"><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger>
+                            <SelectContent>{semestres.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                        </Select>
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="turno">Turno</Label>
+                        <Select name="turno" defaultValue={currentItem?.turno} required>
+                            <SelectTrigger id="turno"><SelectValue placeholder="Selecciona un turno" /></SelectTrigger>
+                            <SelectContent>{turnos.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                        </Select>
+                    </div>
                     <DialogFooter><Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button><Button type="submit">{currentItem ? 'Guardar Cambios' : 'Agregar'}</Button></DialogFooter>
                 </form>
             </DialogContent></Dialog>
@@ -282,7 +315,7 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
 }
 
 
-function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestres, semestres }: { asignaciones: AsignacionMateria[], setAsignaciones: (value: AsignacionMateria[] | ((val: AsignacionMateria[]) => AsignacionMateria[])) => void, carreras: CatalogItem[], cuatrimestres: CatalogItem[], semestres: CatalogItem[] }) {
+function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaciones: AsignacionMateria[], setAsignaciones: (value: AsignacionMateria[] | ((val: AsignacionMateria[]) => AsignacionMateria[])) => void, carreras: CatalogItem[] }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<AsignacionMateria | null>(null);
     const { toast } = useToast();
@@ -292,23 +325,17 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
         const formData = new FormData(e.currentTarget);
         const materia = formData.get('materia') as string;
         const carreraId = formData.get('carreraId') as string;
-        
-        const cuatrimestreIdFromForm = formData.get('cuatrimestreId') as string | undefined;
-        const semestreIdFromForm = formData.get('semestreId') as string | undefined;
 
-        const cuatrimestreId = cuatrimestreIdFromForm === 'NONE' ? undefined : cuatrimestreIdFromForm;
-        const semestreId = semestreIdFromForm === 'NONE' ? undefined : semestreIdFromForm;
-
-        if (!materia || !carreraId || (!cuatrimestreId && !semestreId)) {
+        if (!materia || !carreraId) {
             toast({
                 variant: 'destructive',
                 title: "Error",
-                description: "Debes completar la materia, la carrera y al menos un periodo.",
+                description: "Debes completar la materia y la carrera.",
             });
             return;
         }
 
-        const newAsignacion = { materia, carreraId, cuatrimestreId: cuatrimestreId || undefined, semestreId: semestreId || undefined };
+        const newAsignacion = { materia, carreraId };
 
         if (currentItem) {
             setAsignaciones(prev => prev.map(a => a.id === currentItem.id ? { ...a, ...newAsignacion } : a));
@@ -348,8 +375,6 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                         <TableRow>
                             <TableHead>Materia</TableHead>
                             <TableHead>Carrera</TableHead>
-                            <TableHead>Cuatrimestre</TableHead>
-                            <TableHead>Semestre</TableHead>
                             <TableHead><span className="sr-only">Acciones</span></TableHead>
                         </TableRow>
                     </TableHeader>
@@ -358,8 +383,6 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                             <TableRow key={a.id}>
                                 <TableCell className="font-medium">{a.materia}</TableCell>
                                 <TableCell>{getNameById(a.carreraId, carreras)}</TableCell>
-                                <TableCell>{getNameById(a.cuatrimestreId, cuatrimestres)}</TableCell>
-                                <TableCell>{getNameById(a.semestreId, semestres)}</TableCell>
                                 <TableCell className="text-right">
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
@@ -385,8 +408,6 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                 <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
                     <div className="grid gap-2"><Label htmlFor="materia">Nombre de la Materia</Label><Input id="materia" name="materia" defaultValue={currentItem?.materia} required /></div>
                     <div className="grid gap-2"><Label>Carrera</Label><Select name="carreraId" defaultValue={currentItem?.carreraId} required><SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger><SelectContent>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
-                    <div className="grid gap-2"><Label>Cuatrimestre (opcional)</Label><Select name="cuatrimestreId" defaultValue={currentItem?.cuatrimestreId}><SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger><SelectContent><SelectItem value="NONE">Ninguno</SelectItem>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
-                    <div className="grid gap-2"><Label>Semestre (opcional)</Label><Select name="semestreId" defaultValue={currentItem?.semestreId}><SelectTrigger><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger><SelectContent><SelectItem value="NONE">Ninguno</SelectItem>{semestres.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                     <DialogFooter><Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button><Button type="submit">{currentItem ? 'Guardar Cambios' : 'Asignar'}</Button></DialogFooter>
                 </form>
             </DialogContent></Dialog>
@@ -394,7 +415,7 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
     );
 }
 
-function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, turnos }: { horarios: Horario[], setHorarios: (value: Horario[] | ((val: Horario[]) => Horario[])) => void, grupos: Grupo[], materias: AsignacionMateria[], docentes: User[], turnos: CatalogItem[] }) {
+function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: { horarios: Horario[], setHorarios: (value: Horario[] | ((val: Horario[]) => Horario[])) => void, grupos: Grupo[], materias: AsignacionMateria[], docentes: User[] }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<Horario | null>(null);
     const { toast } = useToast();
@@ -487,9 +508,6 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, tu
 export default function CatalogsPage() {
     const [carreras, setCarreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
     const [grupos, setGrupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
-    const [cuatrimestres, setCuatrimestres] = useLocalStorage<CatalogItem[]>('unilink-cuatrimestres', []);
-    const [semestres, setSemestres] = useLocalStorage<CatalogItem[]>('unilink-semestres', []);
-    const [turnos, setTurnos] = useLocalStorage<CatalogItem[]>('unilink-turnos', []);
     const [materiaAsignaciones, setMateriaAsignaciones] = useLocalStorage<AsignacionMateria[]>('unilink-materia-asignaciones', []);
     const [horarios, setHorarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
     const [users, setUsers] = useLocalStorage<User[]>('unilink-users', []);
@@ -498,22 +516,16 @@ export default function CatalogsPage() {
 
     return (
         <Tabs defaultValue="carreras" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-7">
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
                 <TabsTrigger value="carreras">Carreras</TabsTrigger>
                 <TabsTrigger value="grupos">Grupos</TabsTrigger>
-                <TabsTrigger value="cuatrimestres">Cuatrimestres</TabsTrigger>
-                <TabsTrigger value="semestres">Semestres</TabsTrigger>
-                <TabsTrigger value="turnos">Turnos</TabsTrigger>
                 <TabsTrigger value="materias">Materias</TabsTrigger>
                 <TabsTrigger value="horarios">Horarios</TabsTrigger>
             </TabsList>
             <TabsContent value="carreras"><CatalogContent title="Carreras" items={carreras} setItems={setCarreras} /></TabsContent>
             <TabsContent value="grupos"><GruposContent grupos={grupos} setGrupos={setGrupos} carreras={carreras} /></TabsContent>
-            <TabsContent value="cuatrimestres"><CatalogContent title="Cuatrimestres" items={cuatrimestres} setItems={setCuatrimestres} /></TabsContent>
-            <TabsContent value="semestres"><CatalogContent title="Semestres" items={semestres} setItems={setSemestres} /></TabsContent>
-            <TabsContent value="turnos"><CatalogContent title="Turnos" items={turnos} setItems={setTurnos} /></TabsContent>
-            <TabsContent value="materias"><MateriasContent asignaciones={materiaAsignaciones} setAsignaciones={setMateriaAsignaciones} carreras={carreras} cuatrimestres={cuatrimestres} semestres={semestres} /></TabsContent>
-            <TabsContent value="horarios"><HorariosContent horarios={horarios} setHorarios={setHorarios} grupos={grupos} materias={materiaAsignaciones} docentes={docentes} turnos={turnos} /></TabsContent>
+            <TabsContent value="materias"><MateriasContent asignaciones={materiaAsignaciones} setAsignaciones={setMateriaAsignaciones} carreras={carreras} /></TabsContent>
+            <TabsContent value="horarios"><HorariosContent horarios={horarios} setHorarios={setHorarios} grupos={grupos} materias={materiaAsignaciones} docentes={docentes} /></TabsContent>
         </Tabs>
     );
 }
