@@ -10,7 +10,7 @@ export function JefeLogoutButton() {
 
   const handleLogout = () => {
     sessionStorage.removeItem('unilink-jefe-user');
-    router.push("/jefe/login");
+    router.push("/login");
   };
 
   return (

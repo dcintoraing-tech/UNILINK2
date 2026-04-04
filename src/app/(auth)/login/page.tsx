@@ -46,7 +46,8 @@ export default function LoginPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       if (typeof window !== 'undefined') {
-        // Handle Jefe de Grupo login
+        
+        // Case 1: Jefe de Grupo login
         if (values.username === 'jefe' && values.password === 'jefe') {
             const userProfile = {
                 uid: "jefe-user",
@@ -59,55 +60,57 @@ export default function LoginPage() {
                 description: "Redirigiendo al dashboard de jefe...",
             });
             router.push("/jefe/dashboard");
-            return;
-        }
+            return; 
+        } 
         
-        const storedUsersRaw = window.localStorage.getItem('unilink-users');
-        const users = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
-        let userToSession;
-
-        if (values.username === 'admin' && values.password === 'admin') {
-          // Hardcoded super-admin login
-          userToSession = {
-            id: 'superuser',
+        // Case 2: Admin login
+        else if (values.username === 'admin' && values.password === 'admin') {
+          const userProfile = {
+            uid: 'superuser',
             name: 'Admin',
             email: 'admin@unilink.com',
             role: 'Admin',
           };
-        } else {
-          // Logic for regular users
+          sessionStorage.setItem('unilink-user', JSON.stringify(userProfile));
+          toast({
+              title: "Inicio de sesión exitoso",
+              description: "Redirigiendo a tu panel de control...",
+          });
+          router.push("/admin/dashboard");
+          return;
+        } 
+        
+        // Case 3: Regular user login
+        else {
+          const storedUsersRaw = window.localStorage.getItem('unilink-users');
+          const users = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
           const foundUser = users.find((u: any) => (u.email === values.username || u.name === values.username));
 
-          if (!foundUser || foundUser.password !== values.password) {
-            throw new Error("Credenciales incorrectas. Por favor, verifica tu usuario y contraseña.");
+          if (foundUser && foundUser.password === values.password) {
+            const userProfile = {
+              uid: foundUser.id,
+              name: foundUser.name,
+              email: foundUser.email,
+              role: foundUser.role,
+            };
+            sessionStorage.setItem('unilink-user', JSON.stringify(userProfile));
+            toast({
+                title: "Inicio de sesión exitoso",
+                description: "Redirigiendo a tu panel de control...",
+            });
+            
+            // Redirect based on regular user role (if needed in future)
+            if (foundUser.role === 'Admin') {
+              router.push("/admin/dashboard");
+            } else {
+              router.push("/dashboard");
+            }
+            return;
           }
-          
-          userToSession = foundUser;
-        }
-        
-        if (!userToSession) {
-           throw new Error("Credenciales incorrectas. Por favor, verifica tu usuario y contraseña.");
         }
 
-        const userProfile = {
-          uid: userToSession.id,
-          name: userToSession.name,
-          email: userToSession.email,
-          role: userToSession.role,
-        };
-
-        sessionStorage.setItem('unilink-user', JSON.stringify(userProfile));
-        
-        toast({
-            title: "Inicio de sesión exitoso",
-            description: "Redirigiendo a tu panel de control...",
-        });
-
-        if (userProfile.role === 'Admin') {
-            router.push("/admin/dashboard");
-        } else {
-            router.push("/dashboard");
-        }
+        // If none of the above cases match, throw an error
+        throw new Error("Credenciales incorrectas. Por favor, verifica tu usuario y contraseña.");
       }
     } catch (error: any) {
       console.error("Login failed", error);
