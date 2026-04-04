@@ -292,8 +292,12 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
         const formData = new FormData(e.currentTarget);
         const materia = formData.get('materia') as string;
         const carreraId = formData.get('carreraId') as string;
-        const cuatrimestreId = formData.get('cuatrimestreId') as string | undefined;
-        const semestreId = formData.get('semestreId') as string | undefined;
+        
+        const cuatrimestreIdFromForm = formData.get('cuatrimestreId') as string | undefined;
+        const semestreIdFromForm = formData.get('semestreId') as string | undefined;
+
+        const cuatrimestreId = cuatrimestreIdFromForm === 'NONE' ? undefined : cuatrimestreIdFromForm;
+        const semestreId = semestreIdFromForm === 'NONE' ? undefined : semestreIdFromForm;
 
         if (!materia || !carreraId || (!cuatrimestreId && !semestreId)) {
             toast({
@@ -381,8 +385,8 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras, cuatrimestre
                 <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
                     <div className="grid gap-2"><Label htmlFor="materia">Nombre de la Materia</Label><Input id="materia" name="materia" defaultValue={currentItem?.materia} required /></div>
                     <div className="grid gap-2"><Label>Carrera</Label><Select name="carreraId" defaultValue={currentItem?.carreraId} required><SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger><SelectContent>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
-                    <div className="grid gap-2"><Label>Cuatrimestre (opcional)</Label><Select name="cuatrimestreId" defaultValue={currentItem?.cuatrimestreId}><SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger><SelectContent><SelectItem value="">Ninguno</SelectItem>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
-                    <div className="grid gap-2"><Label>Semestre (opcional)</Label><Select name="semestreId" defaultValue={currentItem?.semestreId}><SelectTrigger><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger><SelectContent><SelectItem value="">Ninguno</SelectItem>{semestres.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="grid gap-2"><Label>Cuatrimestre (opcional)</Label><Select name="cuatrimestreId" defaultValue={currentItem?.cuatrimestreId}><SelectTrigger><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger><SelectContent><SelectItem value="NONE">Ninguno</SelectItem>{cuatrimestres.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="grid gap-2"><Label>Semestre (opcional)</Label><Select name="semestreId" defaultValue={currentItem?.semestreId}><SelectTrigger><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger><SelectContent><SelectItem value="NONE">Ninguno</SelectItem>{semestres.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                     <DialogFooter><Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button><Button type="submit">{currentItem ? 'Guardar Cambios' : 'Asignar'}</Button></DialogFooter>
                 </form>
             </DialogContent></Dialog>
