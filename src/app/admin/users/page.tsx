@@ -146,7 +146,7 @@ export default function UsersPage() {
     const currentUsers: User[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
     
     if (editingUser) {
-        const emailExists = currentUsers.some(u => u.email === userData.email && u.id !== editingUser.id);
+        const emailExists = currentUsers.some(u => u.email.toLowerCase() === userData.email.toLowerCase() && u.id !== editingUser.id);
         if (emailExists) {
             toast({ variant: "destructive", title: "Error", description: "Un usuario con este correo electrónico ya existe." });
             return;
@@ -171,7 +171,7 @@ export default function UsersPage() {
         setUsers(updatedUsers);
         toast({ title: "Usuario actualizado", description: `El usuario ${userData.name} ha sido actualizado.` });
     } else {
-        const emailExists = currentUsers.some(u => u.email === userData.email);
+        const emailExists = currentUsers.some(u => u.email.toLowerCase() === userData.email.toLowerCase());
         if (emailExists) {
             toast({ variant: "destructive", title: "Error", description: "Un usuario con este correo electrónico ya existe." });
             return;
@@ -250,35 +250,37 @@ export default function UsersPage() {
 
             const storedUsersRaw = window.localStorage.getItem('unilink-users');
             const currentUsers: User[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
-            const existingEmails = new Set(currentUsers.map(u => u.email));
+            const existingEmails = new Set(currentUsers.map(u => u.email.toLowerCase()));
 
             const newUsers: User[] = [];
             let skippedCount = 0;
 
             for (const item of json) {
-                if (!item.name || !item.email || !item.password || !item.role) {
+                const email = item.email ? String(item.email).trim().toLowerCase() : '';
+                
+                if (!item.name || !email || !item.password || !item.role) {
                     toast({ variant: "destructive", title: "Dato faltante", description: `El registro para '${item.email || 'desconocido'}' está incompleto. Se omitirá.` });
                     continue;
                 }
-                if (existingEmails.has(item.email)) {
+                if (existingEmails.has(email)) {
                     skippedCount++;
                     continue;
                 }
                 if (!['Docente', 'Admin'].includes(item.role)) {
-                    toast({ variant: "destructive", title: "Rol inválido", description: `El rol '${item.role}' para '${item.email}' no es válido. Se omitirá.` });
+                    toast({ variant: "destructive", title: "Rol inválido", description: `El rol '${item.role}' para '${email}' no es válido. Se omitirá.` });
                     continue;
                 }
 
                 newUsers.push({
                     id: new Date().toISOString() + Math.random().toString(36).substr(2, 9),
                     name: item.name,
-                    email: item.email,
+                    email: email,
                     password: String(item.password),
                     role: item.role,
                     status: 'Activo',
                     createdAt: new Date().toISOString(),
                 });
-                existingEmails.add(item.email);
+                existingEmails.add(email);
             }
             
             if (newUsers.length > 0) {
