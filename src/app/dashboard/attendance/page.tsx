@@ -86,16 +86,18 @@ export default function AttendancePage() {
     const [scanProgress, setScanProgress] = useState(0);
 
     const videoRef = useRef<HTMLVideoElement>(null);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const lastMatchRef = useRef<{ studentId: string; time: number } | null>(null);
 
     const handleRecognition = useCallback(() => {
-        if (!videoRef.current || !canvasRef.current || allStudents.length === 0) return;
+        if (!videoRef.current || allStudents.length === 0) return;
 
         const studentsWithEmbeddings = allStudents.filter(s => s.embedding);
         if (studentsWithEmbeddings.length === 0) return;
         
+        // This is a simulation. In a real app, you'd capture a frame, 
+        // send it to an AI model to get an embedding.
+        // Here, we just pick a random registered student's embedding to simulate a match.
         const randomIndex = Math.floor(Math.random() * studentsWithEmbeddings.length);
         const simulatedLiveEmbedding = studentsWithEmbeddings[randomIndex].embedding;
 
@@ -112,15 +114,14 @@ export default function AttendancePage() {
             }
         }
         
-        const SIMILARITY_THRESHOLD = 0.95;
+        const SIMILARITY_THRESHOLD = 0.95; // High threshold for simulation
 
         if (bestMatch.student && bestMatch.similarity >= SIMILARITY_THRESHOLD) {
-             const now = Date.now();
-            const currentLastMatch = lastMatchRef.current;
+            const now = Date.now();
             
-            if (!currentLastMatch || currentLastMatch.studentId !== bestMatch.student.id || now - currentLastMatch.time > 5000) {
+            // Only add student if not already present
+            if (!identifiedStudents.has(bestMatch.student.id)) {
                 setIdentifiedStudents(prev => {
-                    if (prev.has(bestMatch.student!.id)) return prev;
                     const newSet = new Set(prev);
                     newSet.add(bestMatch.student!.id);
                     return newSet;
@@ -132,34 +133,42 @@ export default function AttendancePage() {
                 });
             }
         }
-    }, [allStudents, toast]);
+    }, [allStudents, toast, identifiedStudents]);
 
+    // Effect for managing the camera stream
     useEffect(() => {
         if (!isTakingAttendance) {
+            // Cleanup when not taking attendance
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+                streamRef.current = null;
+            }
+            if (videoRef.current) {
+                videoRef.current.srcObject = null;
+            }
+            setHasCameraPermission(null);
             return;
         }
 
-        let recognitionInterval: NodeJS.Timeout;
-        let progressInterval: NodeJS.Timeout;
-        
-        const start = async () => {
+        let didCancel = false;
+
+        const startCamera = async () => {
+            setHasCameraPermission(null); // Set to pending
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                if (didCancel) {
+                    stream.getTracks().forEach(track => track.stop());
+                    return;
+                }
                 streamRef.current = stream;
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
                 }
                 setHasCameraPermission(true);
-
-                recognitionInterval = setInterval(handleRecognition, 2000);
-                progressInterval = setInterval(() => {
-                    setScanProgress(prev => (prev >= 100 ? 0 : prev + 5));
-                }, 100);
-
             } catch (error) {
                 console.error('Error accessing camera:', error);
                 setHasCameraPermission(false);
-                setIsTakingAttendance(false);
+                setIsTakingAttendance(false); // Stop the process
                 toast({
                     variant: 'destructive',
                     title: 'Acceso a la cámara denegado',
@@ -168,22 +177,37 @@ export default function AttendancePage() {
             }
         };
 
-        start();
+        startCamera();
 
         return () => {
+            didCancel = true;
             if (streamRef.current) {
                 streamRef.current.getTracks().forEach(track => track.stop());
                 streamRef.current = null;
             }
-             if (videoRef.current) {
+            if (videoRef.current) {
                 videoRef.current.srcObject = null;
             }
-            if (recognitionInterval) clearInterval(recognitionInterval);
-            if (progressInterval) clearInterval(progressInterval);
-            setScanProgress(0);
-            setHasCameraPermission(null);
         };
-    }, [isTakingAttendance, handleRecognition, toast]);
+    }, [isTakingAttendance, toast]);
+    
+    // Effect for managing recognition intervals
+    useEffect(() => {
+        if (!isTakingAttendance || hasCameraPermission !== true) {
+            return;
+        }
+
+        const recognitionInterval = setInterval(handleRecognition, 2000);
+        const progressInterval = setInterval(() => {
+            setScanProgress(prev => (prev >= 100 ? 0 : prev + 5));
+        }, 100);
+
+        return () => {
+            clearInterval(recognitionInterval);
+            clearInterval(progressInterval);
+            setScanProgress(0);
+        };
+    }, [isTakingAttendance, hasCameraPermission, handleRecognition]);
 
 
     const presentStudentsList = allStudents.filter(s => identifiedStudents.has(s.id));
@@ -271,8 +295,6 @@ export default function AttendancePage() {
                     )}
                 </CardContent>
             </Card>
-
-             <canvas ref={canvasRef} className="hidden"></canvas>
         </div>
     );
 }
