@@ -155,7 +155,9 @@ function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished:
             academicProgramId: academicProgram,
             assignedGroupId: assignedGroup,
             facialImage: capturedImage,
-            embedding: null, // Placeholder for facial embeddings
+            // Simulate embedding generation. In a real application, this would
+            // be a call to an AI service to get a facial embedding vector.
+            embedding: Array.from({ length: 128 }, () => Math.random() * 2 - 1),
         };
 
         setStudents(prev => [...prev, newStudent]);
@@ -229,6 +231,7 @@ function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished:
                             className={cn("w-full h-full object-cover", !isCapturing && "hidden")}
                             autoPlay
                             muted
+                            playsInline
                         />
                         {!isCapturing && (
                              <Avatar className="w-40 h-40 border-2 border-dashed">

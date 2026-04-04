@@ -7,6 +7,7 @@ import { Logo } from "@/components/logo";
 import { PlaceHolderImages } from "@/lib/placeholder-images";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 interface User {
   name: string;
@@ -70,11 +71,14 @@ export default function DashboardPage() {
         </div>
         <div className="mx-auto grid w-full max-w-6xl items-start gap-6 md:grid-cols-[180px_1fr] lg:grid-cols-[250px_1fr]">
           <nav className="grid gap-4 text-sm text-muted-foreground">
-            <a href="#" className="font-semibold text-primary">
+            <Link href="/dashboard" className="font-semibold text-primary">
               Perfil
-            </a>
-            <a href="#" className="hover:text-primary">Configuración</a>
-            <a href="#" className="hover:text-primary">Soporte</a>
+            </Link>
+            <Link href="/dashboard/attendance" className="hover:text-primary">
+              Pasar Lista
+            </Link>
+            <Link href="#" className="hover:text-primary">Configuración</Link>
+            <Link href="#" className="hover:text-primary">Soporte</Link>
           </nav>
           <div className="grid gap-6">
             <Card>
