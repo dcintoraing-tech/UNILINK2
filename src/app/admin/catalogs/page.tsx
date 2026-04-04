@@ -102,14 +102,14 @@ interface AsignacionMateria {
 
 interface HorarioBlock {
     docenteId: string;
+    materiaAsignacionId: string;
     horaInicio: string;
-    horaFin: string;
+    duracion: string; // "1" or "2"
 }
 
 interface Horario {
     id: string;
     grupoId: string;
-    materiaAsignacionId: string;
     dia: string;
     aula: string;
     blocks: (HorarioBlock | undefined)[];
@@ -295,16 +295,22 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
                     </div>
                      <div className="grid gap-2">
                         <Label htmlFor="cuatrimestre">Cuatrimestre</Label>
-                        <Select name="cuatrimestre" defaultValue={currentItem?.cuatrimestre} required>
+                        <Select name="cuatrimestre" defaultValue={currentItem?.cuatrimestre || "NONE"} required>
                             <SelectTrigger id="cuatrimestre"><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger>
-                            <SelectContent>{cuatrimestres.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                            <SelectContent>
+                                <SelectItem value="NONE">Ninguno</SelectItem>
+                                {cuatrimestres.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                            </SelectContent>
                         </Select>
                     </div>
                      <div className="grid gap-2">
                         <Label htmlFor="semestre">Semestre</Label>
-                        <Select name="semestre" defaultValue={currentItem?.semestre} required>
+                        <Select name="semestre" defaultValue={currentItem?.semestre || "NONE"} required>
                             <SelectTrigger id="semestre"><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger>
-                            <SelectContent>{semestres.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                            <SelectContent>
+                                <SelectItem value="NONE">Ninguno</SelectItem>
+                                {semestres.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                            </SelectContent>
                         </Select>
                     </div>
                     <div className="grid gap-2">
@@ -331,13 +337,17 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const materia = formData.get('materia') as string;
-        const carreraId = formData.get('carreraId') as string;
+        let carreraId = formData.get('carreraId') as string;
 
-        if (!materia || !carreraId) {
+        if (carreraId === 'NONE') {
+            carreraId = '';
+        }
+
+        if (!materia) {
             toast({
                 variant: 'destructive',
                 title: "Error",
-                description: "Debes completar la materia y la carrera.",
+                description: "Debes completar el nombre de la materia.",
             });
             return;
         }
@@ -366,8 +376,8 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
     };
 
     const getNameById = (id: string | undefined, list: CatalogItem[]) => {
-        if (!id) return '';
-        return list.find(item => item.id === id)?.name || '';
+        if (!id) return 'N/A';
+        return list.find(item => item.id === id)?.name || 'N/A';
     };
 
     return (
@@ -414,7 +424,16 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
                 <DialogHeader><DialogTitle>{currentItem ? 'Editar' : 'Asignar'} Materia</DialogTitle></DialogHeader>
                 <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
                     <div className="grid gap-2"><Label htmlFor="materia">Nombre de la Materia</Label><Input id="materia" name="materia" defaultValue={currentItem?.materia} required /></div>
-                    <div className="grid gap-2"><Label>Carrera</Label><Select name="carreraId" defaultValue={currentItem?.carreraId} required><SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger><SelectContent>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="grid gap-2">
+                        <Label>Carrera</Label>
+                        <Select name="carreraId" defaultValue={currentItem?.carreraId || 'NONE'} required>
+                            <SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="NONE">Ninguna</SelectItem>
+                                {carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
                     <DialogFooter><Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button><Button type="submit">{currentItem ? 'Guardar Cambios' : 'Asignar'}</Button></DialogFooter>
                 </form>
             </DialogContent></Dialog>
@@ -427,16 +446,24 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
     const [currentItem, setCurrentItem] = useState<Horario | null>(null);
     const { toast } = useToast();
 
+    const calculateEndTime = (startTime: string, duration: number): string => {
+        if (!startTime || !duration) return '';
+        const [hours, minutes] = startTime.split(':').map(Number);
+        const date = new Date();
+        date.setHours(hours, minutes, 0, 0);
+        date.setHours(date.getHours() + duration);
+        return date.toTimeString().slice(0, 5);
+    };
+
     const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const grupoId = formData.get('grupoId') as string;
-        const materiaAsignacionId = formData.get('materiaAsignacionId') as string;
         const dia = formData.get('dia') as string;
         const aula = formData.get('aula') as string;
 
-        if (!grupoId || !materiaAsignacionId || !dia || !aula) {
-            toast({ variant: 'destructive', title: "Error", description: "Grupo, Materia, Día y Aula son obligatorios." });
+        if (!grupoId || !dia || !aula) {
+            toast({ variant: 'destructive', title: "Error", description: "Grupo, Día y Aula son obligatorios." });
             return;
         }
 
@@ -444,25 +471,29 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
         let hasAtLeastOneBlock = false;
         for (let i = 0; i < 4; i++) {
             const docenteId = formData.get(`docenteId-${i}`) as string;
+            const materiaAsignacionId = formData.get(`materiaAsignacionId-${i}`) as string;
             const horaInicio = formData.get(`horaInicio-${i}`) as string;
-            const horaFin = formData.get(`horaFin-${i}`) as string;
+            const duracion = formData.get(`duracion-${i}`) as string;
 
-            if (docenteId && horaInicio && horaFin) {
-                blocks.push({ docenteId, horaInicio, horaFin });
+            if (docenteId && materiaAsignacionId && horaInicio && duracion) {
+                blocks.push({ docenteId, materiaAsignacionId, horaInicio, duracion });
                 hasAtLeastOneBlock = true;
-            } else {
+            } else if (docenteId || materiaAsignacionId || horaInicio || duracion) {
+                toast({ variant: 'destructive', title: `Error en Bloque ${i+1}`, description: "Para cada bloque, debes completar todos los campos." });
+                return;
+            }
+            else {
                 blocks.push(undefined);
             }
         }
 
         if (!hasAtLeastOneBlock) {
-            toast({ variant: 'destructive', title: "Error", description: "Debes definir al menos un bloque de horario con su docente y horas." });
+            toast({ variant: 'destructive', title: "Error", description: "Debes definir al menos un bloque de horario completo." });
             return;
         }
         
         const newHorarioData = {
             grupoId,
-            materiaAsignacionId,
             dia,
             aula,
             blocks
@@ -494,23 +525,23 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
             </CardHeader>
             <CardContent>
                 <Table>
-                    <TableHeader><TableRow><TableHead>Grupo</TableHead><TableHead>Materia</TableHead><TableHead>Día</TableHead><TableHead>Aula</TableHead><TableHead>Bloques del Horario</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Grupo</TableHead><TableHead>Día</TableHead><TableHead>Aula</TableHead><TableHead>Bloques del Horario</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
                     <TableBody>
                         {horarios.map(h => (
                             <TableRow key={h.id}>
                                 <TableCell>{getNameById(h.grupoId, grupos)}</TableCell>
-                                <TableCell>{getMateriaName(h.materiaAsignacionId)}</TableCell>
                                 <TableCell>{h.dia}</TableCell>
                                 <TableCell>{h.aula}</TableCell>
                                 <TableCell>
                                     <div className="flex flex-col gap-2">
                                     {h.blocks.map((block, index) => {
                                         if (!block) return null;
+                                        const endTime = calculateEndTime(block.horaInicio, parseInt(block.duracion));
                                         return (
-                                            <div key={index} className="text-xs p-1 rounded-sm bg-muted">
-                                                <span className="font-semibold">B{index+1}:</span> {block.horaInicio} - {block.horaFin}
-                                                <br />
-                                                <span className="text-muted-foreground">{getNameById(block.docenteId, docentes)}</span>
+                                            <div key={index} className="text-xs p-2 rounded-md bg-muted border">
+                                                <div className="font-bold text-foreground">Bloque {index + 1}: {block.horaInicio} - {endTime} ({block.duracion}h)</div>
+                                                <div className="font-semibold">{getMateriaName(block.materiaAsignacionId)}</div>
+                                                <div className="text-muted-foreground">{getNameById(block.docenteId, docentes)}</div>
                                             </div>
                                         )
                                     })}
@@ -534,39 +565,53 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
                 </Table>
             </CardContent>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="sm:max-w-2xl">
+                <DialogContent className="sm:max-w-3xl">
                     <DialogHeader><DialogTitle>{currentItem ? 'Editar' : 'Crear'} Horario</DialogTitle></DialogHeader>
                     <form id="horario-form" onSubmit={handleFormSubmit} className="space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div className="grid gap-2"><Label>Grupo</Label><Select name="grupoId" defaultValue={currentItem?.grupoId} required><SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger><SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent></Select></div>
-                            <div className="grid gap-2"><Label>Materia</Label><Select name="materiaAsignacionId" defaultValue={currentItem?.materiaAsignacionId} required><SelectTrigger><SelectValue placeholder="Selecciona una materia" /></SelectTrigger><SelectContent>{materias.map(m => <SelectItem key={m.id} value={m.id}>{m.materia} ({getNameById(m.carreraId, carreras)})</SelectItem>)}</SelectContent></Select></div>
                             <div className="grid gap-2"><Label>Día</Label><Select name="dia" defaultValue={currentItem?.dia} required><SelectTrigger><SelectValue placeholder="Selecciona un día" /></SelectTrigger><SelectContent>{diasSemana.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select></div>
                             <div className="grid gap-2"><Label htmlFor="aula">Aula</Label><Input id="aula" name="aula" defaultValue={currentItem?.aula} required /></div>
                         </div>
 
                         <Separator />
-                        <p className="text-sm font-medium text-muted-foreground">Bloques de Horas (4 horas por día)</p>
+                        <p className="font-medium">Bloques del Horario</p>
                         
-                        <ScrollArea className="h-64 pr-3">
+                        <ScrollArea className="h-72 pr-3">
                             <div className="space-y-4">
                             {[...Array(4)].map((_, i) => (
                                 <div key={i} className="grid gap-4 border p-4 rounded-lg bg-muted/50">
-                                    <h4 className="font-semibold text-sm">Bloque de Hora {i + 1}</h4>
-                                     <div className="grid gap-2">
-                                        <Label htmlFor={`docenteId-${i}`}>Docente</Label>
-                                        <Select name={`docenteId-${i}`} defaultValue={currentItem?.blocks?.[i]?.docenteId}>
-                                            <SelectTrigger id={`docenteId-${i}`}><SelectValue placeholder="Selecciona un docente" /></SelectTrigger>
-                                            <SelectContent>{docentes.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
-                                        </Select>
+                                    <h4 className="font-semibold">Bloque {i + 1}</h4>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div className="grid gap-2">
+                                            <Label htmlFor={`materiaAsignacionId-${i}`}>Materia</Label>
+                                            <Select name={`materiaAsignacionId-${i}`} defaultValue={currentItem?.blocks?.[i]?.materiaAsignacionId}>
+                                                <SelectTrigger id={`materiaAsignacionId-${i}`}><SelectValue placeholder="Selecciona una materia" /></SelectTrigger>
+                                                <SelectContent>{materias.map(m => <SelectItem key={m.id} value={m.id}>{m.materia} ({getNameById(m.carreraId, carreras)})</SelectItem>)}</SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label htmlFor={`docenteId-${i}`}>Docente</Label>
+                                            <Select name={`docenteId-${i}`} defaultValue={currentItem?.blocks?.[i]?.docenteId}>
+                                                <SelectTrigger id={`docenteId-${i}`}><SelectValue placeholder="Selecciona un docente" /></SelectTrigger>
+                                                <SelectContent>{docentes.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
+                                            </Select>
+                                        </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div className="grid gap-2">
                                             <Label htmlFor={`horaInicio-${i}`}>Hora Inicio</Label>
                                             <Input id={`horaInicio-${i}`} name={`horaInicio-${i}`} type="time" defaultValue={currentItem?.blocks?.[i]?.horaInicio} />
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label htmlFor={`horaFin-${i}`}>Hora Fin</Label>
-                                            <Input id={`horaFin-${i}`} name={`horaFin-${i}`} type="time" defaultValue={currentItem?.blocks?.[i]?.horaFin} />
+                                            <Label htmlFor={`duracion-${i}`}>Duración</Label>
+                                            <Select name={`duracion-${i}`} defaultValue={currentItem?.blocks?.[i]?.duracion}>
+                                                <SelectTrigger id={`duracion-${i}`}><SelectValue placeholder="Selecciona duración" /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="1">1 hora</SelectItem>
+                                                    <SelectItem value="2">2 horas</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                     </div>
                                 </div>
