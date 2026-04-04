@@ -18,6 +18,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+
 
 // --- DATA PERSISTENCE HOOK ---
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
@@ -97,15 +100,19 @@ interface AsignacionMateria {
     carreraId: string;
 }
 
+interface HorarioBlock {
+    docenteId: string;
+    horaInicio: string;
+    horaFin: string;
+}
+
 interface Horario {
     id: string;
     grupoId: string;
     materiaAsignacionId: string;
-    docenteId: string;
     dia: string;
-    horaInicio: string;
-    horaFin: string;
     aula: string;
+    blocks: (HorarioBlock | undefined)[];
 }
 
 // --- GENERIC CATALOG COMPONENT ---
@@ -415,7 +422,7 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
     );
 }
 
-function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: { horarios: Horario[], setHorarios: (value: Horario[] | ((val: Horario[]) => Horario[])) => void, grupos: Grupo[], materias: AsignacionMateria[], docentes: User[] }) {
+function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, carreras }: { horarios: Horario[], setHorarios: (value: Horario[] | ((val: Horario[]) => Horario[])) => void, grupos: Grupo[], materias: AsignacionMateria[], docentes: User[], carreras: CatalogItem[] }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<Horario | null>(null);
     const { toast } = useToast();
@@ -423,18 +430,49 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: 
     const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
-        const data = Object.fromEntries(formData.entries()) as Omit<Horario, 'id'>;
+        const grupoId = formData.get('grupoId') as string;
+        const materiaAsignacionId = formData.get('materiaAsignacionId') as string;
+        const dia = formData.get('dia') as string;
+        const aula = formData.get('aula') as string;
 
-        if (!data.grupoId || !data.materiaAsignacionId || !data.docenteId || !data.dia || !data.horaInicio || !data.horaFin || !data.aula) {
-            toast({ variant: 'destructive', title: "Error", description: "Todos los campos son obligatorios." });
+        if (!grupoId || !materiaAsignacionId || !dia || !aula) {
+            toast({ variant: 'destructive', title: "Error", description: "Grupo, Materia, Día y Aula son obligatorios." });
             return;
         }
 
+        const blocks: (HorarioBlock | undefined)[] = [];
+        let hasAtLeastOneBlock = false;
+        for (let i = 0; i < 4; i++) {
+            const docenteId = formData.get(`docenteId-${i}`) as string;
+            const horaInicio = formData.get(`horaInicio-${i}`) as string;
+            const horaFin = formData.get(`horaFin-${i}`) as string;
+
+            if (docenteId && horaInicio && horaFin) {
+                blocks.push({ docenteId, horaInicio, horaFin });
+                hasAtLeastOneBlock = true;
+            } else {
+                blocks.push(undefined);
+            }
+        }
+
+        if (!hasAtLeastOneBlock) {
+            toast({ variant: 'destructive', title: "Error", description: "Debes definir al menos un bloque de horario con su docente y horas." });
+            return;
+        }
+        
+        const newHorarioData = {
+            grupoId,
+            materiaAsignacionId,
+            dia,
+            aula,
+            blocks
+        };
+
         if (currentItem) {
-            setHorarios(prev => prev.map(h => h.id === currentItem.id ? { ...h, ...data } : h));
+            setHorarios(prev => prev.map(h => h.id === currentItem.id ? { ...h, ...newHorarioData } : h));
             toast({ title: "Horario actualizado" });
         } else {
-            setHorarios(prev => [...prev, { ...data, id: new Date().toISOString() }]);
+            setHorarios(prev => [...prev, { ...newHorarioData, id: new Date().toISOString() }]);
             toast({ title: "Horario creado" });
         }
         setIsDialogOpen(false);
@@ -456,16 +494,28 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: 
             </CardHeader>
             <CardContent>
                 <Table>
-                    <TableHeader><TableRow><TableHead>Grupo</TableHead><TableHead>Materia</TableHead><TableHead>Docente</TableHead><TableHead>Día</TableHead><TableHead>Horario</TableHead><TableHead>Aula</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Grupo</TableHead><TableHead>Materia</TableHead><TableHead>Día</TableHead><TableHead>Aula</TableHead><TableHead>Bloques del Horario</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
                     <TableBody>
                         {horarios.map(h => (
                             <TableRow key={h.id}>
                                 <TableCell>{getNameById(h.grupoId, grupos)}</TableCell>
                                 <TableCell>{getMateriaName(h.materiaAsignacionId)}</TableCell>
-                                <TableCell>{getNameById(h.docenteId, docentes)}</TableCell>
                                 <TableCell>{h.dia}</TableCell>
-                                <TableCell>{h.horaInicio} - {h.horaFin}</TableCell>
                                 <TableCell>{h.aula}</TableCell>
+                                <TableCell>
+                                    <div className="flex flex-col gap-2">
+                                    {h.blocks.map((block, index) => {
+                                        if (!block) return null;
+                                        return (
+                                            <div key={index} className="text-xs p-1 rounded-sm bg-muted">
+                                                <span className="font-semibold">B{index+1}:</span> {block.horaInicio} - {block.horaFin}
+                                                <br />
+                                                <span className="text-muted-foreground">{getNameById(block.docenteId, docentes)}</span>
+                                            </div>
+                                        )
+                                    })}
+                                    </div>
+                                </TableCell>
                                 <TableCell className="text-right">
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
@@ -484,20 +534,50 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes }: 
                 </Table>
             </CardContent>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-2xl">
                     <DialogHeader><DialogTitle>{currentItem ? 'Editar' : 'Crear'} Horario</DialogTitle></DialogHeader>
-                    <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
-                        <Select name="grupoId" defaultValue={currentItem?.grupoId} required><SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger><SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent></Select>
-                        <Select name="materiaAsignacionId" defaultValue={currentItem?.materiaAsignacionId} required><SelectTrigger><SelectValue placeholder="Selecciona una materia" /></SelectTrigger><SelectContent>{materias.map(m => <SelectItem key={m.id} value={m.id}>{m.materia} ({getNameById(m.carreraId, carreras)})</SelectItem>)}</SelectContent></Select>
-                        <Select name="docenteId" defaultValue={currentItem?.docenteId} required><SelectTrigger><SelectValue placeholder="Selecciona un docente" /></SelectTrigger><SelectContent>{docentes.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent></Select>
-                        <Select name="dia" defaultValue={currentItem?.dia} required><SelectTrigger><SelectValue placeholder="Selecciona un día" /></SelectTrigger><SelectContent>{diasSemana.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="grid gap-2"><Label htmlFor="horaInicio">Hora Inicio</Label><Input id="horaInicio" name="horaInicio" type="time" defaultValue={currentItem?.horaInicio} required /></div>
-                            <div className="grid gap-2"><Label htmlFor="horaFin">Hora Fin</Label><Input id="horaFin" name="horaFin" type="time" defaultValue={currentItem?.horaFin} required /></div>
+                    <form id="horario-form" onSubmit={handleFormSubmit} className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="grid gap-2"><Label>Grupo</Label><Select name="grupoId" defaultValue={currentItem?.grupoId} required><SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger><SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent></Select></div>
+                            <div className="grid gap-2"><Label>Materia</Label><Select name="materiaAsignacionId" defaultValue={currentItem?.materiaAsignacionId} required><SelectTrigger><SelectValue placeholder="Selecciona una materia" /></SelectTrigger><SelectContent>{materias.map(m => <SelectItem key={m.id} value={m.id}>{m.materia} ({getNameById(m.carreraId, carreras)})</SelectItem>)}</SelectContent></Select></div>
+                            <div className="grid gap-2"><Label>Día</Label><Select name="dia" defaultValue={currentItem?.dia} required><SelectTrigger><SelectValue placeholder="Selecciona un día" /></SelectTrigger><SelectContent>{diasSemana.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select></div>
+                            <div className="grid gap-2"><Label htmlFor="aula">Aula</Label><Input id="aula" name="aula" defaultValue={currentItem?.aula} required /></div>
                         </div>
-                        <div className="grid gap-2"><Label htmlFor="aula">Aula</Label><Input id="aula" name="aula" defaultValue={currentItem?.aula} required /></div>
-                        <DialogFooter><Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button><Button type="submit">{currentItem ? 'Guardar Cambios' : 'Crear'}</Button></DialogFooter>
+
+                        <Separator />
+                        <p className="text-sm font-medium text-muted-foreground">Bloques de Horas (4 horas por día)</p>
+                        
+                        <ScrollArea className="h-64 pr-3">
+                            <div className="space-y-4">
+                            {[...Array(4)].map((_, i) => (
+                                <div key={i} className="grid gap-4 border p-4 rounded-lg bg-muted/50">
+                                    <h4 className="font-semibold text-sm">Bloque de Hora {i + 1}</h4>
+                                     <div className="grid gap-2">
+                                        <Label htmlFor={`docenteId-${i}`}>Docente</Label>
+                                        <Select name={`docenteId-${i}`} defaultValue={currentItem?.blocks?.[i]?.docenteId}>
+                                            <SelectTrigger id={`docenteId-${i}`}><SelectValue placeholder="Selecciona un docente" /></SelectTrigger>
+                                            <SelectContent>{docentes.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid gap-2">
+                                            <Label htmlFor={`horaInicio-${i}`}>Hora Inicio</Label>
+                                            <Input id={`horaInicio-${i}`} name={`horaInicio-${i}`} type="time" defaultValue={currentItem?.blocks?.[i]?.horaInicio} />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label htmlFor={`horaFin-${i}`}>Hora Fin</Label>
+                                            <Input id={`horaFin-${i}`} name={`horaFin-${i}`} type="time" defaultValue={currentItem?.blocks?.[i]?.horaFin} />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                            </div>
+                        </ScrollArea>
                     </form>
+                     <DialogFooter>
+                        <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                        <Button type="submit" form="horario-form">{currentItem ? 'Guardar Cambios' : 'Crear'}</Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </Card>
@@ -525,7 +605,7 @@ export default function CatalogsPage() {
             <TabsContent value="carreras"><CatalogContent title="Carreras" items={carreras} setItems={setCarreras} /></TabsContent>
             <TabsContent value="grupos"><GruposContent grupos={grupos} setGrupos={setGrupos} carreras={carreras} /></TabsContent>
             <TabsContent value="materias"><MateriasContent asignaciones={materiaAsignaciones} setAsignaciones={setMateriaAsignaciones} carreras={carreras} /></TabsContent>
-            <TabsContent value="horarios"><HorariosContent horarios={horarios} setHorarios={setHorarios} grupos={grupos} materias={materiaAsignaciones} docentes={docentes} /></TabsContent>
+            <TabsContent value="horarios"><HorariosContent horarios={horarios} setHorarios={setHorarios} grupos={grupos} materias={materiaAsignaciones} docentes={docentes} carreras={carreras} /></TabsContent>
         </Tabs>
     );
 }
