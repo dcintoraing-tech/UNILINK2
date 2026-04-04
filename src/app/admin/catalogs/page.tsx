@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
@@ -13,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { MoreHorizontal, PlusCircle } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,26 +26,25 @@ import { Separator } from '@/components/ui/separator';
 
 // --- DATA PERSISTENCE HOOK ---
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
+    const [isInitialized, setIsInitialized] = useState(false);
     const [storedValue, setStoredValue] = useState<T>(initialValue);
 
     useEffect(() => {
-        if (typeof window !== "undefined") {
-            try {
-                const item = window.localStorage.getItem(key);
-                if (item) {
-                    setStoredValue(JSON.parse(item));
-                }
-            } catch (error) {
-                console.error(`Error reading localStorage key “${key}”:`, error);
+        try {
+            const item = window.localStorage.getItem(key);
+            if (item) {
+                setStoredValue(JSON.parse(item));
             }
+        } catch (error) {
+            console.error(`Error reading localStorage key “${key}”:`, error);
+        } finally {
+            setIsInitialized(true);
         }
     }, [key]);
 
     const setValue = (value: T | ((val: T) => T)) => {
-        if (typeof window === 'undefined') {
-            console.warn(`Tried setting localStorage key “${key}” even though environment is not a client`);
-            return;
-        }
+        if (!isInitialized) return;
+        
         try {
             const valueToStore = value instanceof Function ? value(storedValue) : value;
             setStoredValue(valueToStore);
@@ -69,6 +69,10 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
         window.addEventListener('storage', handleStorageChange);
         return () => window.removeEventListener('storage', handleStorageChange);
     }, [key]);
+
+    if (!isInitialized) {
+        return [initialValue, () => {}];
+    }
 
     return [storedValue, setValue];
 };
