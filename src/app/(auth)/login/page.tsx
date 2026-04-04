@@ -45,21 +45,21 @@ export default function LoginPage() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-        // Special case for 'jefe' login
-        if (values.username === 'jefe' && values.password === 'jefe') {
+        // Fallback for admin login
+        if (values.username === 'admin' && values.password === 'admin') {
             const userProfile = {
-                uid: "jefe-user",
-                name: "Jefe de Grupo",
-                role: "Jefe",
+                uid: "admin-fallback-user",
+                name: "Administrador",
+                role: "Admin",
             };
             if (typeof window !== 'undefined') {
-                sessionStorage.setItem("unilink-jefe-user", JSON.stringify(userProfile));
+                sessionStorage.setItem("unilink-user", JSON.stringify(userProfile));
             }
             toast({
                 title: "Inicio de sesión exitoso",
-                description: "Redirigiendo al dashboard de jefe...",
+                description: "Redirigiendo al dashboard de administrador...",
             });
-            router.push("/jefe/dashboard");
+            router.push("/admin/dashboard");
             return;
         }
 
@@ -127,7 +127,7 @@ export default function LoginPage() {
                   <div className="relative">
                     <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <FormControl>
-                      <Input placeholder="tu@ejemplo.com o 'jefe'" {...field} className="pl-10"/>
+                      <Input placeholder="tu@ejemplo.com o 'admin'" {...field} className="pl-10"/>
                     </FormControl>
                   </div>
                   <FormMessage />
