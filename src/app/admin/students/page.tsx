@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 // --- DATA PERSISTENCE HOOK ---
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
@@ -179,92 +180,96 @@ function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished:
     }, []);
 
     return (
-        <form onSubmit={handleRegisterStudent} className="grid md:grid-cols-3 gap-6">
-            <Card className="md:col-span-2 border-0 shadow-none">
-                <CardContent className="grid gap-6 p-1">
-                    <div className="grid sm:grid-cols-2 gap-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="firstName">Nombre(s)</Label>
-                            <Input id="firstName" value={firstName} onChange={e => setFirstName(e.target.value)} required />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="lastName">Apellido(s)</Label>
-                            <Input id="lastName" value={lastName} onChange={e => setLastName(e.target.value)} required />
-                        </div>
-                    </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="controlNumber">Número de Control</Label>
-                        <Input id="controlNumber" value={controlNumber} onChange={e => setControlNumber(e.target.value)} required />
-                    </div>
-                    <div className="grid sm:grid-cols-2 gap-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="academicProgram">Programa Académico</Label>
-                            <Select value={academicProgram} onValueChange={setAcademicProgram} required>
-                                <SelectTrigger id="academicProgram">
-                                    <SelectValue placeholder="Selecciona un programa" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="assignedGroup">Grupo Asignado</Label>
-                            <Select value={assignedGroup} onValueChange={setAssignedGroup} required>
-                                <SelectTrigger id="assignedGroup">
-                                    <SelectValue placeholder="Selecciona un grupo" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
+        <form onSubmit={handleRegisterStudent} className="space-y-6">
+             <ScrollArea className="max-h-[65vh] pr-4">
+                <div className="grid md:grid-cols-3 gap-6">
+                    <Card className="md:col-span-2 border-0 shadow-none">
+                        <CardContent className="grid gap-6 p-1">
+                            <div className="grid sm:grid-cols-2 gap-4">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="firstName">Nombre(s)</Label>
+                                    <Input id="firstName" value={firstName} onChange={e => setFirstName(e.target.value)} required />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="lastName">Apellido(s)</Label>
+                                    <Input id="lastName" value={lastName} onChange={e => setLastName(e.target.value)} required />
+                                </div>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="controlNumber">Número de Control</Label>
+                                <Input id="controlNumber" value={controlNumber} onChange={e => setControlNumber(e.target.value)} required />
+                            </div>
+                            <div className="grid sm:grid-cols-2 gap-4">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="academicProgram">Programa Académico</Label>
+                                    <Select value={academicProgram} onValueChange={setAcademicProgram} required>
+                                        <SelectTrigger id="academicProgram">
+                                            <SelectValue placeholder="Selecciona un programa" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="assignedGroup">Grupo Asignado</Label>
+                                    <Select value={assignedGroup} onValueChange={setAssignedGroup} required>
+                                        <SelectTrigger id="assignedGroup">
+                                            <SelectValue placeholder="Selecciona un grupo" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
 
-            <Card className="flex flex-col border-0 shadow-none">
-                <CardContent className="flex-1 flex flex-col items-center justify-center gap-4 p-1">
-                    <div className="relative w-full aspect-video rounded-md overflow-hidden bg-muted border flex items-center justify-center">
-                        <video 
-                            ref={videoRef}
-                            className={cn("w-full h-full object-cover", !isCapturing && "hidden")}
-                            autoPlay
-                            muted
-                            playsInline
-                        />
-                        {!isCapturing && (
-                             <Avatar className="w-40 h-40 border-2 border-dashed">
-                                <AvatarImage src={capturedImage || studentPlaceholder?.imageUrl} alt="Rostro del estudiante" data-ai-hint={studentPlaceholder?.imageHint} />
-                                <AvatarFallback className="text-6xl"><UserIcon /></AvatarFallback>
-                            </Avatar>
-                        )}
-                    </div>
-                    
-                    {hasCameraPermission === false && (
-                         <Alert variant="destructive">
-                            <AlertTitle>Acceso a Cámara Requerido</AlertTitle>
-                            <AlertDescription>
-                                Por favor, permite el acceso a la cámara para usar esta función.
-                            </AlertDescription>
-                        </Alert>
-                    )}
+                    <Card className="flex flex-col border-0 shadow-none">
+                        <CardContent className="flex-1 flex flex-col items-center justify-center gap-4 p-1">
+                            <div className="relative w-full aspect-video rounded-md overflow-hidden bg-muted border flex items-center justify-center">
+                                <video 
+                                    ref={videoRef}
+                                    className={cn("w-full h-full object-cover", !isCapturing && "hidden")}
+                                    autoPlay
+                                    muted
+                                    playsInline
+                                />
+                                {!isCapturing && (
+                                    <Avatar className="w-40 h-40 border-2 border-dashed">
+                                        <AvatarImage src={capturedImage || studentPlaceholder?.imageUrl} alt="Rostro del estudiante" data-ai-hint={studentPlaceholder?.imageHint} />
+                                        <AvatarFallback className="text-6xl"><UserIcon /></AvatarFallback>
+                                    </Avatar>
+                                )}
+                            </div>
+                            
+                            {hasCameraPermission === false && (
+                                <Alert variant="destructive">
+                                    <AlertTitle>Acceso a Cámara Requerido</AlertTitle>
+                                    <AlertDescription>
+                                        Por favor, permite el acceso a la cámara para usar esta función.
+                                    </AlertDescription>
+                                </Alert>
+                            )}
 
-                    {!isCapturing ? (
-                        <Button type="button" onClick={startCapture} className="w-full">
-                            <Camera className="mr-2 h-4 w-4" />
-                            Iniciar Captura
-                        </Button>
-                    ) : (
-                        <div className="w-full grid grid-cols-2 gap-2">
-                             <Button type="button" variant="secondary" onClick={stopCapture}>Cancelar</Button>
-                             <Button type="button" onClick={takePicture}>Capturar</Button>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
+                            {!isCapturing ? (
+                                <Button type="button" onClick={startCapture} className="w-full">
+                                    <Camera className="mr-2 h-4 w-4" />
+                                    Iniciar Captura
+                                </Button>
+                            ) : (
+                                <div className="w-full grid grid-cols-2 gap-2">
+                                    <Button type="button" variant="secondary" onClick={stopCapture}>Cancelar</Button>
+                                    <Button type="button" onClick={takePicture}>Capturar</Button>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+            </ScrollArea>
 
-            <DialogFooter className="md:col-span-3">
+            <DialogFooter>
                 <Button type="button" variant="ghost" onClick={onFinished}>Cancelar</Button>
                 <Button type="submit">Registrar Estudiante</Button>
             </DialogFooter>

@@ -48,6 +48,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 type UserRole = 'Docente' | 'Admin';
 type UserStatus = 'Activo' | 'Inactivo';
@@ -145,6 +146,12 @@ export default function UsersPage() {
     }
     
     if (editingUser) {
+        const emailExists = users.some(u => u.email === userData.email && u.id !== editingUser.id);
+        if (emailExists) {
+            toast({ variant: "destructive", title: "Error", description: "Un usuario con este correo electrónico ya existe." });
+            return;
+        }
+
         setUsers(prev => prev.map(u => {
             if (u.id === editingUser.id) {
                 const updatedUser: User = {
@@ -163,6 +170,12 @@ export default function UsersPage() {
         }));
         toast({ title: "Usuario actualizado", description: `El usuario ${userData.name} ha sido actualizado.` });
     } else {
+        const emailExists = users.some(u => u.email === userData.email);
+        if (emailExists) {
+            toast({ variant: "destructive", title: "Error", description: "Un usuario con este correo electrónico ya existe." });
+            return;
+        }
+
         const newUser: User = {
             id: new Date().toISOString(),
             name: userData.name,
@@ -389,47 +402,51 @@ export default function UsersPage() {
             <DialogTitle>{editingUser ? 'Editar Usuario' : 'Crear Usuario'}</DialogTitle>
             <DialogDescription>{editingUser ? 'Actualiza los detalles del usuario.' : 'Rellena los campos para crear un nuevo usuario.'}</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
-              <div className="grid gap-2"><Label htmlFor="name">Nombre</Label><Input id="name" name="name" defaultValue={editingUser?.name} required /></div>
-              <div className="grid gap-2"><Label htmlFor="email">Correo electrónico</Label><Input id="email" name="email" type="email" defaultValue={editingUser?.email} required /></div>
-              
-              <div className="grid gap-2">
-                <Label htmlFor="password">{editingUser ? 'Nueva Contraseña (opcional)' : 'Contraseña'}</Label>
-                <div className="relative">
-                  <Input id="password" name="password" type={showPassword ? "text" : "password"} required={!editingUser} placeholder={editingUser ? "Dejar en blanco para no cambiar" : ""} />
-                  <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground" onClick={() => setShowPassword(!showPassword)}>
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    <span className="sr-only">{showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
-                  </Button>
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="confirmPassword">{editingUser ? 'Confirmar Nueva Contraseña' : 'Confirmar Contraseña'}</Label>
-                <div className="relative">
-                  <Input id="confirmPassword" name="confirmPassword" type={showConfirmPassword ? "text" : "password"} required={!editingUser} placeholder={editingUser ? "Dejar en blanco para no cambiar" : ""} />
-                   <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
-                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    <span className="sr-only">{showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
-                  </Button>
-                </div>
-              </div>
+          <form onSubmit={handleFormSubmit} className="space-y-4">
+              <ScrollArea className="max-h-[60vh] pr-4">
+                <div className="space-y-4 py-4">
+                    <div className="grid gap-2"><Label htmlFor="name">Nombre</Label><Input id="name" name="name" defaultValue={editingUser?.name} required /></div>
+                    <div className="grid gap-2"><Label htmlFor="email">Correo electrónico</Label><Input id="email" name="email" type="email" defaultValue={editingUser?.email} required /></div>
+                    
+                    <div className="grid gap-2">
+                      <Label htmlFor="password">{editingUser ? 'Nueva Contraseña (opcional)' : 'Contraseña'}</Label>
+                      <div className="relative">
+                        <Input id="password" name="password" type={showPassword ? "text" : "password"} required={!editingUser} placeholder={editingUser ? "Dejar en blanco para no cambiar" : ""} />
+                        <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground" onClick={() => setShowPassword(!showPassword)}>
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          <span className="sr-only">{showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="confirmPassword">{editingUser ? 'Confirmar Nueva Contraseña' : 'Confirmar Contraseña'}</Label>
+                      <div className="relative">
+                        <Input id="confirmPassword" name="confirmPassword" type={showConfirmPassword ? "text" : "password"} required={!editingUser} placeholder={editingUser ? "Dejar en blanco para no cambiar" : ""} />
+                        <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
+                          {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          <span className="sr-only">{showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
+                        </Button>
+                      </div>
+                    </div>
 
-              <div className="grid gap-2">
-                <Label htmlFor="role">Rol</Label>
-                <Select name="role" defaultValue={editingUser?.role || 'Docente'}>
-                  <SelectTrigger id="role"><SelectValue placeholder="Selecciona un rol" /></SelectTrigger>
-                  <SelectContent><SelectItem value="Docente">Docente</SelectItem><SelectItem value="Admin">Admin</SelectItem></SelectContent>
-                </Select>
-              </div>
-              {editingUser && (
-                <div className="grid gap-2">
-                    <Label htmlFor="status">Estado</Label>
-                    <Select name="status" defaultValue={editingUser?.status}>
-                        <SelectTrigger id="status"><SelectValue placeholder="Selecciona un estado" /></SelectTrigger>
-                        <SelectContent><SelectItem value="Activo">Activo</SelectItem><SelectItem value="Inactivo">Inactivo</SelectItem></SelectContent>
-                    </Select>
+                    <div className="grid gap-2">
+                      <Label htmlFor="role">Rol</Label>
+                      <Select name="role" defaultValue={editingUser?.role || 'Docente'}>
+                        <SelectTrigger id="role"><SelectValue placeholder="Selecciona un rol" /></SelectTrigger>
+                        <SelectContent><SelectItem value="Docente">Docente</SelectItem><SelectItem value="Admin">Admin</SelectItem></SelectContent>
+                      </Select>
+                    </div>
+                    {editingUser && (
+                      <div className="grid gap-2">
+                          <Label htmlFor="status">Estado</Label>
+                          <Select name="status" defaultValue={editingUser?.status}>
+                              <SelectTrigger id="status"><SelectValue placeholder="Selecciona un estado" /></SelectTrigger>
+                              <SelectContent><SelectItem value="Activo">Activo</SelectItem><SelectItem value="Inactivo">Inactivo</SelectItem></SelectContent>
+                          </Select>
+                      </div>
+                    )}
                 </div>
-              )}
+              </ScrollArea>
               <DialogFooter>
                 <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
                 <Button type="submit">{editingUser ? 'Guardar Cambios' : 'Crear Usuario'}</Button>

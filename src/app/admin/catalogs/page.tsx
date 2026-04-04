@@ -30,6 +30,10 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
     const [storedValue, setStoredValue] = useState<T>(initialValue);
 
     useEffect(() => {
+        if (typeof window === 'undefined') {
+            setIsInitialized(false);
+            return;
+        }
         try {
             const item = window.localStorage.getItem(key);
             if (item) {
@@ -65,10 +69,11 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
                 }
             }
         };
-
-        window.addEventListener('storage', handleStorageChange);
+        if(isInitialized){
+            window.addEventListener('storage', handleStorageChange);
+        }
         return () => window.removeEventListener('storage', handleStorageChange);
-    }, [key]);
+    }, [key, isInitialized]);
 
     if (!isInitialized) {
         return [initialValue, () => {}];
@@ -188,13 +193,22 @@ function CatalogContent({ title, items, setItems, onAdd, onEdit, onDelete }: { t
                     </TableBody>
                 </Table>
             </CardContent>
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}><DialogContent>
-                <DialogHeader><DialogTitle>{currentItem ? 'Editar' : 'Agregar'} {title}</DialogTitle></DialogHeader>
-                <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
-                    <div className="grid gap-2"><Label htmlFor="name">Nombre</Label><Input id="name" name="name" defaultValue={currentItem?.name} required /></div>
-                    <DialogFooter><Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button><Button type="submit">{currentItem ? 'Guardar Cambios' : 'Agregar'}</Button></DialogFooter>
-                </form>
-            </DialogContent></Dialog>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>{currentItem ? 'Editar' : 'Agregar'} {title}</DialogTitle></DialogHeader>
+                    <form onSubmit={handleFormSubmit}>
+                        <ScrollArea className="max-h-96 pr-4">
+                            <div className="grid gap-4 py-4">
+                                <div className="grid gap-2"><Label htmlFor="name">Nombre</Label><Input id="name" name="name" defaultValue={currentItem?.name} required /></div>
+                            </div>
+                        </ScrollArea>
+                        <DialogFooter className="pt-4">
+                            <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                            <Button type="submit">{currentItem ? 'Guardar Cambios' : 'Agregar'}</Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </Card>
     );
 }
@@ -291,47 +305,56 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
                 </Table>
                  {carreras.length === 0 && <p className="text-sm text-muted-foreground mt-4">Crea una carrera antes de agregar un grupo.</p>}
             </CardContent>
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}><DialogContent>
-                <DialogHeader><DialogTitle>{currentItem ? 'Editar' : 'Agregar'} Grupo</DialogTitle></DialogHeader>
-                <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
-                    <div className="grid gap-2"><Label htmlFor="name">Nombre</Label><Input id="name" name="name" defaultValue={currentItem?.name} required /></div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="carreraId">Carrera</Label>
-                        <Select name="carreraId" defaultValue={currentItem?.carreraId} required>
-                            <SelectTrigger id="carreraId"><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger>
-                            <SelectContent>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                        </Select>
-                    </div>
-                     <div className="grid gap-2">
-                        <Label htmlFor="cuatrimestre">Cuatrimestre</Label>
-                        <Select name="cuatrimestre" defaultValue={currentItem?.cuatrimestre || "NONE"} required>
-                            <SelectTrigger id="cuatrimestre"><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="NONE">Ninguno</SelectItem>
-                                {cuatrimestres.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                     <div className="grid gap-2">
-                        <Label htmlFor="semestre">Semestre</Label>
-                        <Select name="semestre" defaultValue={currentItem?.semestre || "NONE"} required>
-                            <SelectTrigger id="semestre"><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="NONE">Ninguno</SelectItem>
-                                {semestres.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="turno">Turno</Label>
-                        <Select name="turno" defaultValue={currentItem?.turno} required>
-                            <SelectTrigger id="turno"><SelectValue placeholder="Selecciona un turno" /></SelectTrigger>
-                            <SelectContent>{turnos.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                        </Select>
-                    </div>
-                    <DialogFooter><Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button><Button type="submit">{currentItem ? 'Guardar Cambios' : 'Agregar'}</Button></DialogFooter>
-                </form>
-            </DialogContent></Dialog>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>{currentItem ? 'Editar' : 'Agregar'} Grupo</DialogTitle></DialogHeader>
+                    <form onSubmit={handleFormSubmit}>
+                        <ScrollArea className="max-h-96 pr-4">
+                            <div className="grid gap-4 py-4">
+                                <div className="grid gap-2"><Label htmlFor="name">Nombre</Label><Input id="name" name="name" defaultValue={currentItem?.name} required /></div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="carreraId">Carrera</Label>
+                                    <Select name="carreraId" defaultValue={currentItem?.carreraId} required>
+                                        <SelectTrigger id="carreraId"><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger>
+                                        <SelectContent>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="cuatrimestre">Cuatrimestre</Label>
+                                    <Select name="cuatrimestre" defaultValue={currentItem?.cuatrimestre || "NONE"} required>
+                                        <SelectTrigger id="cuatrimestre"><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="NONE">Ninguno</SelectItem>
+                                            {cuatrimestres.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="semestre">Semestre</Label>
+                                    <Select name="semestre" defaultValue={currentItem?.semestre || "NONE"} required>
+                                        <SelectTrigger id="semestre"><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="NONE">Ninguno</SelectItem>
+                                            {semestres.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="turno">Turno</Label>
+                                    <Select name="turno" defaultValue={currentItem?.turno} required>
+                                        <SelectTrigger id="turno"><SelectValue placeholder="Selecciona un turno" /></SelectTrigger>
+                                        <SelectContent>{turnos.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                        </ScrollArea>
+                        <DialogFooter className="pt-4">
+                            <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                            <Button type="submit">{currentItem ? 'Guardar Cambios' : 'Agregar'}</Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </Card>
     );
 }
@@ -429,23 +452,32 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
                     </TableBody>
                 </Table>
             </CardContent>
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}><DialogContent>
-                <DialogHeader><DialogTitle>{currentItem ? 'Editar' : 'Asignar'} Materia</DialogTitle></DialogHeader>
-                <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
-                    <div className="grid gap-2"><Label htmlFor="materia">Nombre de la Materia</Label><Input id="materia" name="materia" defaultValue={currentItem?.materia} required /></div>
-                    <div className="grid gap-2">
-                        <Label>Carrera (Opcional)</Label>
-                        <Select name="carreraId" defaultValue={currentItem?.carreraId || 'NONE'}>
-                            <SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="NONE">Ninguna</SelectItem>
-                                {carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <DialogFooter><Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button><Button type="submit">{currentItem ? 'Guardar Cambios' : 'Asignar'}</Button></DialogFooter>
-                </form>
-            </DialogContent></Dialog>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>{currentItem ? 'Editar' : 'Asignar'} Materia</DialogTitle></DialogHeader>
+                    <form onSubmit={handleFormSubmit}>
+                        <ScrollArea className="max-h-96 pr-4">
+                            <div className="grid gap-4 py-4">
+                                <div className="grid gap-2"><Label htmlFor="materia">Nombre de la Materia</Label><Input id="materia" name="materia" defaultValue={currentItem?.materia} required /></div>
+                                <div className="grid gap-2">
+                                    <Label>Carrera (Opcional)</Label>
+                                    <Select name="carreraId" defaultValue={currentItem?.carreraId || 'NONE'}>
+                                        <SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="NONE">Ninguna</SelectItem>
+                                            {carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                        </ScrollArea>
+                        <DialogFooter className="pt-4">
+                            <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                            <Button type="submit">{currentItem ? 'Guardar Cambios' : 'Asignar'}</Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </Card>
     );
 }
@@ -456,8 +488,8 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
     const [editingSchedule, setEditingSchedule] = useState<Record<string, Horario | null>>({});
     const { toast } = useToast();
 
-    const [filterCarrera, setFilterCarrera] = useState('');
-    const [filterPeriodo, setFilterPeriodo] = useState('');
+    const [filterCarrera, setFilterCarrera] = useState('all');
+    const [filterPeriodo, setFilterPeriodo] = useState('all');
 
     const diasSemana = useMemo(() => ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"], []);
     const bloques = useMemo(() => [0, 1, 2, 3], []);
