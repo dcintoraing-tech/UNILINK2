@@ -5,12 +5,6 @@
       "description": "A placeholder for a user's avatar.",
       "imageUrl": "https://picsum.photos/seed/user-avatar/128/128",
       "imageHint": "portrait person"
-    },
-    {
-      "id": "jefe-avatar",
-      "description": "A placeholder for a boss or manager's avatar.",
-      "imageUrl": "https://picsum.photos/seed/jefe-avatar/128/128",
-      "imageHint": "portrait suit"
     }
   ]
 }
