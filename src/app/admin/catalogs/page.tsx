@@ -762,13 +762,13 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
                 {displayedGrupos.length === 0 && <p className="text-center text-muted-foreground">No hay horarios que coincidan con los filtros seleccionados.</p>}
             </CardContent>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="sm:max-w-6xl">
+                <DialogContent className="sm:max-w-6xl flex flex-col max-h-[90vh]">
                     <DialogHeader>
                         <DialogTitle>{selectedGroup ? 'Editar' : 'Crear'} Horario Semanal</DialogTitle>
                         <DialogDescription>Configura los bloques de clase para cada día de la semana.</DialogDescription>
                     </DialogHeader>
-                    <form id="horario-form" onSubmit={handleFormSubmit}>
-                        <ScrollArea className="max-h-[70vh] pr-4">
+                    <form id="horario-form" onSubmit={handleFormSubmit} className="flex-1 min-h-0">
+                        <ScrollArea className="h-full pr-4">
                             <div className="grid gap-4 py-4">
                                 <div className="grid gap-2">
                                     <Label>Grupo</Label>
@@ -835,11 +835,11 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
                                 </Tabs>
                             </div>
                         </ScrollArea>
-                     <DialogFooter className="pt-4">
+                    </form>
+                    <DialogFooter className="pt-4 border-t">
                         <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
                         <Button type="submit" form="horario-form">{selectedGroup ? 'Guardar Cambios' : 'Crear Horario'}</Button>
                     </DialogFooter>
-                    </form>
                 </DialogContent>
             </Dialog>
         </Card>
@@ -870,3 +870,5 @@ export default function CatalogsPage() {
         </Tabs>
     );
 }
+
+    
