@@ -141,15 +141,18 @@ export default function UsersPage() {
         return;
       }
     }
+
+    const storedUsersRaw = window.localStorage.getItem('unilink-users');
+    const currentUsers: User[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
     
     if (editingUser) {
-        const emailExists = users.some(u => u.email === userData.email && u.id !== editingUser.id);
+        const emailExists = currentUsers.some(u => u.email === userData.email && u.id !== editingUser.id);
         if (emailExists) {
             toast({ variant: "destructive", title: "Error", description: "Un usuario con este correo electrónico ya existe." });
             return;
         }
 
-        setUsers(prev => prev.map(u => {
+        const updatedUsers = currentUsers.map(u => {
             if (u.id === editingUser.id) {
                 const updatedUser: User = {
                     ...u,
@@ -164,10 +167,11 @@ export default function UsersPage() {
                 return updatedUser;
             }
             return u;
-        }));
+        });
+        setUsers(updatedUsers);
         toast({ title: "Usuario actualizado", description: `El usuario ${userData.name} ha sido actualizado.` });
     } else {
-        const emailExists = users.some(u => u.email === userData.email);
+        const emailExists = currentUsers.some(u => u.email === userData.email);
         if (emailExists) {
             toast({ variant: "destructive", title: "Error", description: "Un usuario con este correo electrónico ya existe." });
             return;
@@ -182,7 +186,7 @@ export default function UsersPage() {
             status: 'Activo',
             createdAt: new Date().toISOString(),
         };
-        setUsers(prev => [...prev, newUser]);
+        setUsers([...currentUsers, newUser]);
         toast({ title: "Usuario creado", description: `El usuario ${userData.name} ha sido creado.` });
     }
     
@@ -244,7 +248,6 @@ export default function UsersPage() {
             const worksheet = workbook.Sheets[sheetName];
             const json = XLSX.utils.sheet_to_json<any>(worksheet);
 
-            // Read directly from localStorage to ensure we have the latest user list
             const storedUsersRaw = window.localStorage.getItem('unilink-users');
             const currentUsers: User[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
             const existingEmails = new Set(currentUsers.map(u => u.email));
