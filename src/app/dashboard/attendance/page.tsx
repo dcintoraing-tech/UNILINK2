@@ -83,61 +83,24 @@ export default function AttendancePage() {
     const [isTakingAttendance, setIsTakingAttendance] = useState(false);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
     const [identifiedStudents, setIdentifiedStudents] = useState<Set<string>>(new Set());
-    const [lastMatch, setLastMatch] = useState<{ student: Student; time: number } | null>(null);
     const [scanProgress, setScanProgress] = useState(0);
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
-    const recognitionIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const lastMatchRef = useRef<{ studentId: string; time: number } | null>(null);
 
-    const startCamera = async () => {
-        if (streamRef.current) return;
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-            streamRef.current = stream;
-            if (videoRef.current) {
-                videoRef.current.srcObject = stream;
-            }
-            setHasCameraPermission(true);
-        } catch (error) {
-            console.error('Error accessing camera:', error);
-            setHasCameraPermission(false);
-            toast({
-                variant: 'destructive',
-                title: 'Acceso a la cámara denegado',
-                description: 'Por favor, habilita los permisos de la cámara para pasar lista.',
-            });
-        }
-    };
-    
-    const stopCamera = () => {
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
-            streamRef.current = null;
-        }
-        if (videoRef.current) {
-            videoRef.current.srcObject = null;
-        }
-    };
+    const handleRecognition = useCallback(() => {
+        if (!videoRef.current || !canvasRef.current || allStudents.length === 0) return;
 
-    const runRecognition = useCallback(() => {
-        // In a real app, we'd use a face detection model here.
-        // For this simulation, we'll just process the whole frame.
-        if (!canvasRef.current || !videoRef.current || allStudents.length === 0) return;
-
-        // Simulate face detection and embedding generation
-        // This mock logic finds a random student with an embedding and uses it to simulate a "scan"
         const studentsWithEmbeddings = allStudents.filter(s => s.embedding);
         if (studentsWithEmbeddings.length === 0) return;
         
-        // Pick a random student's embedding to simulate them being in front of the camera
         const randomIndex = Math.floor(Math.random() * studentsWithEmbeddings.length);
         const simulatedLiveEmbedding = studentsWithEmbeddings[randomIndex].embedding;
 
         if (!simulatedLiveEmbedding) return;
 
-        // Find the best match from all stored embeddings
         let bestMatch: { student: Student | null; similarity: number } = { student: null, similarity: 0 };
         
         for (const student of allStudents) {
@@ -149,51 +112,79 @@ export default function AttendancePage() {
             }
         }
         
-        const SIMILARITY_THRESHOLD = 0.95; // High threshold for near-perfect match
+        const SIMILARITY_THRESHOLD = 0.95;
 
         if (bestMatch.student && bestMatch.similarity >= SIMILARITY_THRESHOLD) {
              const now = Date.now();
-            // Avoid re-identifying the same person immediately
-            if (!lastMatch || lastMatch.student.id !== bestMatch.student.id || now - lastMatch.time > 5000) {
-                setIdentifiedStudents(prev => new Set(prev).add(bestMatch.student!.id));
-                setLastMatch({ student: bestMatch.student, time: now });
+            const currentLastMatch = lastMatchRef.current;
+            
+            if (!currentLastMatch || currentLastMatch.studentId !== bestMatch.student.id || now - currentLastMatch.time > 5000) {
+                setIdentifiedStudents(prev => {
+                    if (prev.has(bestMatch.student!.id)) return prev;
+                    const newSet = new Set(prev);
+                    newSet.add(bestMatch.student!.id);
+                    return newSet;
+                });
+                lastMatchRef.current = { studentId: bestMatch.student.id, time: now };
                 toast({
                     title: "Estudiante Identificado",
                     description: `${bestMatch.student.firstName} ${bestMatch.student.lastName} ha sido marcado como presente.`,
                 });
             }
         }
-    }, [allStudents, toast, lastMatch]);
+    }, [allStudents, toast]);
 
     useEffect(() => {
-        if (isTakingAttendance) {
-            startCamera();
-            recognitionIntervalRef.current = setInterval(runRecognition, 2000); // Scan every 2 seconds
-            
-            const progressInterval = setInterval(() => {
-                setScanProgress(prev => (prev >= 100 ? 0 : prev + 5));
-            }, 100);
-
-            return () => {
-                if (recognitionIntervalRef.current) clearInterval(recognitionIntervalRef.current);
-                clearInterval(progressInterval);
-                setScanProgress(0);
-                stopCamera();
-            };
-        } else {
-            stopCamera();
+        if (!isTakingAttendance) {
+            return;
         }
-    }, [isTakingAttendance, runRecognition]);
-    
-    // Cleanup on unmount
-    useEffect(() => {
-        return () => {
-            stopCamera();
-            if (recognitionIntervalRef.current) {
-                clearInterval(recognitionIntervalRef.current);
+
+        let recognitionInterval: NodeJS.Timeout;
+        let progressInterval: NodeJS.Timeout;
+        
+        const start = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                streamRef.current = stream;
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                }
+                setHasCameraPermission(true);
+
+                recognitionInterval = setInterval(handleRecognition, 2000);
+                progressInterval = setInterval(() => {
+                    setScanProgress(prev => (prev >= 100 ? 0 : prev + 5));
+                }, 100);
+
+            } catch (error) {
+                console.error('Error accessing camera:', error);
+                setHasCameraPermission(false);
+                setIsTakingAttendance(false);
+                toast({
+                    variant: 'destructive',
+                    title: 'Acceso a la cámara denegado',
+                    description: 'Por favor, habilita los permisos de la cámara para pasar lista.',
+                });
             }
         };
-    }, []);
+
+        start();
+
+        return () => {
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+                streamRef.current = null;
+            }
+             if (videoRef.current) {
+                videoRef.current.srcObject = null;
+            }
+            if (recognitionInterval) clearInterval(recognitionInterval);
+            if (progressInterval) clearInterval(progressInterval);
+            setScanProgress(0);
+            setHasCameraPermission(null);
+        };
+    }, [isTakingAttendance, handleRecognition, toast]);
+
 
     const presentStudentsList = allStudents.filter(s => identifiedStudents.has(s.id));
 
@@ -206,7 +197,16 @@ export default function AttendancePage() {
                             <CardTitle>Pase de Lista por Reconocimiento Facial</CardTitle>
                             <CardDescription>Inicia el proceso para marcar la asistencia de los estudiantes automáticamente.</CardDescription>
                         </div>
-                        <Button onClick={() => setIsTakingAttendance(prev => !prev)} size="lg">
+                        <Button 
+                            onClick={() => {
+                                if (!isTakingAttendance) {
+                                    setIdentifiedStudents(new Set());
+                                    lastMatchRef.current = null;
+                                }
+                                setIsTakingAttendance(prev => !prev)
+                            }}
+                            size="lg"
+                        >
                             {isTakingAttendance ? 'Detener Pase de Lista' : 'Iniciar Pase de Lista'}
                         </Button>
                     </div>
