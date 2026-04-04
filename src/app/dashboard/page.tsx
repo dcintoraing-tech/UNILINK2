@@ -74,9 +74,6 @@ export default function DashboardPage() {
             <Link href="/dashboard" className="font-semibold text-primary">
               Perfil
             </Link>
-            <Link href="/dashboard/attendance" className="hover:text-primary">
-              Pasar Lista
-            </Link>
             <Link href="#" className="hover:text-primary">Configuración</Link>
             <Link href="#" className="hover:text-primary">Soporte</Link>
           </nav>
