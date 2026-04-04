@@ -464,7 +464,7 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
 
     const displayedGrupos = useMemo(() => {
         return grupos.filter(g => {
-            const carreraMatch = !filterCarrera || g.carreraId === filterCarrera;
+            const carreraMatch = !filterCarrera || filterCarrera === 'all' || g.carreraId === filterCarrera;
             if (!filterPeriodo || filterPeriodo === 'all') return carreraMatch;
             
             const [type, value] = filterPeriodo.split('-');
@@ -572,7 +572,7 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
                     <Select value={filterCarrera} onValueChange={setFilterCarrera}>
                         <SelectTrigger><SelectValue placeholder="Filtrar por carrera..." /></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="">Todas las carreras</SelectItem>
+                            <SelectItem value="all">Todas las carreras</SelectItem>
                             {carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                         </SelectContent>
                     </Select>
