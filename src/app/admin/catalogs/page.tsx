@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
@@ -119,7 +120,7 @@ interface HorarioBlock {
     docenteId: string;
     materiaAsignacionId: string;
     horaInicio: string;
-    duracion: string; // "1" or "2"
+    duracion: string; // "1", "2", or "-1" for continuation
 }
 
 interface Horario {
@@ -626,57 +627,86 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
     const materiaOptions = useMemo(() => materias.map(m => ({ value: m.id, label: `${m.materia} (${getNameById(m.carreraId, carreras)})` })), [materias, carreras]);
 
     // --- WIZARD LOGIC ---
-
+    
+    const handleBlockDataChange = (field: keyof HorarioBlock, value: string) => {
+        const { diaIndex, bloqueIndex } = currentStep;
+        const dia = diasSemana[diaIndex];
+    
+        setScheduleData(prev => {
+            const newScheduleData = { ...prev };
+            const dayBlocks = [...(newScheduleData[dia] || [undefined, undefined, undefined, undefined])];
+            
+            const currentBlock = dayBlocks[bloqueIndex];
+            const oldDuration = currentBlock?.duracion;
+    
+            const newBlock = { 
+                ...(currentBlock || { docenteId: '', materiaAsignacionId: '', horaInicio: '', duracion: '' }),
+                [field]: value
+            };
+            
+            dayBlocks[bloqueIndex] = Object.values(newBlock).every(v => !v) ? undefined : newBlock;
+            
+            const nextBlockIndex = bloqueIndex + 1;
+            if (field === 'duracion' && nextBlockIndex < 4) {
+                if (value === '2') {
+                    // Setting duration to 2, mark next block as continuation.
+                    dayBlocks[nextBlockIndex] = { ...newBlock, horaInicio: '', duracion: '-1' };
+                } else if (oldDuration === '2' && value !== '2') {
+                    // Changing from 2 to something else, clear next block if it's a continuation.
+                    if (dayBlocks[nextBlockIndex]?.duracion === '-1') {
+                        dayBlocks[nextBlockIndex] = undefined;
+                    }
+                }
+            }
+            // If other fields are changed on a 2-hour block, update continuation block as well
+            if (newBlock.duracion === '2' && field !== 'duracion' && nextBlockIndex < 4) {
+                 dayBlocks[nextBlockIndex] = { 
+                    ...(dayBlocks[nextBlockIndex] || {}),
+                    docenteId: newBlock.docenteId,
+                    materiaAsignacionId: newBlock.materiaAsignacionId,
+                    duracion: '-1'
+                } as HorarioBlock;
+            }
+    
+            newScheduleData[dia] = dayBlocks;
+            return newScheduleData;
+        });
+    };
+    
     const handleNextStep = () => {
         setCurrentStep(prev => {
-            if (prev.bloqueIndex < 3) {
-                return { ...prev, bloqueIndex: prev.bloqueIndex + 1 };
+            let searchIndex = (prev.diaIndex * 4 + prev.bloqueIndex) + 1;
+            const totalBlocks = diasSemana.length * 4;
+    
+            while (searchIndex < totalBlocks) {
+                const diaIndex = Math.floor(searchIndex / 4);
+                const bloqueIndex = searchIndex % 4;
+                const block = scheduleData[diasSemana[diaIndex]]?.[bloqueIndex];
+    
+                if (block?.duracion !== '-1') {
+                    return { diaIndex, bloqueIndex };
+                }
+                searchIndex++;
             }
-            if (prev.diaIndex < diasSemana.length - 1) {
-                return { diaIndex: prev.diaIndex + 1, bloqueIndex: 0 };
-            }
-            return prev;
+            return prev; // Stay at the last valid step
         });
     };
 
     const handlePrevStep = () => {
         setCurrentStep(prev => {
-            if (prev.bloqueIndex > 0) {
-                return { ...prev, bloqueIndex: prev.bloqueIndex - 1 };
-            }
-            if (prev.diaIndex > 0) {
-                return { diaIndex: prev.diaIndex - 1, bloqueIndex: 3 };
-            }
-            return prev;
-        });
-    };
+            let searchIndex = (prev.diaIndex * 4 + prev.bloqueIndex) - 1;
     
-    const handleBlockDataChange = (field: keyof HorarioBlock, value: string) => {
-        const { diaIndex, bloqueIndex } = currentStep;
-        const dia = diasSemana[diaIndex];
-
-        setScheduleData(prev => {
-            const newData = { ...prev };
-            if (!newData[dia]) {
-                newData[dia] = [undefined, undefined, undefined, undefined];
+            while (searchIndex >= 0) {
+                const diaIndex = Math.floor(searchIndex / 4);
+                const bloqueIndex = searchIndex % 4;
+                const block = scheduleData[diasSemana[diaIndex]]?.[bloqueIndex];
+    
+                if (block?.duracion !== '-1') {
+                    return { diaIndex, bloqueIndex };
+                }
+                searchIndex--;
             }
-            const blocksForDay = [...newData[dia]];
-            let block = blocksForDay[bloqueIndex];
-            
-            if (!block) {
-                block = { docenteId: '', materiaAsignacionId: '', horaInicio: '', duracion: '' };
-            }
-
-            if (!value) {
-                const { [field]: _, ...rest } = block as HorarioBlock;
-                blocksForDay[bloqueIndex] = Object.keys(rest).length > 0 ? (rest as HorarioBlock) : undefined;
-            } else {
-                 (block as any)[field] = value;
-                 blocksForDay[bloqueIndex] = block;
-            }
-
-            newData[dia] = blocksForDay;
-            return newData;
+            return prev; // Stay at the first step
         });
     };
 
@@ -772,28 +802,43 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {bloques.map(bloqueIndex => (
-                                                <TableRow key={bloqueIndex}>
-                                                    <TableCell className="font-semibold">Bloque {bloqueIndex + 1}</TableCell>
-                                                    {diasSemana.map(dia => {
-                                                        const horarioDia = groupHorarios.find(h => h.dia === dia);
-                                                        const block = horarioDia?.blocks[bloqueIndex];
-                                                        return (
-                                                            <TableCell key={dia} className="min-w-[200px]">
-                                                                {block ? (
-                                                                    <div className="text-xs p-2 rounded-md bg-muted border min-h-[60px]">
-                                                                        <div className="font-bold text-foreground">{block.horaInicio} - {calculateEndTime(block.horaInicio, parseInt(block.duracion))}</div>
-                                                                        <div className="font-semibold truncate">{getMateriaName(block.materiaAsignacionId)}</div>
-                                                                        <div className="text-muted-foreground truncate">{getNameById(block.docenteId, docentes)}</div>
-                                                                    </div>
-                                                                ) : (
-                                                                    <div className="text-xs text-muted-foreground text-center p-2 min-h-[60px] flex items-center justify-center">Libre</div>
-                                                                )}
-                                                            </TableCell>
-                                                        )
-                                                    })}
-                                                </TableRow>
-                                            ))}
+                                            {bloques.map(bloqueIndex => {
+                                                const shouldSkipRow = diasSemana.every(dia => {
+                                                    const horarioDia = groupHorarios.find(h => h.dia === dia);
+                                                    const prevBlock = horarioDia?.blocks[bloqueIndex - 1];
+                                                    return bloqueIndex > 0 && prevBlock?.duracion === '2';
+                                                });
+                                                if (shouldSkipRow) return null;
+
+                                                return (
+                                                    <TableRow key={bloqueIndex}>
+                                                        <TableCell className="font-semibold">Bloque {bloqueIndex + 1}</TableCell>
+                                                        {diasSemana.map(dia => {
+                                                            const horarioDia = groupHorarios.find(h => h.dia === dia);
+                                                            const block = horarioDia?.blocks[bloqueIndex];
+
+                                                            const prevBlock = horarioDia?.blocks[bloqueIndex - 1];
+                                                            if (bloqueIndex > 0 && prevBlock?.duracion === '2') {
+                                                                return null;
+                                                            }
+
+                                                            return (
+                                                                <TableCell key={dia} className="p-1 align-top" rowSpan={block?.duracion === '2' ? 2 : 1}>
+                                                                    {block ? (
+                                                                        <div className={`text-xs p-2 rounded-md bg-muted border min-w-[180px] max-w-[180px] flex flex-col ${block.duracion === '2' ? 'h-full min-h-[125px] justify-center' : 'min-h-[60px]'}`}>
+                                                                            <div className="font-bold text-foreground">{block.horaInicio} - {calculateEndTime(block.horaInicio, parseInt(block.duracion))}</div>
+                                                                            <p className="font-semibold truncate">{getMateriaName(block.materiaAsignacionId)}</p>
+                                                                            <p className="text-muted-foreground truncate">{getNameById(block.docenteId, docentes)}</p>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="text-xs text-muted-foreground text-center p-2 min-h-[60px] flex items-center justify-center">Libre</div>
+                                                                    )}
+                                                                </TableCell>
+                                                            )
+                                                        })}
+                                                    </TableRow>
+                                                )
+                                            })}
                                         </TableBody>
                                     </Table>
                                     <div className="h-4"></div>
@@ -825,6 +870,7 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
                             const { diaIndex, bloqueIndex } = currentStep;
                             const dia = diasSemana[diaIndex];
                             const currentBlockData = scheduleData[dia]?.[bloqueIndex];
+                            const isContinuation = currentBlockData?.duracion === '-1';
                             const isFirstStep = diaIndex === 0 && bloqueIndex === 0;
                             const isLastStep = diaIndex === diasSemana.length - 1 && bloqueIndex === 3;
                             
@@ -834,16 +880,22 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
                                         <Progress value={((diaIndex * 4 + bloqueIndex + 1) / (diasSemana.length * 4)) * 100} />
                                         <p className="text-center text-sm text-muted-foreground">{`Paso ${diaIndex * 4 + bloqueIndex + 1} / ${diasSemana.length * 4}`}: <strong>{dia} - Bloque {bloqueIndex + 1}</strong></p>
                                     </div>
-                                    <div className="grid gap-4 py-4">
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div className="grid gap-2"><Label>Materia</Label><Combobox value={currentBlockData?.materiaAsignacionId || ''} onValueChange={(value) => handleBlockDataChange('materiaAsignacionId', value)} options={materiaOptions} placeholder="Selecciona una materia" searchPlaceholder="Buscar materia..." /></div>
-                                            <div className="grid gap-2"><Label>Docente</Label><Combobox value={currentBlockData?.docenteId || ''} onValueChange={(value) => handleBlockDataChange('docenteId', value)} options={docenteOptions} placeholder="Selecciona un docente" searchPlaceholder="Buscar docente..." /></div>
+                                    {isContinuation ? (
+                                        <div className="flex items-center justify-center h-48 text-muted-foreground bg-muted/50 rounded-md">
+                                            Continuación del bloque anterior.
                                         </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div className="grid gap-2"><Label>Hora Inicio</Label><Input type="time" value={currentBlockData?.horaInicio || ''} onChange={(e) => handleBlockDataChange('horaInicio', e.target.value)} /></div>
-                                            <div className="grid gap-2"><Label>Duración</Label><Select value={currentBlockData?.duracion || ''} onValueChange={(value) => handleBlockDataChange('duracion', value)}><SelectTrigger><SelectValue placeholder="Selecciona duración" /></SelectTrigger><SelectContent><SelectItem value="1">1 hora</SelectItem><SelectItem value="2">2 horas</SelectItem></SelectContent></Select></div>
+                                    ) : (
+                                        <div className="grid gap-4 py-4">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div className="grid gap-2"><Label>Materia</Label><Combobox value={currentBlockData?.materiaAsignacionId || ''} onValueChange={(value) => handleBlockDataChange('materiaAsignacionId', value)} options={materiaOptions} placeholder="Selecciona una materia" searchPlaceholder="Buscar materia..." /></div>
+                                                <div className="grid gap-2"><Label>Docente</Label><Combobox value={currentBlockData?.docenteId || ''} onValueChange={(value) => handleBlockDataChange('docenteId', value)} options={docenteOptions} placeholder="Selecciona un docente" searchPlaceholder="Buscar docente..." /></div>
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div className="grid gap-2"><Label>Hora Inicio</Label><Input type="time" value={currentBlockData?.horaInicio || ''} onChange={(e) => handleBlockDataChange('horaInicio', e.target.value)} /></div>
+                                                <div className="grid gap-2"><Label>Duración</Label><Select value={currentBlockData?.duracion || ''} onValueChange={(value) => handleBlockDataChange('duracion', value)}><SelectTrigger><SelectValue placeholder="Selecciona duración" /></SelectTrigger><SelectContent><SelectItem value="1">1 hora</SelectItem><SelectItem value="2">2 horas</SelectItem></SelectContent></Select></div>
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
                                     <DialogFooter className="pt-4 border-t">
                                         <div className='flex justify-between w-full items-center'>
                                             <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
@@ -888,5 +940,7 @@ export default function CatalogsPage() {
         </Tabs>
     );
 }
+
+    
 
     
