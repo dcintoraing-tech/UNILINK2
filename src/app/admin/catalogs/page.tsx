@@ -110,6 +110,8 @@ interface AsignacionMateria {
     id: string;
     materia: string;
     carreraId: string;
+    cuatrimestre: string;
+    semestre: string;
 }
 
 interface HorarioBlock {
@@ -366,27 +368,51 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<AsignacionMateria | null>(null);
     const { toast } = useToast();
+    const [filterCarrera, setFilterCarrera] = useState('all');
+    const [filterPeriodo, setFilterPeriodo] = useState('all');
+
+    const cuatrimestres = useMemo(() => Array.from({ length: 9 }, (_, i) => `${i + 1}`), []);
+    const semestres = useMemo(() => Array.from({ length: 9 }, (_, i) => `${i + 1}`), []);
+
+    const filteredAsignaciones = useMemo(() => {
+        return asignaciones.filter(a => {
+            const carreraMatch = !filterCarrera || filterCarrera === 'all' || a.carreraId === filterCarrera;
+            if (!filterPeriodo || filterPeriodo === 'all') return carreraMatch;
+
+            const [type, value] = filterPeriodo.split('-');
+            if (type === 'cuatri') return carreraMatch && a.cuatrimestre === value;
+            if (type === 'sem') return carreraMatch && a.semestre === value;
+            return carreraMatch;
+        });
+    }, [asignaciones, filterCarrera, filterPeriodo]);
 
     const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const materia = formData.get('materia') as string;
-        let carreraId = formData.get('carreraId') as string;
+        const carreraId = formData.get('carreraId') as string;
+        const cuatrimestre = formData.get('cuatrimestre') as string;
+        const semestre = formData.get('semestre') as string;
 
-        if (carreraId === 'NONE') {
-            carreraId = '';
-        }
-
-        if (!materia) {
+        if (!materia || !carreraId) {
             toast({
                 variant: 'destructive',
-                title: "Error",
-                description: "Debes completar el nombre de la materia.",
+                title: "Campos requeridos",
+                description: "Debes completar el nombre de la materia y seleccionar una carrera.",
             });
             return;
         }
 
-        const newAsignacion = { materia, carreraId };
+        if (cuatrimestre === 'NONE' && semestre === 'NONE') {
+            toast({
+                variant: 'destructive',
+                title: "Periodo requerido",
+                description: "Debes seleccionar un cuatrimestre o un semestre.",
+            });
+            return;
+        }
+
+        const newAsignacion = { materia, carreraId, cuatrimestre, semestre };
 
         if (currentItem) {
             setAsignaciones(prev => prev.map(a => a.id === currentItem.id ? { ...a, ...newAsignacion } : a));
@@ -409,16 +435,37 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
         toast({ title: "Asignación eliminada" });
     };
 
-    const getNameById = (id: string | undefined, list: CatalogItem[]) => {
-        if (!id) return 'Sin Carrera Asignada';
-        return list.find(item => item.id === id)?.name || 'Carrera Desconocida';
+    const getCarreraName = (id: string | undefined) => {
+        if (!id) return 'N/A';
+        return carreras.find(item => item.id === id)?.name || 'Carrera Desconocida';
     };
 
     return (
         <Card>
-            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <CardTitle>Asignación de Materias</CardTitle>
-                <Button size="sm" onClick={() => openDialog(null)} className="w-full sm:w-auto"><PlusCircle className="h-4 w-4 mr-2" />Asignar Materia</Button>
+            <CardHeader>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <CardTitle>Asignación de Materias</CardTitle>
+                  <Button size="sm" onClick={() => openDialog(null)} disabled={carreras.length === 0} className="w-full sm:w-auto"><PlusCircle className="h-4 w-4 mr-2" />Asignar Materia</Button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
+                    <Select value={filterCarrera} onValueChange={setFilterCarrera}>
+                        <SelectTrigger><SelectValue placeholder="Filtrar por carrera..." /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todas las carreras</SelectItem>
+                            {carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                    <Select value={filterPeriodo} onValueChange={setFilterPeriodo}>
+                        <SelectTrigger><SelectValue placeholder="Filtrar por periodo..." /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todos los periodos</SelectItem>
+                            <Separator />
+                            {cuatrimestres.map(c => <SelectItem key={`cuatri-${c}`} value={`cuatri-${c}`}>Cuatrimestre {c}</SelectItem>)}
+                            <Separator />
+                            {semestres.map(s => <SelectItem key={`sem-${s}`} value={`sem-${s}`}>Semestre {s}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                </div>
             </CardHeader>
             <CardContent>
                 <Table>
@@ -426,14 +473,18 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
                         <TableRow>
                             <TableHead>Materia</TableHead>
                             <TableHead>Carrera</TableHead>
+                            <TableHead>Cuatrimestre</TableHead>
+                            <TableHead>Semestre</TableHead>
                             <TableHead><span className="sr-only">Acciones</span></TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {asignaciones.map((a) => (
+                        {filteredAsignaciones.map((a) => (
                             <TableRow key={a.id}>
                                 <TableCell className="font-medium">{a.materia}</TableCell>
-                                <TableCell>{getNameById(a.carreraId, carreras)}</TableCell>
+                                <TableCell>{getCarreraName(a.carreraId)}</TableCell>
+                                <TableCell>{a.cuatrimestre === "NONE" ? "N/A" : a.cuatrimestre}</TableCell>
+                                <TableCell>{a.semestre === "NONE" ? "N/A" : a.semestre}</TableCell>
                                 <TableCell className="text-right">
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
@@ -453,6 +504,7 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
                         ))}
                     </TableBody>
                 </Table>
+                {carreras.length === 0 && <p className="text-sm text-muted-foreground mt-4">Crea una carrera antes de asignar una materia.</p>}
             </CardContent>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent>
@@ -462,12 +514,31 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
                             <div className="grid gap-4 py-4">
                                 <div className="grid gap-2"><Label htmlFor="materia">Nombre de la Materia</Label><Input id="materia" name="materia" defaultValue={currentItem?.materia} required /></div>
                                 <div className="grid gap-2">
-                                    <Label>Carrera (Opcional)</Label>
-                                    <Select name="carreraId" defaultValue={currentItem?.carreraId || 'NONE'}>
+                                    <Label>Carrera</Label>
+                                    <Select name="carreraId" defaultValue={currentItem?.carreraId} required>
                                         <SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="NONE">Ninguna</SelectItem>
                                             {carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="cuatrimestre">Cuatrimestre</Label>
+                                    <Select name="cuatrimestre" defaultValue={currentItem?.cuatrimestre || "NONE"} required>
+                                        <SelectTrigger id="cuatrimestre"><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="NONE">Ninguno</SelectItem>
+                                            {cuatrimestres.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="semestre">Semestre</Label>
+                                    <Select name="semestre" defaultValue={currentItem?.semestre || "NONE"} required>
+                                        <SelectTrigger id="semestre"><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="NONE">Ninguno</SelectItem>
+                                            {semestres.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                 </div>
