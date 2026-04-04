@@ -83,22 +83,19 @@ const useLocalStorage = <T,>(key: string, initialValue: T) => {
     }, [key]);
 
     const setValue = (value: T | ((val: T) => T)) => {
-        if (!isInitialized) return;
+        if (!isInitialized || typeof window === 'undefined') return;
         try {
-            setStoredValue(currentStoredValue => {
-                const valueToStore = value instanceof Function ? value(currentStoredValue) : value;
-                if (typeof window !== 'undefined') {
-                    window.localStorage.setItem(key, JSON.stringify(valueToStore));
-                    window.dispatchEvent(new StorageEvent('storage', { key, newValue: JSON.stringify(valueToStore) }));
-                }
-                return valueToStore;
-            });
+            const valueToStore = value instanceof Function ? value(storedValue) : value;
+            setStoredValue(valueToStore);
+            window.localStorage.setItem(key, JSON.stringify(valueToStore));
+            window.dispatchEvent(new StorageEvent('storage', { key, newValue: JSON.stringify(valueToStore) }));
         } catch (error) {
             console.log(error);
         }
     };
     
     useEffect(() => {
+        if (typeof window === 'undefined') return;
         const handleStorageChange = (e: StorageEvent) => {
             if (e.key === key && e.newValue) {
                  try {
@@ -402,7 +399,7 @@ export default function UsersPage() {
             <DialogTitle>{editingUser ? 'Editar Usuario' : 'Crear Usuario'}</DialogTitle>
             <DialogDescription>{editingUser ? 'Actualiza los detalles del usuario.' : 'Rellena los campos para crear un nuevo usuario.'}</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleFormSubmit} className="space-y-4">
+          <form onSubmit={handleFormSubmit}>
               <ScrollArea className="max-h-[60vh] pr-4">
                 <div className="space-y-4 py-4">
                     <div className="grid gap-2"><Label htmlFor="name">Nombre</Label><Input id="name" name="name" defaultValue={editingUser?.name} required /></div>
@@ -447,7 +444,7 @@ export default function UsersPage() {
                     )}
                 </div>
               </ScrollArea>
-              <DialogFooter>
+              <DialogFooter className="pt-4">
                 <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
                 <Button type="submit">{editingUser ? 'Guardar Cambios' : 'Crear Usuario'}</Button>
               </DialogFooter>

@@ -22,6 +22,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Combobox } from '@/components/ui/combobox';
 
 
 // --- DATA PERSISTENCE HOOK ---
@@ -47,7 +48,7 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
     }, [key]);
 
     const setValue = (value: T | ((val: T) => T)) => {
-        if (!isInitialized) return;
+        if (typeof window === 'undefined' || !isInitialized) return;
         
         try {
             const valueToStore = value instanceof Function ? value(storedValue) : value;
@@ -60,6 +61,8 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
     };
 
     useEffect(() => {
+        if (typeof window === 'undefined') return;
+
         const handleStorageChange = (e: StorageEvent) => {
             if (e.key === key && e.newValue) {
                 try {
@@ -69,9 +72,8 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
                 }
             }
         };
-        if(isInitialized){
-            window.addEventListener('storage', handleStorageChange);
-        }
+
+        window.addEventListener('storage', handleStorageChange);
         return () => window.removeEventListener('storage', handleStorageChange);
     }, [key, isInitialized]);
 
@@ -590,6 +592,9 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
     const allSemestres = useMemo(() => Array.from({ length: 9 }, (_, i) => `${i + 1}`), []);
     const allCuatrimestres = useMemo(() => Array.from({ length: 9 }, (_, i) => `${i + 1}`), []);
 
+    const docenteOptions = useMemo(() => docentes.map(d => ({ value: d.id, label: d.name })), [docentes]);
+    const materiaOptions = useMemo(() => materias.map(m => ({ value: m.id, label: `${m.materia} (${getNameById(m.carreraId, carreras)})` })), [materias, carreras]);
+
     return (
         <Card>
             <CardHeader>
@@ -692,66 +697,74 @@ function HorariosContent({ horarios, setHorarios, grupos, materias, docentes, ca
                         <DialogDescription>Configura los bloques de clase para cada día de la semana.</DialogDescription>
                     </DialogHeader>
                     <form id="horario-form" onSubmit={handleFormSubmit}>
-                        <div className="grid gap-4 py-4">
-                            <div className="grid gap-2">
-                                <Label>Grupo</Label>
-                                <Select name="grupoId" defaultValue={selectedGroup?.id} required disabled={!!selectedGroup}>
-                                    <SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger>
-                                    <SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent>
-                                </Select>
-                            </div>
-                            <Tabs defaultValue="Lunes" className="w-full">
-                                <TabsList className="grid w-full grid-cols-5">
-                                    {diasSemana.map(dia => <TabsTrigger key={dia} value={dia}>{dia}</TabsTrigger>)}
-                                </TabsList>
-                                {diasSemana.map(dia => (
-                                    <TabsContent key={dia} value={dia}>
-                                        <ScrollArea className="h-72 pr-3 mt-4">
-                                            <div className="space-y-4">
-                                            {bloques.map(i => (
-                                                <div key={i} className="grid gap-4 border p-4 rounded-lg bg-muted/50">
-                                                    <h4 className="font-semibold">Bloque {i + 1}</h4>
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                        <div className="grid gap-2">
-                                                            <Label htmlFor={`${dia}-materiaAsignacionId-${i}`}>Materia</Label>
-                                                            <Select name={`${dia}-materiaAsignacionId-${i}`} defaultValue={editingSchedule[dia]?.blocks[i]?.materiaAsignacionId}>
-                                                                <SelectTrigger id={`${dia}-materiaAsignacionId-${i}`}><SelectValue placeholder="Selecciona una materia" /></SelectTrigger>
-                                                                <SelectContent>{materias.map(m => <SelectItem key={m.id} value={m.id}>{m.materia} ({getNameById(m.carreraId, carreras)})</SelectItem>)}</SelectContent>
-                                                            </Select>
+                        <ScrollArea className="max-h-[70vh] pr-4">
+                            <div className="grid gap-4 py-4">
+                                <div className="grid gap-2">
+                                    <Label>Grupo</Label>
+                                    <Select name="grupoId" defaultValue={selectedGroup?.id} required disabled={!!selectedGroup}>
+                                        <SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger>
+                                        <SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                                <Tabs defaultValue="Lunes" className="w-full">
+                                    <TabsList className="grid w-full grid-cols-5">
+                                        {diasSemana.map(dia => <TabsTrigger key={dia} value={dia}>{dia}</TabsTrigger>)}
+                                    </TabsList>
+                                    {diasSemana.map(dia => (
+                                        <TabsContent key={dia} value={dia}>
+                                            <div className="space-y-4 mt-4">
+                                                {bloques.map(i => (
+                                                    <div key={i} className="grid gap-4 border p-4 rounded-lg bg-muted/50">
+                                                        <h4 className="font-semibold">Bloque {i + 1}</h4>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                            <div className="grid gap-2">
+                                                                <Label>Materia</Label>
+                                                                <Combobox
+                                                                    name={`${dia}-materiaAsignacionId-${i}`}
+                                                                    defaultValue={editingSchedule[dia]?.blocks[i]?.materiaAsignacionId}
+                                                                    options={materiaOptions}
+                                                                    placeholder="Selecciona una materia"
+                                                                    searchPlaceholder="Buscar materia..."
+                                                                    emptyMessage="No se encontró la materia."
+                                                                />
+                                                            </div>
+                                                            <div className="grid gap-2">
+                                                                <Label>Docente</Label>
+                                                                <Combobox
+                                                                    name={`${dia}-docenteId-${i}`}
+                                                                    defaultValue={editingSchedule[dia]?.blocks[i]?.docenteId}
+                                                                    options={docenteOptions}
+                                                                    placeholder="Selecciona un docente"
+                                                                    searchPlaceholder="Buscar docente..."
+                                                                    emptyMessage="No se encontró el docente."
+                                                                />
+                                                            </div>
                                                         </div>
-                                                        <div className="grid gap-2">
-                                                            <Label htmlFor={`${dia}-docenteId-${i}`}>Docente</Label>
-                                                            <Select name={`${dia}-docenteId-${i}`} defaultValue={editingSchedule[dia]?.blocks[i]?.docenteId}>
-                                                                <SelectTrigger id={`${dia}-docenteId-${i}`}><SelectValue placeholder="Selecciona un docente" /></SelectTrigger>
-                                                                <SelectContent>{docentes.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
-                                                            </Select>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                            <div className="grid gap-2">
+                                                                <Label htmlFor={`${dia}-horaInicio-${i}`}>Hora Inicio</Label>
+                                                                <Input id={`${dia}-horaInicio-${i}`} name={`${dia}-horaInicio-${i}`} type="time" defaultValue={editingSchedule[dia]?.blocks[i]?.horaInicio} />
+                                                            </div>
+                                                            <div className="grid gap-2">
+                                                                <Label htmlFor={`${dia}-duracion-${i}`}>Duración</Label>
+                                                                <Select name={`${dia}-duracion-${i}`} defaultValue={editingSchedule[dia]?.blocks[i]?.duracion}>
+                                                                    <SelectTrigger id={`${dia}-duracion-${i}`}><SelectValue placeholder="Selecciona duración" /></SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="1">1 hora</SelectItem>
+                                                                        <SelectItem value="2">2 horas</SelectItem>
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                        <div className="grid gap-2">
-                                                            <Label htmlFor={`${dia}-horaInicio-${i}`}>Hora Inicio</Label>
-                                                            <Input id={`${dia}-horaInicio-${i}`} name={`${dia}-horaInicio-${i}`} type="time" defaultValue={editingSchedule[dia]?.blocks[i]?.horaInicio} />
-                                                        </div>
-                                                        <div className="grid gap-2">
-                                                            <Label htmlFor={`${dia}-duracion-${i}`}>Duración</Label>
-                                                            <Select name={`${dia}-duracion-${i}`} defaultValue={editingSchedule[dia]?.blocks[i]?.duracion}>
-                                                                <SelectTrigger id={`${dia}-duracion-${i}`}><SelectValue placeholder="Selecciona duración" /></SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="1">1 hora</SelectItem>
-                                                                    <SelectItem value="2">2 horas</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                                ))}
                                             </div>
-                                        </ScrollArea>
-                                    </TabsContent>
-                                ))}
-                            </Tabs>
-                        </div>
-                     <DialogFooter>
+                                        </TabsContent>
+                                    ))}
+                                </Tabs>
+                            </div>
+                        </ScrollArea>
+                     <DialogFooter className="pt-4">
                         <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
                         <Button type="submit" form="horario-form">{selectedGroup ? 'Guardar Cambios' : 'Crear Horario'}</Button>
                     </DialogFooter>
