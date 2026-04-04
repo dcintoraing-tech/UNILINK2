@@ -25,18 +25,20 @@ import { Separator } from '@/components/ui/separator';
 
 // --- DATA PERSISTENCE HOOK ---
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
-    const [storedValue, setStoredValue] = useState<T>(() => {
-        if (typeof window === 'undefined') {
-            return initialValue;
+    const [storedValue, setStoredValue] = useState<T>(initialValue);
+
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            try {
+                const item = window.localStorage.getItem(key);
+                if (item) {
+                    setStoredValue(JSON.parse(item));
+                }
+            } catch (error) {
+                console.error(`Error reading localStorage key “${key}”:`, error);
+            }
         }
-        try {
-            const item = window.localStorage.getItem(key);
-            return item ? JSON.parse(item) : initialValue;
-        } catch (error) {
-            console.error(`Error reading localStorage key “${key}”:`, error);
-            return initialValue;
-        }
-    });
+    }, [key]);
 
     const setValue = (value: T | ((val: T) => T)) => {
         if (typeof window === 'undefined') {
