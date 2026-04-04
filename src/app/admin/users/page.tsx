@@ -197,116 +197,6 @@ export default function UsersPage() {
     toast({ title: "Usuario eliminado", description: "El usuario ha sido eliminado." });
   };
 
-  const handleExport = () => {
-    const fields = ['name', 'email', 'password', 'role'];
-    
-    if (users.length === 0) {
-        // Create an empty worksheet with just the headers
-        const worksheet = XLSX.utils.json_to_sheet([], { header: fields });
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Users");
-        XLSX.writeFile(workbook, "plantilla_usuarios.xlsx");
-        toast({ title: "Plantilla generada", description: "Se ha descargado una plantilla vacía para la importación." });
-        return;
-    }
-
-    // Export existing users with passwords
-    const usersToExport = users.map(user => ({
-        name: user.name,
-        email: user.email,
-        password: user.password || '',
-        role: user.role,
-    }));
-    
-    const worksheet = XLSX.utils.json_to_sheet(usersToExport);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Users");
-    XLSX.writeFile(workbook, "usuarios.xlsx");
-    toast({ title: "Usuarios exportados correctamente" });
-  };
-
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        try {
-            const data = event.target?.result;
-            const workbook = XLSX.read(data, { type: 'binary' });
-            const sheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[sheetName];
-            const json = XLSX.utils.sheet_to_json<any>(worksheet);
-
-            if (!json.length) {
-                throw new Error("El archivo de Excel está vacío o tiene un formato incorrecto.");
-            }
-
-            const requiredFields = ['name', 'email', 'password', 'role'];
-            const firstRow = json[0];
-            if (!requiredFields.every(field => Object.keys(firstRow).includes(field))) {
-                 throw new Error(`El archivo debe contener las columnas: ${requiredFields.join(', ')}.`);
-            }
-
-            let newUsersCount = 0;
-            let skippedCount = 0;
-
-            setUsers(prevUsers => {
-                const updatedUsers = [...prevUsers];
-                const existingEmails = new Set(prevUsers.map(u => u.email));
-
-                for (const importedUser of json) {
-                    if (existingEmails.has(importedUser.email)) {
-                        skippedCount++;
-                        continue;
-                    }
-
-                    if (
-                        !importedUser.name ||
-                        !importedUser.email ||
-                        !importedUser.password ||
-                        !['Docente', 'Admin'].includes(importedUser.role)
-                    ) {
-                        console.warn("Omitiendo usuario inválido:", importedUser);
-                        skippedCount++;
-                        continue;
-                    }
-                    
-                    updatedUsers.push({
-                        id: new Date().toISOString() + Math.random(),
-                        name: String(importedUser.name),
-                        email: String(importedUser.email),
-                        password: String(importedUser.password),
-                        role: importedUser.role as UserRole,
-                        status: 'Activo',
-                        createdAt: new Date().toISOString(),
-                    });
-                    existingEmails.add(importedUser.email);
-                    newUsersCount++;
-                }
-                return updatedUsers;
-            });
-
-            toast({
-                title: "Importación completada",
-                description: `${newUsersCount} usuarios nuevos importados. ${skippedCount} usuarios omitidos (duplicados o inválidos).`,
-            });
-
-        } catch (error: any) {
-            toast({
-                variant: "destructive",
-                title: "Error en la importación",
-                description: error.message || "No se pudo procesar el archivo.",
-            });
-        } finally {
-            if (fileInputRef.current) {
-                fileInputRef.current.value = '';
-            }
-        }
-    };
-    reader.readAsBinaryString(file);
-  };
-
   return (
     <>
       <Card>
@@ -314,29 +204,12 @@ export default function UsersPage() {
           <div className="flex items-center justify-between">
               <div>
                   <CardTitle>Gestión de Usuarios</CardTitle>
-                  <CardDescription>Crea, edita, elimina, importa y exporta usuarios.</CardDescription>
+                  <CardDescription>Crea, edita y elimina usuarios.</CardDescription>
               </div>
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                    <Upload className="h-3.5 w-3.5 mr-2" />
-                    Importar
-                </Button>
-                <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleImport}
-                    className="hidden"
-                    accept=".xlsx, .xls"
-                />
-                <Button size="sm" variant="outline" onClick={handleExport}>
-                    <Download className="h-3.5 w-3.5 mr-2" />
-                    Exportar
-                </Button>
-                <Button size="sm" onClick={openCreateDialog}>
-                    <PlusCircle className="h-3.5 w-3.5 mr-1" />
-                    <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Crear Usuario</span>
-                </Button>
-              </div>
+              <Button size="sm" onClick={openCreateDialog}>
+                  <PlusCircle className="h-3.5 w-3.5 mr-1" />
+                  <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Crear Usuario</span>
+              </Button>
           </div>
         </CardHeader>
         <CardContent>

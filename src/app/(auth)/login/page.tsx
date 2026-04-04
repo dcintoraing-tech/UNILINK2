@@ -45,73 +45,56 @@ export default function LoginPage() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-      if (typeof window !== 'undefined') {
-        
-        // Case 1: Jefe de Grupo login
+        // Special case for 'jefe' login
         if (values.username === 'jefe' && values.password === 'jefe') {
             const userProfile = {
                 uid: "jefe-user",
                 name: "Jefe de Grupo",
                 role: "Jefe",
             };
-            sessionStorage.setItem("unilink-jefe-user", JSON.stringify(userProfile));
+            if (typeof window !== 'undefined') {
+                sessionStorage.setItem("unilink-jefe-user", JSON.stringify(userProfile));
+            }
             toast({
                 title: "Inicio de sesión exitoso",
                 description: "Redirigiendo al dashboard de jefe...",
             });
             router.push("/jefe/dashboard");
-            return; 
-        } 
-        
-        // Case 2: Admin login
-        else if (values.username === 'admin' && values.password === 'admin') {
-          const userProfile = {
-            uid: 'superuser',
-            name: 'Admin',
-            email: 'admin@unilink.com',
-            role: 'Admin',
-          };
-          sessionStorage.setItem('unilink-user', JSON.stringify(userProfile));
-          toast({
-              title: "Inicio de sesión exitoso",
-              description: "Redirigiendo a tu panel de control...",
-          });
-          router.push("/admin/dashboard");
-          return;
-        } 
-        
-        // Case 3: Regular user login
-        else {
-          const storedUsersRaw = window.localStorage.getItem('unilink-users');
-          const users = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
-          const foundUser = users.find((u: any) => (u.email === values.username || u.name === values.username));
-
-          if (foundUser && foundUser.password === values.password) {
-            const userProfile = {
-              uid: foundUser.id,
-              name: foundUser.name,
-              email: foundUser.email,
-              role: foundUser.role,
-            };
-            sessionStorage.setItem('unilink-user', JSON.stringify(userProfile));
-            toast({
-                title: "Inicio de sesión exitoso",
-                description: "Redirigiendo a tu panel de control...",
-            });
-            
-            // Redirect based on regular user role (if needed in future)
-            if (foundUser.role === 'Admin') {
-              router.push("/admin/dashboard");
-            } else {
-              router.push("/dashboard");
-            }
             return;
-          }
         }
 
-        // If none of the above cases match, throw an error
+        // Logic for all other users (Admin, Docente) from localStorage
+        if (typeof window !== 'undefined') {
+            const storedUsersRaw = window.localStorage.getItem('unilink-users');
+            const users = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
+            
+            const foundUser = users.find((u: any) => (u.email === values.username || u.name === values.username));
+
+            if (foundUser && foundUser.password === values.password) {
+                const userProfile = {
+                    uid: foundUser.id,
+                    name: foundUser.name,
+                    email: foundUser.email,
+                    role: foundUser.role,
+                };
+                sessionStorage.setItem('unilink-user', JSON.stringify(userProfile));
+                toast({
+                    title: "Inicio de sesión exitoso",
+                    description: "Redirigiendo a tu panel de control...",
+                });
+
+                if (foundUser.role === 'Admin') {
+                    router.push("/admin/dashboard");
+                } else {
+                    router.push("/dashboard");
+                }
+                return;
+            }
+        }
+      
+        // If no user was found after all checks
         throw new Error("Credenciales incorrectas. Por favor, verifica tu usuario y contraseña.");
-      }
+
     } catch (error: any) {
       console.error("Login failed", error);
       toast({
