@@ -196,23 +196,131 @@ export default function UsersPage() {
     setUsers(prev => prev.filter(u => u.id !== userId));
     toast({ title: "Usuario eliminado", description: "El usuario ha sido eliminado." });
   };
+  
+  const handleDownloadTemplate = () => {
+    const headers = [['name', 'email', 'password', 'role']];
+    const ws = XLSX.utils.aoa_to_sheet(headers);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
+    XLSX.writeFile(wb, "plantilla_usuarios.xlsx");
+    toast({ title: "Plantilla descargada", description: "El archivo de plantilla de Excel está listo." });
+  };
+
+  const handleExport = () => {
+    const usersToExport = users.map(({ id, password, createdAt, ...rest }) => rest);
+    const ws = XLSX.utils.json_to_sheet(usersToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Usuarios");
+    XLSX.writeFile(wb, "usuarios.xlsx");
+    toast({ title: "Exportación exitosa", description: "La lista de usuarios ha sido descargada." });
+  };
+  
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const data = event.target?.result;
+            const workbook = XLSX.read(data, { type: 'binary' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const json = XLSX.utils.sheet_to_json<any>(worksheet);
+
+            const newUsers: User[] = [];
+            const existingEmails = new Set(users.map(u => u.email));
+            let skippedCount = 0;
+
+            for (const item of json) {
+                if (!item.name || !item.email || !item.password || !item.role) {
+                    toast({ variant: "destructive", title: "Dato faltante", description: `El registro para '${item.email || 'desconocido'}' está incompleto. Se omitirá.` });
+                    continue;
+                }
+                if (existingEmails.has(item.email)) {
+                    skippedCount++;
+                    continue;
+                }
+                if (!['Docente', 'Admin'].includes(item.role)) {
+                    toast({ variant: "destructive", title: "Rol inválido", description: `El rol '${item.role}' para '${item.email}' no es válido. Se omitirá.` });
+                    continue;
+                }
+
+                newUsers.push({
+                    id: new Date().toISOString() + Math.random().toString(36).substr(2, 9),
+                    name: item.name,
+                    email: item.email,
+                    password: String(item.password),
+                    role: item.role,
+                    status: 'Activo',
+                    createdAt: new Date().toISOString(),
+                });
+                existingEmails.add(item.email);
+            }
+            
+            if (newUsers.length > 0) {
+                 setUsers(prev => [...prev, ...newUsers]);
+                 toast({ title: "Importación exitosa", description: `${newUsers.length} nuevos usuarios agregados. ${skippedCount > 0 ? `${skippedCount} duplicados omitidos.` : ''}` });
+            } else {
+                 toast({ title: "Importación finalizada", description: `No se agregaron nuevos usuarios. ${skippedCount > 0 ? `${skippedCount} duplicados omitidos.` : ''}` });
+            }
+
+        } catch (error: any) {
+            console.error("Error al importar el archivo:", error);
+            toast({
+                variant: "destructive",
+                title: "Error de importación",
+                description: error.message || "No se pudo procesar el archivo de Excel.",
+            });
+        } finally {
+            if (e.target) e.target.value = '';
+        }
+    };
+    reader.readAsBinaryString(file);
+  };
+
 
   return (
     <>
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                   <CardTitle>Gestión de Usuarios</CardTitle>
-                  <CardDescription>Crea, edita y elimina usuarios.</CardDescription>
+                  <CardDescription>Crea, edita, importa y exporta usuarios.</CardDescription>
               </div>
-              <Button size="sm" onClick={openCreateDialog}>
-                  <PlusCircle className="h-3.5 w-3.5 mr-1" />
-                  <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Crear Usuario</span>
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="outline" onClick={handleImportClick}>
+                    <Upload className="h-3.5 w-3.5 mr-1" />
+                    Importar
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleExport}>
+                    <Download className="h-3.5 w-3.5 mr-1" />
+                    Exportar
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleDownloadTemplate}>
+                    <Download className="h-3.5 w-3.5 mr-1" />
+                    Plantilla
+                </Button>
+                <Button size="sm" onClick={openCreateDialog}>
+                    <PlusCircle className="h-3.5 w-3.5 mr-1" />
+                    <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Crear Usuario</span>
+                </Button>
+              </div>
           </div>
         </CardHeader>
         <CardContent>
+          <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileImport}
+              accept=".xlsx, .xls, .csv"
+              className="hidden"
+          />
           <Table>
             <TableHeader>
               <TableRow>
