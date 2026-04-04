@@ -87,7 +87,17 @@ export default function AttendancePage() {
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
-    const lastMatchRef = useRef<{ studentId: string; time: number } | null>(null);
+
+    const stopCamera = useCallback(() => {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+        }
+        setHasCameraPermission(null);
+    }, []);
 
     const handleRecognition = useCallback(() => {
         if (!videoRef.current || allStudents.length === 0) return;
@@ -95,9 +105,6 @@ export default function AttendancePage() {
         const studentsWithEmbeddings = allStudents.filter(s => s.embedding);
         if (studentsWithEmbeddings.length === 0) return;
         
-        // This is a simulation. In a real app, you'd capture a frame, 
-        // send it to an AI model to get an embedding.
-        // Here, we just pick a random registered student's embedding to simulate a match.
         const randomIndex = Math.floor(Math.random() * studentsWithEmbeddings.length);
         const simulatedLiveEmbedding = studentsWithEmbeddings[randomIndex].embedding;
 
@@ -114,49 +121,42 @@ export default function AttendancePage() {
             }
         }
         
-        const SIMILARITY_THRESHOLD = 0.95; // High threshold for simulation
+        const SIMILARITY_THRESHOLD = 0.95;
 
         if (bestMatch.student && bestMatch.similarity >= SIMILARITY_THRESHOLD) {
-            const now = Date.now();
+            const studentId = bestMatch.student.id;
             
-            // Only add student if not already present
-            if (!identifiedStudents.has(bestMatch.student.id)) {
-                setIdentifiedStudents(prev => {
-                    const newSet = new Set(prev);
-                    newSet.add(bestMatch.student!.id);
-                    return newSet;
-                });
-                lastMatchRef.current = { studentId: bestMatch.student.id, time: now };
+            setIdentifiedStudents(prev => {
+                if (prev.has(studentId)) {
+                    return prev;
+                }
+                const newSet = new Set(prev);
+                newSet.add(studentId);
+                
                 toast({
                     title: "Estudiante Identificado",
-                    description: `${bestMatch.student.firstName} ${bestMatch.student.lastName} ha sido marcado como presente.`,
+                    description: `${bestMatch.student!.firstName} ${bestMatch.student!.lastName} ha sido marcado como presente.`,
                 });
-            }
-        }
-    }, [allStudents, toast, identifiedStudents]);
 
-    // Effect for managing the camera stream
+                return newSet;
+            });
+        }
+    }, [allStudents, toast]);
+
+    // Effect for managing camera lifecycle
     useEffect(() => {
         if (!isTakingAttendance) {
-            // Cleanup when not taking attendance
-            if (streamRef.current) {
-                streamRef.current.getTracks().forEach(track => track.stop());
-                streamRef.current = null;
-            }
-            if (videoRef.current) {
-                videoRef.current.srcObject = null;
-            }
-            setHasCameraPermission(null);
+            stopCamera();
             return;
         }
 
-        let didCancel = false;
+        let isCancelled = false;
 
         const startCamera = async () => {
-            setHasCameraPermission(null); // Set to pending
+            setHasCameraPermission(null);
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-                if (didCancel) {
+                if (isCancelled) {
                     stream.getTracks().forEach(track => track.stop());
                     return;
                 }
@@ -166,9 +166,10 @@ export default function AttendancePage() {
                 }
                 setHasCameraPermission(true);
             } catch (error) {
-                console.error('Error accessing camera:', error);
+                console.error("Error accessing camera:", error);
+                if (isCancelled) return;
                 setHasCameraPermission(false);
-                setIsTakingAttendance(false); // Stop the process
+                setIsTakingAttendance(false);
                 toast({
                     variant: 'destructive',
                     title: 'Acceso a la cámara denegado',
@@ -180,16 +181,10 @@ export default function AttendancePage() {
         startCamera();
 
         return () => {
-            didCancel = true;
-            if (streamRef.current) {
-                streamRef.current.getTracks().forEach(track => track.stop());
-                streamRef.current = null;
-            }
-            if (videoRef.current) {
-                videoRef.current.srcObject = null;
-            }
+            isCancelled = true;
+            stopCamera();
         };
-    }, [isTakingAttendance, toast]);
+    }, [isTakingAttendance, stopCamera, toast]);
     
     // Effect for managing recognition intervals
     useEffect(() => {
@@ -209,8 +204,40 @@ export default function AttendancePage() {
         };
     }, [isTakingAttendance, hasCameraPermission, handleRecognition]);
 
+    const handleToggleAttendance = () => {
+        if (!isTakingAttendance) {
+            setIdentifiedStudents(new Set());
+        }
+        setIsTakingAttendance(prev => !prev);
+    };
 
     const presentStudentsList = allStudents.filter(s => identifiedStudents.has(s.id));
+
+    const renderCameraState = () => {
+        if (!isTakingAttendance) {
+            return (
+                <div className="flex flex-col items-center gap-4 text-muted-foreground">
+                    <Camera className="w-16 h-16" />
+                    <p>La cámara está desactivada. Haz clic en "Iniciar" para comenzar.</p>
+                </div>
+            );
+        }
+        if (hasCameraPermission === null) {
+            return <p>Solicitando permiso de la cámara...</p>;
+        }
+        if (hasCameraPermission === false) {
+             return (
+                <Alert variant="destructive" className="max-w-md">
+                    <AlertTitle>Acceso a Cámara Requerido</AlertTitle>
+                    <AlertDescription>
+                        No se puede pasar lista sin acceso a la cámara. Por favor, actualiza los permisos en tu navegador.
+                    </AlertDescription>
+                </Alert>
+            );
+        }
+        // If we are here, camera is active, but we show nothing, the video stream should be visible
+        return null;
+    };
 
     return (
         <div className="grid gap-6">
@@ -222,13 +249,7 @@ export default function AttendancePage() {
                             <CardDescription>Inicia el proceso para marcar la asistencia de los estudiantes automáticamente.</CardDescription>
                         </div>
                         <Button 
-                            onClick={() => {
-                                if (!isTakingAttendance) {
-                                    setIdentifiedStudents(new Set());
-                                    lastMatchRef.current = null;
-                                }
-                                setIsTakingAttendance(prev => !prev)
-                            }}
+                            onClick={handleToggleAttendance}
                             size="lg"
                         >
                             {isTakingAttendance ? 'Detener Pase de Lista' : 'Iniciar Pase de Lista'}
@@ -244,21 +265,10 @@ export default function AttendancePage() {
                             muted
                             playsInline
                         />
-                         {!isTakingAttendance && (
-                            <div className="flex flex-col items-center gap-4 text-muted-foreground">
-                                <Camera className="w-16 h-16" />
-                                <p>La cámara está desactivada. Haz clic en "Iniciar" para comenzar.</p>
-                            </div>
-                        )}
-                        {isTakingAttendance && hasCameraPermission === null && <p>Solicitando permiso de la cámara...</p>}
-                        {isTakingAttendance && hasCameraPermission === false && (
-                            <Alert variant="destructive" className="max-w-md">
-                                <AlertTitle>Acceso a Cámara Requerido</AlertTitle>
-                                <AlertDescription>
-                                    No se puede pasar lista sin acceso a la cámara. Por favor, actualiza los permisos en tu navegador.
-                                </AlertDescription>
-                            </Alert>
-                        )}
+                        <div className={cn("absolute inset-0 flex items-center justify-center", isTakingAttendance && hasCameraPermission ? 'hidden' : 'flex')}>
+                            {renderCameraState()}
+                        </div>
+                        
                         {isTakingAttendance && hasCameraPermission && (
                             <div className="absolute bottom-4 left-4 right-4">
                                 <Progress value={scanProgress} />
