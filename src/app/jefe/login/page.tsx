@@ -43,24 +43,35 @@ export default function JefeLoginPage() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (values.username === 'jefe' && values.password === 'jefe') {
-      const userProfile = {
-        uid: 'jefe-user',
-        name: 'Jefe de Grupo',
-        role: 'Jefe',
-      };
-      sessionStorage.setItem('unilink-jefe-user', JSON.stringify(userProfile));
-      toast({
-          title: "Inicio de sesión exitoso",
-          description: "Redirigiendo al dashboard de jefe...",
-      });
-      router.push("/jefe/dashboard");
-    } else {
-      toast({
-          variant: "destructive",
-          title: "Error de inicio de sesión",
-          description: "Credenciales incorrectas.",
-      });
+    try {
+      if (typeof window !== 'undefined') {
+        if (values.username === 'jefe' && values.password === 'jefe') {
+          const userProfile = {
+            uid: 'jefe-user',
+            name: 'Jefe de Grupo',
+            role: 'Jefe',
+          };
+          sessionStorage.setItem('unilink-jefe-user', JSON.stringify(userProfile));
+          toast({
+              title: "Inicio de sesión exitoso",
+              description: "Redirigiendo al dashboard de jefe...",
+          });
+          router.push("/jefe/dashboard");
+        } else {
+          toast({
+              variant: "destructive",
+              title: "Error de inicio de sesión",
+              description: "Credenciales incorrectas.",
+          });
+        }
+      }
+    } catch (error: any) {
+        console.error("Jefe login failed", error);
+        toast({
+            variant: "destructive",
+            title: "Error de inicio de sesión",
+            description: error.message || "Ocurrió un error inesperado.",
+        });
     }
   }
 

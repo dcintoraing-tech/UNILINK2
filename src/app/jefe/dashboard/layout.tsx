@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Home, Users, CheckCircle, FileText, BarChart2 } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { JefeLogoutButton } from '@/components/jefe-logout-button';
@@ -10,7 +10,9 @@ import { cn } from '@/lib/utils';
 
 export default function JefeDashboardLayout({ children }: { children: React.ReactNode; }) {
   const [userName, setUserName] = useState('');
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const pathname = usePathname();
+  const router = useRouter();
 
   useEffect(() => {
     try {
@@ -18,11 +20,16 @@ export default function JefeDashboardLayout({ children }: { children: React.Reac
       if (storedUser) {
         const user = JSON.parse(storedUser);
         setUserName(user.name);
+      } else {
+        router.replace('/jefe/login');
       }
     } catch (error) {
         console.error("Failed to read user from session storage", error);
+        router.replace('/jefe/login');
+    } finally {
+        setIsCheckingAuth(false);
     }
-  }, []);
+  }, [router]);
 
   const navLinks = [
     { href: "/jefe/dashboard", label: "Dashboard", icon: Home },
@@ -31,6 +38,14 @@ export default function JefeDashboardLayout({ children }: { children: React.Reac
     { href: "/jefe/dashboard/justificaciones", label: "Justificaciones", icon: FileText },
     { href: "/jefe/dashboard/reportes", label: "Reportes", icon: BarChart2 },
   ];
+
+  if (isCheckingAuth) {
+    return (
+        <div className="flex min-h-screen w-full items-center justify-center">
+            <p>Verificando acceso...</p>
+        </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen w-full">
