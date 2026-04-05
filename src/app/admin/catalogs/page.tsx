@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
@@ -701,7 +702,10 @@ function ScheduleWizard({
     if (wizardStep === 'select_group') {
         return (
             <>
-                <DialogDescription>Selecciona el grupo para el cual deseas crear o editar un horario.</DialogDescription>
+                <DialogHeader>
+                    <DialogTitle>Crear o Editar Horario</DialogTitle>
+                    <DialogDescription>Selecciona el grupo para el cual deseas crear o editar un horario.</DialogDescription>
+                </DialogHeader>
                 <div className="grid gap-4 py-4">
                     <div className="grid gap-2">
                         <Label htmlFor="grupo">Grupo</Label>
