@@ -11,6 +11,7 @@ export function LogoutButton() {
   const handleLogout = () => {
     // Clear local session info
     sessionStorage.removeItem('unilink-user');
+    sessionStorage.removeItem('unilink-active-role');
     // Redirect to login page
     router.push("/login");
   };
