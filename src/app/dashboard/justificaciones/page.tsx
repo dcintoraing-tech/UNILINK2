@@ -30,7 +30,7 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
 interface Justificacion { id: string; studentId: string; date: string; reason: string; status: 'Pendiente' | 'Aprobado' | 'Rechazado'; attendanceRecordId: string; }
 interface Student { id: string; firstName: string; lastName: string; }
 interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: 'Presente' | 'Retardo' | 'Falta' | 'Falta Justificada'; }
-interface User { id: string; name: string; }
+interface User { id: string; name: string; role: string; }
 
 interface HorarioBlock {
     materiaId: string;
@@ -49,53 +49,20 @@ interface Horario {
 export default function TeacherJustificacionesPage() {
     const [justificaciones] = useLocalStorage<Justificacion[]>('unilink-justificaciones', []);
     const [students] = useLocalStorage<Student[]>('unilink-students', []);
-    const [attendance] = useLocalStorage<AttendanceRecord[]>('unilink-attendance', []);
-    const [horarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
     const [user, setUser] = useState<User | null>(null);
-    const [activeRole, setActiveRole] = useState('');
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const storedUser = sessionStorage.getItem('unilink-user');
-            const storedRole = sessionStorage.getItem('unilink-active-role');
             if (storedUser) setUser(JSON.parse(storedUser));
-            if (storedRole) setActiveRole(storedRole);
         }
     }, []);
 
     const teacherJustificaciones = useMemo(() => {
-        if (!user) return [];
-        if (activeRole === 'Super Docente') return justificaciones;
-        
-        const teacherMateriaIds = new Set<string>();
-        horarios.forEach(h => {
-            if (h.schedule) {
-                Object.values(h.schedule).forEach(day => {
-                    if (day) {
-                        Object.values(day).forEach(block => {
-                            if (block?.docenteId === user.id) {
-                                teacherMateriaIds.add(block.materiaId);
-                            }
-                        });
-                    }
-                });
-            }
-        });
-
-        const teacherAttendanceRecordIds = new Set<string>();
-        attendance.forEach(a => {
-            if (teacherMateriaIds.has(a.materiaAsignacionId)) {
-                teacherAttendanceRecordIds.add(a.id);
-            }
-        });
-        
-        return justificaciones.filter(j => {
-            const attendanceRecord = attendance.find(a => a.id === j.attendanceRecordId);
-            if (!attendanceRecord) return false;
-            return teacherMateriaIds.has(attendanceRecord.materiaAsignacionId);
-        });
-
-    }, [user, activeRole, justificaciones, attendance, horarios]);
+        if (!user || user.role !== 'Docente') return [];
+        // For testing, the "Docente" role has access to all justificaciones.
+        return justificaciones;
+    }, [user, justificaciones]);
 
     const getStudentName = (studentId: string) => {
         const student = students.find(s => s.id === studentId);

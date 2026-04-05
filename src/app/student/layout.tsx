@@ -19,7 +19,7 @@ import { useToast } from '@/hooks/use-toast';
 interface User {
   name: string;
   email: string;
-  role: 'Docente' | 'Admin' | 'Alumno' | 'Super Docente';
+  role: 'Docente' | 'Admin' | 'Alumno';
 }
 
 const NavContent = () => (
@@ -61,7 +61,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode;
         const activeRoleForCheck = storedActiveRole || parsedUser.role;
 
         if (activeRoleForCheck !== 'Alumno') {
-            if (activeRoleForCheck === 'Docente' || activeRoleForCheck === 'Super Docente') {
+            if (activeRoleForCheck === 'Docente') {
                 router.replace('/dashboard');
             } else {
                 router.replace('/admin/dashboard');
@@ -93,7 +93,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode;
         setPassword('');
         setPasswordError('');
 
-        if (targetRole === 'Docente' || targetRole === 'Super Docente') {
+        if (targetRole === 'Docente') {
             router.push('/dashboard');
         } else if (targetRole === 'Alumno') {
             router.push('/student/dashboard');
@@ -163,7 +163,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode;
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent>
-                            {['Admin', 'Jefe de carrera', 'Docente', 'Super Docente', 'Alumno'].filter(role => role !== activeRole).map(role => (
+                            {['Admin', 'Jefe de carrera', 'Docente', 'Alumno'].filter(role => role !== activeRole).map(role => (
                                 <DropdownMenuItem key={role} onSelect={() => openSwitchRoleDialog(role)}>
                                     Cambiar a {role}
                                 </DropdownMenuItem>

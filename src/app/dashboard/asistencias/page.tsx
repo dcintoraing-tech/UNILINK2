@@ -150,7 +150,6 @@ export default function TeacherAttendancePage() {
     
     // --- User & Role State ---
     const [user, setUser] = useState<User | null>(null);
-    const [activeRole, setActiveRole] = useState('');
 
     // --- Component State ---
     const [isTakingAttendance, setIsTakingAttendance] = useState(false);
@@ -167,33 +166,17 @@ export default function TeacherAttendancePage() {
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const storedUser = sessionStorage.getItem('unilink-user');
-            const storedRole = sessionStorage.getItem('unilink-active-role');
             if (storedUser) setUser(JSON.parse(storedUser));
-            if (storedRole) setActiveRole(storedRole);
         }
     }, []);
 
     const studentsForTeacher = useMemo(() => {
-        if (activeRole === 'Super Docente') return allStudents;
-        if (activeRole === 'Docente' && user) {
-            const teacherGroupIds = new Set<string>();
-            horarios.forEach(h => {
-                if (h.schedule) {
-                    Object.values(h.schedule).forEach(day => {
-                        if (day) {
-                            Object.values(day).forEach(block => {
-                                if (block?.docenteId === user.id) {
-                                    teacherGroupIds.add(h.grupoId);
-                                }
-                            });
-                        }
-                    });
-                }
-            });
-            return allStudents.filter(s => teacherGroupIds.has(s.assignedGroupId));
+        // For testing purposes, the "Docente" role has access to all students.
+        if (user?.role === 'Docente') {
+            return allStudents;
         }
         return [];
-    }, [activeRole, user, allStudents, horarios]);
+    }, [user, allStudents]);
 
     const stopCamera = useCallback(() => {
         if (streamRef.current) {
@@ -250,7 +233,6 @@ export default function TeacherAttendancePage() {
                 const block = todaySchedule[blockIndex];
 
                 if (!block) continue;
-                if (activeRole === 'Docente' && user && block.docenteId !== user.id) continue;
                 
                 const horaInicio = HORAS_BLOQUE_INICIO[blockIndex];
                 if(!horaInicio) continue;
@@ -307,7 +289,7 @@ export default function TeacherAttendancePage() {
                 }
             }
         }
-    }, [studentsForTeacher, horarios, config, uiAttendanceRecords, toast, setAttendance, user, activeRole]);
+    }, [studentsForTeacher, horarios, config, uiAttendanceRecords, toast, setAttendance, user]);
 
     useEffect(() => {
         let isCancelled = false;
@@ -414,7 +396,6 @@ export default function TeacherAttendancePage() {
                 <div className="flex flex-col items-center gap-4 text-muted-foreground">
                     <Users className="w-16 h-16" />
                     <p>No hay estudiantes para pasar lista.</p>
-                     {activeRole !== 'Super Docente' && <p className="text-sm">Asegúrate de tener grupos y alumnos asignados.</p>}
                 </div>
             );
         }

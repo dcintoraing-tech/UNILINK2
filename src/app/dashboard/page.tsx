@@ -32,7 +32,7 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
 interface User {
     id: string;
     name: string;
-    role: 'Docente' | 'Admin' | 'Super Docente';
+    role: 'Docente' | 'Admin';
 }
 
 interface HorarioBlock {
@@ -67,7 +67,6 @@ const HORAS_BLOQUE_INICIO = ["07:00", "08:00", "09:00", "10:00"];
 
 export default function TeacherDashboardPage() {
   const [user, setUser] = useState<User | null>(null);
-  const [activeRole, setActiveRole] = useState('');
   const [horarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
   const [grupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
   const [materias] = useLocalStorage<AsignacionMateria[]>('unilink-materia-asignaciones', []);
@@ -76,38 +75,15 @@ export default function TeacherDashboardPage() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedUser = sessionStorage.getItem('unilink-user');
-      const storedRole = sessionStorage.getItem('unilink-active-role');
       if (storedUser) setUser(JSON.parse(storedUser));
-      if (storedRole) setActiveRole(storedRole);
     }
   }, []);
 
   const assignedGroups = useMemo(() => {
-    if (!user) return [];
-    
-    let relevantGroups: Grupo[] = [];
+    // The "Docente" role now has global access for testing purposes.
+    if (!user || user.role !== 'Docente') return [];
 
-    if (activeRole === 'Super Docente') {
-        relevantGroups = grupos;
-    } else {
-        const teacherGroupIds = new Set<string>();
-        horarios.forEach(horario => {
-            if (horario.schedule) {
-                Object.values(horario.schedule).forEach(daySchedule => {
-                    if (daySchedule) {
-                        Object.values(daySchedule).forEach(block => {
-                            if (block && block.docenteId === user.id) {
-                                teacherGroupIds.add(horario.grupoId);
-                            }
-                        });
-                    }
-                });
-            }
-        });
-        relevantGroups = grupos.filter(g => teacherGroupIds.has(g.id));
-    }
-
-    return relevantGroups.map(group => {
+    return grupos.map(group => {
         const subjects = new Set<string>();
         let earliestTime = '24:00';
         
@@ -117,14 +93,13 @@ export default function TeacherDashboardPage() {
                     if (daySchedule) {
                         Object.entries(daySchedule).forEach(([blockIndex, block]) => {
                             if (block) {
-                                if (activeRole === 'Super Docente' || block.docenteId === user.id) {
-                                    const materia = materias.find(m => m.id === block.materiaId);
-                                    if (materia) subjects.add(materia.materia);
-                                    
-                                    const horaInicio = HORAS_BLOQUE_INICIO[parseInt(blockIndex)];
-                                    if (horaInicio && horaInicio < earliestTime) {
-                                        earliestTime = horaInicio;
-                                    }
+                                // A teacher sees all subjects for all groups.
+                                const materia = materias.find(m => m.id === block.materiaId);
+                                if (materia) subjects.add(materia.materia);
+                                
+                                const horaInicio = HORAS_BLOQUE_INICIO[parseInt(blockIndex)];
+                                if (horaInicio && horaInicio < earliestTime) {
+                                    earliestTime = horaInicio;
                                 }
                             }
                         });
@@ -142,7 +117,7 @@ export default function TeacherDashboardPage() {
             studentCount,
         };
     }).filter((g): g is NonNullable<typeof g> => g !== null && g.subjects.length > 0);
-  }, [user, activeRole, horarios, grupos, materias, students]);
+  }, [user, horarios, grupos, materias, students]);
   
   if (!user) {
     return <p>Cargando...</p>;
@@ -153,14 +128,14 @@ export default function TeacherDashboardPage() {
         <div className="grid gap-2">
             <h1 className="text-3xl font-semibold">¡Bienvenido, {user.name}!</h1>
             <p className="text-muted-foreground">
-                {activeRole === 'Super Docente' ? 'Estás en modo Super Docente. Tienes acceso a todos los grupos.' : 'Aquí puedes ver los grupos que tienes asignados.'}
+                Como Docente, tienes acceso a todos los grupos para facilitar las pruebas del sistema.
             </p>
         </div>
         
         <Card>
             <CardHeader>
                 <CardTitle>Mis Grupos</CardTitle>
-                <CardDescription>Resumen de los grupos y materias que impartes.</CardDescription>
+                <CardDescription>Resumen de todos los grupos y materias del sistema.</CardDescription>
             </CardHeader>
             <CardContent>
                 {assignedGroups.length > 0 ? (
@@ -195,7 +170,7 @@ export default function TeacherDashboardPage() {
                         <Users className="w-12 h-12 mb-4"/>
                         <p>No se encontraron grupos.</p>
                         <p className="text-xs">
-                            {activeRole === 'Super Docente' ? 'No hay grupos creados en el sistema.' : 'Contacta a un administrador para que te asignen materias y horarios.'}
+                            No hay grupos creados en el sistema.
                         </p>
                     </div>
                 )}

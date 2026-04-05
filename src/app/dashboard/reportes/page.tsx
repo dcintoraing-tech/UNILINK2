@@ -31,29 +31,14 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
     return [storedValue, setValue];
 };
 
-interface User { id: string; name: string; }
-interface HorarioBlock {
-    materiaId: string;
-    docenteId: string;
-    duracion: 1 | 2;
-}
-type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
-type ScheduleData = { [dayIndex: number]: DaySchedule };
-interface Horario {
-    id: string;
-    grupoId: string;
-    schedule: ScheduleData;
-}
+interface User { id: string; name: string; role: string }
 interface Grupo { id: string; name: string; }
-interface AsignacionMateria { id: string; materia: string; }
 interface Student { id: string; firstName: string; lastName: string; assignedGroupId: string; }
 type AttendanceStatus = 'Presente' | 'Retardo' | 'Falta' | 'Falta Justificada';
 interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: AttendanceStatus; }
 
 export default function TeacherReportsPage() {
     const [user, setUser] = useState<User | null>(null);
-    const [activeRole, setActiveRole] = useState('');
-    const [horarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
     const [grupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
     const [students] = useLocalStorage<Student[]>('unilink-students', []);
     const [attendance] = useLocalStorage<AttendanceRecord[]>('unilink-attendance', []);
@@ -63,30 +48,15 @@ export default function TeacherReportsPage() {
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const storedUser = sessionStorage.getItem('unilink-user');
-            const storedRole = sessionStorage.getItem('unilink-active-role');
             if (storedUser) setUser(JSON.parse(storedUser));
-            if (storedRole) setActiveRole(storedRole);
         }
     }, []);
 
     const teacherGroups = useMemo(() => {
-        if (!user) return [];
-        if (activeRole === 'Super Docente') return grupos;
-        
-        const groupIds = new Set<string>();
-        horarios.forEach(h => {
-            if (h.schedule) {
-                Object.values(h.schedule).forEach(day => {
-                    if (day) {
-                        Object.values(day).forEach(b => {
-                            if (b?.docenteId === user.id) groupIds.add(h.grupoId);
-                        });
-                    }
-                });
-            }
-        });
-        return grupos.filter(g => groupIds.has(g.id));
-    }, [user, activeRole, horarios, grupos]);
+        // For testing, the "Docente" role has access to all groups.
+        if (!user || user.role !== 'Docente') return [];
+        return grupos;
+    }, [user, grupos]);
 
     const reportData = useMemo(() => {
         if (!selectedGroup) return null;
