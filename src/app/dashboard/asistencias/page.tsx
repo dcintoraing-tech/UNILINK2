@@ -1,278 +1,502 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import Link from 'next/link';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Check, X, AlertTriangle, MessageSquare, Save, Clock } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { User as UserIcon, Camera, Users, ArrowLeft, MessageSquare } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 
 // --- DATA PERSISTENCE & TYPES ---
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
     const [storedValue, setStoredValue] = useState<T>(initialValue);
+    const [isInitialized, setIsInitialized] = useState(false);
+
     useEffect(() => {
         if (typeof window !== 'undefined') {
             try {
                 const item = window.localStorage.getItem(key);
-                if (item) setStoredValue(JSON.parse(item));
-            } catch (error) { console.log(error); }
+                if (item) {
+                    setStoredValue(JSON.parse(item));
+                }
+            } catch (error) {
+                console.log(error);
+            }
+            setIsInitialized(true); 
         }
     }, [key]);
+
     const setValue = (value: T | ((val: T) => T)) => {
-        if (typeof window !== 'undefined') {
-            try {
-                const valueToStore = value instanceof Function ? value(storedValue) : value;
-                setStoredValue(valueToStore);
-                window.localStorage.setItem(key, JSON.stringify(valueToStore));
-            } catch (error) { console.log(error); }
+        if (!isInitialized) return;
+        try {
+            setStoredValue(currentStoredValue => {
+                const valueToStore = value instanceof Function ? value(currentStoredValue) : value;
+                if (typeof window !== 'undefined') {
+                    window.localStorage.setItem(key, JSON.stringify(valueToStore));
+                    window.dispatchEvent(new StorageEvent('storage', { key, newValue: JSON.stringify(valueToStore) }));
+                }
+                return valueToStore;
+            });
+        } catch (error) {
+            console.log(error);
         }
     };
-    return [storedValue, setValue];
+    
+    useEffect(() => {
+        const handleStorageChange = (e: StorageEvent) => {
+            if (e.key === key && e.newValue) {
+                 try {
+                    setStoredValue(JSON.parse(e.newValue));
+                } catch (error) {
+                    console.log(error);
+                }
+            }
+        };
+
+        window.addEventListener('storage', handleStorageChange);
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+        };
+    }, [key]);
+
+
+    return [storedValue, setValue] as const;
 };
 
-interface User { id: string; name: string; }
-interface HorarioBlock { docenteId: string; materiaAsignacionId: string; horaInicio: string; }
-interface Horario { grupoId: string; dia: string; blocks: (HorarioBlock | undefined)[]; }
-interface Grupo { id: string; name: string; }
-interface AsignacionMateria { id: string; materia: string; }
-interface Student { id: string; firstName: string; lastName: string; assignedGroupId: string; facialImage: string | null; }
-interface Justificacion { id: string; studentId: string; date: string; reason: string; status: 'Pendiente' | 'Aprobado' | 'Rechazado'; attendanceRecordId: string; }
+interface Student {
+    id: string;
+    firstName: string;
+    lastName: string;
+    controlNumber: string;
+    academicProgramId: string;
+    assignedGroupId: string;
+    facialImage: string | null;
+    embedding: number[] | null;
+}
+
+interface HorarioBlock {
+    docenteId: string;
+    materiaAsignacionId: string;
+    horaInicio: string;
+    duracion: string; 
+}
+
+interface Horario {
+    id: string;
+    grupoId: string;
+    dia: string;
+    blocks: (HorarioBlock | undefined)[];
+}
+
+interface AttendanceConfig {
+    toleranceMinutes: number;
+    absenceLimitMinutes: number;
+}
+
 type AttendanceStatus = 'Presente' | 'Retardo' | 'Falta' | 'Falta Justificada';
-interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: AttendanceStatus; }
+
+interface AttendanceRecord {
+    id: string;
+    studentId: string;
+    date: string;
+    materiaAsignacionId: string;
+    status: AttendanceStatus;
+}
+
+interface UIAttendanceRecord {
+    studentId: string;
+    studentName: string;
+    facialImage: string | null;
+    arrivalTime: string;
+    status: AttendanceStatus;
+}
+interface Justificacion { id: string; studentId: string; date: string; reason: string; status: 'Pendiente' | 'Aprobado' | 'Rechazado'; attendanceRecordId: string; }
+
+interface User { id: string, name: string, role: string }
+
+
+// --- UTILITY FUNCTIONS ---
+function cosineSimilarity(vecA: number[], vecB: number[]): number {
+    if (vecA.length !== vecB.length) return 0;
+    const dotProduct = vecA.map((val, i) => val * vecB[i]).reduce((acc, val) => acc + val, 0);
+    const normA = Math.sqrt(vecA.reduce((acc, val) => acc + val * val, 0));
+    const normB = Math.sqrt(vecB.reduce((acc, val) => acc + val * val, 0));
+    if (normA === 0 || normB === 0) return 0;
+    return dotProduct / (normA * normB);
+}
 
 const DIAS_SEMANA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
+// --- MAIN COMPONENT ---
 export default function TeacherAttendancePage() {
     const { toast } = useToast();
-    const [user, setUser] = useState<User | null>(null);
-
-    // Data from local storage
+    
+    // --- Local Storage Data ---
+    const [allStudents] = useLocalStorage<Student[]>('unilink-students', []);
     const [horarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
-    const [grupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
-    const [materias] = useLocalStorage<AsignacionMateria[]>('unilink-materia-asignaciones', []);
-    const [students] = useLocalStorage<Student[]>('unilink-students', []);
+    const [config] = useLocalStorage<AttendanceConfig>('unilink-attendance-config', {
+        toleranceMinutes: 10,
+        absenceLimitMinutes: 30,
+    });
     const [attendance, setAttendance] = useLocalStorage<AttendanceRecord[]>('unilink-attendance', []);
     const [justificaciones, setJustificaciones] = useLocalStorage<Justificacion[]>('unilink-justificaciones', []);
     
-    // UI State
-    const [today, setToday] = useState(new Date());
-    const [selectedClass, setSelectedClass] = useState<string | null>(null); // "groupId-materiaId-horaInicio"
-    const [currentAttendance, setCurrentAttendance] = useState<Map<string, AttendanceStatus>>(new Map());
+    // --- User & Role State ---
+    const [user, setUser] = useState<User | null>(null);
+    const [activeRole, setActiveRole] = useState('');
+
+    // --- Component State ---
+    const [isTakingAttendance, setIsTakingAttendance] = useState(false);
+    const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+    const [uiAttendanceRecords, setUIAttendanceRecords] = useState<UIAttendanceRecord[]>([]);
+    const [scanProgress, setScanProgress] = useState(0);
     const [justificationText, setJustificationText] = useState('');
+    const [justifyingStudent, setJustifyingStudent] = useState<UIAttendanceRecord | null>(null);
+
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+    const lastRecognitionTime = useRef<number>(0);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const storedUser = sessionStorage.getItem('unilink-user');
+            const storedRole = sessionStorage.getItem('unilink-active-role');
             if (storedUser) setUser(JSON.parse(storedUser));
+            if (storedRole) setActiveRole(storedRole);
         }
     }, []);
 
-    const teacherClassesToday = useMemo(() => {
-        if (!user) return [];
-        const dayName = DIAS_SEMANA[today.getDay()];
-        const classes: { value: string, label: string, groupId: string, materiaId: string }[] = [];
+    const studentsForTeacher = useMemo(() => {
+        if (activeRole === 'Super Docente') return allStudents;
+        if (activeRole === 'Docente' && user) {
+            const teacherGroupIds = new Set<string>();
+            horarios.forEach(h => {
+                h.blocks.forEach(b => {
+                    if (b?.docenteId === user.id) teacherGroupIds.add(h.grupoId);
+                })
+            });
+            return allStudents.filter(s => teacherGroupIds.has(s.assignedGroupId));
+        }
+        return [];
+    }, [activeRole, user, allStudents, horarios]);
+
+    const stopCamera = useCallback(() => {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+        }
+    }, []);
+    
+    const handleRecognition = useCallback(() => {
+        if (!videoRef.current || studentsForTeacher.length === 0 || horarios.length === 0) return;
+
+        const studentsWithEmbeddings = studentsForTeacher.filter(s => s.embedding);
+        if (studentsWithEmbeddings.length === 0) return;
         
-        horarios.forEach(horario => {
-            if (horario.dia === dayName) {
-                horario.blocks.forEach(block => {
-                    if (block && block.docenteId === user.id) {
-                        const group = grupos.find(g => g.id === horario.grupoId);
-                        const materia = materias.find(m => m.id === block.materiaAsignacionId);
-                        if (group && materia) {
-                            const classId = `${group.id}-${materia.id}-${block.horaInicio}`;
-                            classes.push({
-                                value: classId,
-                                label: `${block.horaInicio} - ${group.name} - ${materia.materia}`,
-                                groupId: group.id,
-                                materiaId: materia.id,
-                            });
-                        }
-                    }
-                });
+        const randomIndex = Math.floor(Math.random() * studentsWithEmbeddings.length);
+        const simulatedLiveEmbedding = studentsWithEmbeddings[randomIndex].embedding;
+        if (!simulatedLiveEmbedding) return;
+
+        let bestMatch: { student: Student | null; similarity: number } = { student: null, similarity: 0 };
+        for (const student of studentsForTeacher) {
+            if (student.embedding) {
+                const similarity = cosineSimilarity(simulatedLiveEmbedding, student.embedding);
+                if (similarity > bestMatch.similarity) {
+                    bestMatch = { student, similarity };
+                }
             }
-        });
-        return classes.sort((a,b) => a.label.localeCompare(b.label));
-    }, [user, horarios, grupos, materias, today]);
+        }
+        
+        const SIMILARITY_THRESHOLD = 0.95;
 
-    const { selectedGroupId, selectedMateriaId } = useMemo(() => {
-        if (!selectedClass) return { selectedGroupId: null, selectedMateriaId: null };
-        const [groupId, materiaId] = selectedClass.split('-');
-        return { selectedGroupId: groupId, selectedMateriaId: materiaId };
-    }, [selectedClass]);
+        if (bestMatch.student && bestMatch.similarity >= SIMILARITY_THRESHOLD) {
+            const student = bestMatch.student;
+            const now = new Date();
 
-    const studentsInSelectedGroup = useMemo(() => {
-        if (!selectedGroupId) return [];
-        return students.filter(s => s.assignedGroupId === selectedGroupId);
-    }, [students, selectedGroupId]);
+            if (uiAttendanceRecords.some(r => r.studentId === student.id)) {
+                return;
+            }
+
+            const studentSchedule = horarios.find(h => h.grupoId === student.assignedGroupId && h.dia === DIAS_SEMANA[now.getDay()]);
+
+            if (!studentSchedule) return;
+
+            let checkedIn = false;
+            for (const block of studentSchedule.blocks) {
+                if (!block) continue;
+                if (activeRole === 'Docente' && user && block.docenteId !== user.id) continue;
+
+                const [hours, minutes] = block.horaInicio.split(':').map(Number);
+                const startTime = new Date(now);
+                startTime.setHours(hours, minutes, 0, 0);
+
+                const toleranceTime = new Date(startTime);
+                toleranceTime.setMinutes(startTime.getMinutes() + config.toleranceMinutes);
+
+                const absenceLimitTime = new Date(startTime);
+                absenceLimitTime.setMinutes(startTime.getMinutes() + config.absenceLimitMinutes);
+                
+                if (now >= startTime && now <= absenceLimitTime) {
+                    const status = now <= toleranceTime ? 'Presente' : 'Retardo';
+                    const newUIRecord: UIAttendanceRecord = {
+                        studentId: student.id,
+                        studentName: `${student.firstName} ${student.lastName}`,
+                        facialImage: student.facialImage,
+                        arrivalTime: now.toLocaleTimeString(),
+                        status: status
+                    };
+
+                    setUIAttendanceRecords(prev => [...prev, newUIRecord]);
+
+                    const dateString = now.toISOString().split('T')[0];
+                    const recordId = `att-${student.id}-${dateString}-${block.materiaAsignacionId}`;
+                    const newPersistedRecord: AttendanceRecord = {
+                        id: recordId,
+                        studentId: student.id,
+                        date: dateString,
+                        materiaAsignacionId: block.materiaAsignacionId,
+                        status: status,
+                    };
+                    
+                    setAttendance(prevAttendance => {
+                        const existingIndex = prevAttendance.findIndex(r => r.id === recordId);
+                        const updated = [...prevAttendance];
+                        if (existingIndex > -1) {
+                            updated[existingIndex] = newPersistedRecord;
+                        } else {
+                            updated.push(newPersistedRecord);
+                        }
+                        return updated;
+                    });
+                    
+                    toast({
+                        title: `Asistencia Registrada (${status})`,
+                        description: `${newUIRecord.studentName} ha sido marcado a las ${newUIRecord.arrivalTime}.`,
+                    });
+                    checkedIn = true;
+                    break;
+                }
+            }
+        }
+    }, [studentsForTeacher, horarios, config, uiAttendanceRecords, toast, setAttendance, user, activeRole]);
 
     useEffect(() => {
-        const newAttendance = new Map<string, AttendanceStatus>();
-        if (selectedGroupId && selectedMateriaId) {
-            const dateString = today.toISOString().split('T')[0];
-            studentsInSelectedGroup.forEach(student => {
-                const record = attendance.find(a => 
-                    a.studentId === student.id && 
-                    a.date === dateString &&
-                    a.materiaAsignacionId === selectedMateriaId
-                );
-                if (record) {
-                    newAttendance.set(student.id, record.status);
-                }
-            });
-        }
-        setCurrentAttendance(newAttendance);
-    }, [selectedClass, studentsInSelectedGroup, attendance, today, selectedMateriaId]);
-
-    const handleStatusChange = (studentId: string, status: AttendanceStatus) => {
-        setCurrentAttendance(prev => new Map(prev).set(studentId, status));
-    };
-
-    const handleSaveJustification = (studentId: string) => {
-        if (!justificationText.trim()) {
-            toast({ variant: 'destructive', title: 'Justificación vacía', description: 'Por favor, escribe un motivo.' });
+        let isCancelled = false;
+        if (!isTakingAttendance) {
+            stopCamera();
             return;
         }
-        if (!selectedMateriaId) return;
 
-        const dateString = today.toISOString().split('T')[0];
-        const attendanceRecordId = `att-${studentId}-${dateString}-${selectedMateriaId}`;
+        const startCamera = async () => {
+            setHasCameraPermission(null);
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                if (isCancelled) {
+                    stream.getTracks().forEach(track => track.stop());
+                    return;
+                }
+                streamRef.current = stream;
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                }
+                setHasCameraPermission(true);
+            } catch (error) {
+                console.error("Error accessing camera:", error);
+                if (isCancelled) return;
+                setHasCameraPermission(false);
+                setIsTakingAttendance(false);
+                toast({
+                    variant: 'destructive',
+                    title: 'Acceso a la cámara denegado',
+                    description: 'Por favor, habilita los permisos de la cámara para pasar lista.',
+                });
+            }
+        };
 
+        startCamera();
+        return () => { isCancelled = true; stopCamera(); };
+    }, [isTakingAttendance, stopCamera, toast]);
+    
+    useEffect(() => {
+        if (!isTakingAttendance || hasCameraPermission !== true) return;
+        const recognitionInterval = setInterval(() => {
+            const now = Date.now();
+            if (now - lastRecognitionTime.current > 2000) {
+                 handleRecognition();
+                 lastRecognitionTime.current = now;
+            }
+        }, 500);
+        
+        const progressInterval = setInterval(() => {
+            setScanProgress(prev => (prev >= 100 ? 0 : prev + 5));
+        }, 100);
+
+        return () => { clearInterval(recognitionInterval); clearInterval(progressInterval); setScanProgress(0); };
+    }, [isTakingAttendance, hasCameraPermission, handleRecognition]);
+
+    const handleToggleAttendance = () => {
+        if (!isTakingAttendance) setUIAttendanceRecords([]);
+        setIsTakingAttendance(prev => !prev);
+    };
+
+    const handleSaveJustification = () => {
+        if (!justifyingStudent || !justificationText.trim()) return;
+
+        const dateString = new Date().toISOString().split('T')[0];
+        
+        const attendanceRecordForJustification = attendance.find(a => 
+            a.studentId === justifyingStudent.studentId && 
+            a.date === dateString &&
+            a.status === 'Falta' // Or maybe any status? For now, only 'Falta'
+        );
+        
+        // This is a simplification. A real app would need to find the correct class/block.
+        const materiaAsignacionId = attendanceRecordForJustification?.materiaAsignacionId || 'unknown';
+        const attendanceRecordId = attendanceRecordForJustification?.id || `att-justified-${justifyingStudent.studentId}-${Date.now()}`;
+        
         const newJustification: Justificacion = {
             id: `just-${Date.now()}`,
-            studentId,
+            studentId: justifyingStudent.studentId,
             date: dateString,
             reason: justificationText,
             status: 'Pendiente',
-            attendanceRecordId,
+            attendanceRecordId: attendanceRecordId,
         };
         setJustificaciones(prev => [...prev, newJustification]);
-        handleStatusChange(studentId, 'Falta Justificada');
+        
+        setJustifyingStudent(null);
         setJustificationText('');
         toast({ title: 'Justificación guardada', description: 'La justificación ha sido enviada para su revisión.' });
-        return true; // to close dialog
-    };
-    
-    const handleSaveAttendance = () => {
-        if (!selectedGroupId || !selectedMateriaId) return;
-        const dateString = today.toISOString().split('T')[0];
-
-        const updatedAttendance = [...attendance];
-        
-        currentAttendance.forEach((status, studentId) => {
-            const recordId = `att-${studentId}-${dateString}-${selectedMateriaId}`;
-            const existingRecordIndex = updatedAttendance.findIndex(rec => rec.id === recordId);
-            
-            const newRecord: AttendanceRecord = {
-                id: recordId,
-                studentId,
-                date: dateString,
-                materiaAsignacionId: selectedMateriaId,
-                status,
-            };
-
-            if (existingRecordIndex > -1) {
-                updatedAttendance[existingRecordIndex] = newRecord;
-            } else {
-                updatedAttendance.push(newRecord);
-            }
-        });
-        
-        setAttendance(updatedAttendance);
-        toast({ title: 'Asistencia Guardada', description: 'Los registros de asistencia han sido actualizados.' });
     };
 
-    const getStatusVariant = (status?: AttendanceStatus) => {
+    const getStatusVariant = (status: AttendanceStatus): "default" | "secondary" | "destructive" | "outline" => {
         switch (status) {
             case 'Presente': return 'default';
             case 'Retardo': return 'secondary';
             case 'Falta': return 'destructive';
             case 'Falta Justificada': return 'outline';
-            default: return 'ghost';
+            default: return 'outline';
         }
     };
-    
+
+    const renderCameraState = () => {
+        if (studentsForTeacher.length === 0) {
+             return (
+                <div className="flex flex-col items-center gap-4 text-muted-foreground">
+                    <Users className="w-16 h-16" />
+                    <p>No hay estudiantes para pasar lista.</p>
+                     {activeRole !== 'Super Docente' && <p className="text-sm">Asegúrate de tener grupos y alumnos asignados.</p>}
+                </div>
+            );
+        }
+        if (!isTakingAttendance) {
+            return (
+                <div className="flex flex-col items-center gap-4 text-muted-foreground">
+                    <Camera className="w-16 h-16" />
+                    <p>La cámara está desactivada. Haz clic en "Iniciar" para comenzar.</p>
+                </div>
+            );
+        }
+        if (hasCameraPermission === null) return <p>Solicitando permiso de la cámara...</p>;
+        if (hasCameraPermission === false) {
+             return (
+                <Alert variant="destructive" className="max-w-md">
+                    <AlertTitle>Acceso a Cámara Requerido</AlertTitle>
+                    <AlertDescription>No se puede pasar lista sin acceso a la cámara.</AlertDescription>
+                </Alert>
+            );
+        }
+        return null;
+    };
+
     return (
         <div className="grid gap-6">
             <Card>
                 <CardHeader>
-                    <CardTitle>Pase de Asistencia</CardTitle>
-                    <CardDescription>Selecciona una clase para registrar la asistencia de hoy: {today.toLocaleDateString()}.</CardDescription>
+                    <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <CardTitle>Pase de Lista Inteligente</CardTitle>
+                            <CardDescription>Inicia la cámara para registrar la asistencia de tus estudiantes.</CardDescription>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                             <Link href="/dashboard" passHref><Button variant="outline" size="lg"><ArrowLeft className="mr-2 h-4 w-4" />Regresar</Button></Link>
+                            <Button onClick={handleToggleAttendance} size="lg" disabled={studentsForTeacher.length === 0}>
+                                {isTakingAttendance ? 'Detener Pase de Lista' : 'Iniciar Pase de Lista'}
+                            </Button>
+                        </div>
+                    </div>
                 </CardHeader>
                 <CardContent>
-                    {teacherClassesToday.length > 0 ? (
-                        <Select onValueChange={setSelectedClass} value={selectedClass || ''}>
-                            <SelectTrigger className="w-full md:w-1/2">
-                                <SelectValue placeholder="Selecciona una clase..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {teacherClassesToday.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                    <div className="relative w-full aspect-video rounded-md overflow-hidden bg-muted border flex items-center justify-center">
+                        <video ref={videoRef} className={cn("w-full h-full object-cover", !isTakingAttendance && "hidden")} autoPlay muted playsInline />
+                        <div className={cn("absolute inset-0 flex items-center justify-center p-4", isTakingAttendance && hasCameraPermission ? 'hidden' : 'flex')}>
+                            {renderCameraState()}
+                        </div>
+                        {isTakingAttendance && hasCameraPermission && (
+                            <div className="absolute bottom-4 left-4 right-4">
+                                <Progress value={scanProgress} />
+                                <p className="text-center text-sm text-white font-medium mt-2" style={{textShadow: '0 0 5px black'}}>Escaneando...</p>
+                            </div>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Registros de Asistencia ({uiAttendanceRecords.length})</CardTitle>
+                    <CardDescription>Estudiantes identificados en esta sesión.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    {uiAttendanceRecords.length > 0 ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                            {uiAttendanceRecords.map(record => (
+                                <div key={record.studentId} className="flex flex-col items-center text-center gap-2">
+                                     <Avatar className="w-20 h-20 border-2" style={{ borderColor: record.status === 'Presente' ? 'hsl(var(--primary))' : 'hsl(var(--secondary))' }}>
+                                        <AvatarImage src={record.facialImage || undefined} alt={record.studentName} />
+                                        <AvatarFallback><UserIcon /></AvatarFallback>
+                                    </Avatar>
+                                    <p className="text-sm font-medium leading-tight">{record.studentName}</p>
+                                    <div className='text-xs text-muted-foreground'>{record.arrivalTime}</div>
+                                    <Badge variant={getStatusVariant(record.status)}>{record.status}</Badge>
+                                    <Dialog onOpenChange={(open) => !open && setJustifyingStudent(null)}>
+                                        <DialogTrigger asChild>
+                                            <Button variant="link" size="sm" onClick={() => setJustifyingStudent(record)}>Justificar</Button>
+                                        </DialogTrigger>
+                                        {justifyingStudent?.studentId === record.studentId && (
+                                            <DialogContent>
+                                                <DialogHeader>
+                                                    <DialogTitle>Justificar Falta</DialogTitle>
+                                                    <DialogDescription>Agrega un motivo para la ausencia de {justifyingStudent.studentName}. Esto se enviará para aprobación.</DialogDescription>
+                                                </DialogHeader>
+                                                <Textarea placeholder="Ej. Cita médica, problema familiar..." value={justificationText} onChange={(e) => setJustificationText(e.target.value)} />
+                                                <DialogFooter>
+                                                    <Button onClick={handleSaveJustification}>Guardar Justificación</Button>
+                                                </DialogFooter>
+                                            </DialogContent>
+                                        )}
+                                    </Dialog>
+                                </div>
+                            ))}
+                        </div>
                     ) : (
-                         <div className="flex flex-col items-center justify-center text-center text-muted-foreground h-40">
-                            <AlertTriangle className="w-12 h-12 mb-4"/>
-                            <p>No tienes clases programadas para hoy.</p>
+                        <div className="flex flex-col items-center justify-center text-center text-muted-foreground h-40">
+                            <Users className="w-12 h-12 mb-4"/>
+                            <p>Aún no se ha registrado ninguna asistencia.</p>
                         </div>
                     )}
                 </CardContent>
             </Card>
-
-            {selectedClass && studentsInSelectedGroup.length > 0 && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Lista de Estudiantes</CardTitle>
-                        <CardDescription>Marca la asistencia para cada estudiante.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {studentsInSelectedGroup.map(student => {
-                            const status = currentAttendance.get(student.id);
-                            return (
-                                <div key={student.id} className="flex flex-col sm:flex-row items-center justify-between gap-4 p-3 border rounded-lg">
-                                    <div className="flex items-center gap-4">
-                                        <Avatar className="h-12 w-12">
-                                            <AvatarImage src={student.facialImage || undefined} alt={`${student.firstName} ${student.lastName}`} />
-                                            <AvatarFallback>{student.firstName[0]}{student.lastName[0]}</AvatarFallback>
-                                        </Avatar>
-                                        <div>
-                                            <p className="font-medium">{student.firstName} {student.lastName}</p>
-                                            {status && <Badge variant={getStatusVariant(status)} className="mt-1">{status}</Badge>}
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <Button size="icon" variant={status === 'Presente' ? 'default' : 'outline'} onClick={() => handleStatusChange(student.id, 'Presente')}><Check className="h-4 w-4" /></Button>
-                                        <Button size="icon" variant={status === 'Retardo' ? 'secondary' : 'outline'} onClick={() => handleStatusChange(student.id, 'Retardo')}><Clock className="h-4 w-4" /></Button>
-                                        <Button size="icon" variant={status === 'Falta' ? 'destructive' : 'outline'} onClick={() => handleStatusChange(student.id, 'Falta')}><X className="h-4 w-4" /></Button>
-                                        <Dialog onOpenChange={(open) => !open && setJustificationText('')}>
-                                            <DialogTrigger asChild>
-                                                <Button size="icon" variant={status === 'Falta Justificada' ? 'outline' : 'ghost'} className={status === 'Falta Justificada' ? 'border-blue-500' : ''}><MessageSquare className="h-4 w-4" /></Button>
-                                            </DialogTrigger>
-                                            <DialogContent>
-                                                <DialogHeader>
-                                                    <DialogTitle>Justificar Falta</DialogTitle>
-                                                    <DialogDescription>
-                                                        Agrega un motivo para la ausencia de {student.firstName} {student.lastName}. Esto se enviará para aprobación.
-                                                    </DialogDescription>
-                                                </DialogHeader>
-                                                <Textarea placeholder="Ej. Cita médica, problema familiar..." value={justificationText} onChange={(e) => setJustificationText(e.target.value)} />
-                                                <DialogFooter>
-                                                    <Button onClick={() => handleSaveJustification(student.id)}>Guardar Justificación</Button>
-                                                </DialogFooter>
-                                            </DialogContent>
-                                        </Dialog>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </CardContent>
-                    <CardFooter>
-                        <Button onClick={handleSaveAttendance}><Save className="mr-2 h-4 w-4" />Guardar Asistencias</Button>
-                    </CardFooter>
-                </Card>
-            )}
         </div>
     );
 }

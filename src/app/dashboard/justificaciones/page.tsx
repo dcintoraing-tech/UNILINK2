@@ -32,7 +32,7 @@ interface Student { id: string; firstName: string; lastName: string; }
 interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: 'Presente' | 'Retardo' | 'Falta' | 'Falta Justificada'; }
 interface User { id: string; name: string; }
 interface HorarioBlock { docenteId: string; materiaAsignacionId: string; }
-interface Horario { blocks: (HorarioBlock | undefined)[]; }
+interface Horario { grupoId: string; blocks: (HorarioBlock | undefined)[]; }
 
 export default function TeacherJustificacionesPage() {
     const [justificaciones] = useLocalStorage<Justificacion[]>('unilink-justificaciones', []);
@@ -40,16 +40,20 @@ export default function TeacherJustificacionesPage() {
     const [attendance] = useLocalStorage<AttendanceRecord[]>('unilink-attendance', []);
     const [horarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
     const [user, setUser] = useState<User | null>(null);
+    const [activeRole, setActiveRole] = useState('');
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const storedUser = sessionStorage.getItem('unilink-user');
+            const storedRole = sessionStorage.getItem('unilink-active-role');
             if (storedUser) setUser(JSON.parse(storedUser));
+            if (storedRole) setActiveRole(storedRole);
         }
     }, []);
 
     const teacherJustificaciones = useMemo(() => {
         if (!user) return [];
+        if (activeRole === 'Super Docente') return justificaciones;
         
         const teacherMateriaIds = new Set<string>();
         horarios.forEach(h => {
@@ -66,10 +70,14 @@ export default function TeacherJustificacionesPage() {
                 teacherAttendanceRecordIds.add(a.id);
             }
         });
+        
+        return justificaciones.filter(j => {
+            const attendanceRecord = attendance.find(a => a.id === j.attendanceRecordId);
+            if (!attendanceRecord) return false;
+            return teacherMateriaIds.has(attendanceRecord.materiaAsignacionId);
+        });
 
-        return justificaciones.filter(j => teacherAttendanceRecordIds.has(j.attendanceRecordId));
-
-    }, [user, justificaciones, attendance, horarios]);
+    }, [user, activeRole, justificaciones, attendance, horarios]);
 
     const getStudentName = (studentId: string) => {
         const student = students.find(s => s.id === studentId);

@@ -42,6 +42,7 @@ interface AttendanceRecord { id: string; studentId: string; date: string; materi
 
 export default function TeacherReportsPage() {
     const [user, setUser] = useState<User | null>(null);
+    const [activeRole, setActiveRole] = useState('');
     const [horarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
     const [grupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
     const [students] = useLocalStorage<Student[]>('unilink-students', []);
@@ -52,18 +53,22 @@ export default function TeacherReportsPage() {
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const storedUser = sessionStorage.getItem('unilink-user');
+            const storedRole = sessionStorage.getItem('unilink-active-role');
             if (storedUser) setUser(JSON.parse(storedUser));
+            if (storedRole) setActiveRole(storedRole);
         }
     }, []);
 
     const teacherGroups = useMemo(() => {
         if (!user) return [];
+        if (activeRole === 'Super Docente') return grupos;
+        
         const groupIds = new Set<string>();
         horarios.forEach(h => h.blocks.forEach(b => {
             if (b?.docenteId === user.id) groupIds.add(h.grupoId);
         }));
         return grupos.filter(g => groupIds.has(g.id));
-    }, [user, horarios, grupos]);
+    }, [user, activeRole, horarios, grupos]);
 
     const reportData = useMemo(() => {
         if (!selectedGroup) return null;
