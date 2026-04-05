@@ -1,4 +1,3 @@
-
 "use client"
 
 import * as React from "react"
@@ -38,6 +37,12 @@ const DialogContent = React.forwardRef<
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
+      onInteractOutside={(e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('[cmdk-root]') || target.closest('[data-radix-select-content]')) {
+          e.preventDefault();
+        }
+      }}
       className={cn(
         "fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2",
         "bg-background p-6 shadow-lg rounded-lg",
