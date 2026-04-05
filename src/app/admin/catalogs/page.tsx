@@ -727,15 +727,17 @@ function ScheduleWizard({
     }
     
     const isBlockOccupied = useMemo(() => {
-       for(let i = 1; i < TOTAL_BLOCKS_PER_DAY; i++){
-           const prevBlockToCheck = workingSchedule[currentDay]?.[currentBlock - i];
-           if(prevBlockToCheck && (prevBlockToCheck.duracion || 1) > i){
-               return true;
-           }
-       }
-       return false;
+      for (let i = 1; i <= currentBlock; i++) {
+        const prevIndex = currentBlock - i;
+        if (prevIndex < 0) continue;
 
-    }, [currentDay, currentBlock, workingSchedule]);
+        const prevBlock = workingSchedule[currentDay]?.[prevIndex];
+        if (prevBlock && (prevBlock.duracion || 1) > i) {
+          return true;
+        }
+      }
+      return false;
+    }, [workingSchedule, currentDay, currentBlock]);
     
     return (
         <>
@@ -940,6 +942,9 @@ function HorariosContent({
             </CardContent>
              <Dialog open={isWizardOpen} onOpenChange={(open) => { if (!open) { setIsWizardOpen(false); setEditingHorario(null); } }}>
                 <DialogContent className="sm:max-w-2xl flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>Crear o Editar Horario</DialogTitle>
+                    </DialogHeader>
                      <ScheduleWizard
                         grupos={grupoOptions}
                         materias={materiaOptions}
