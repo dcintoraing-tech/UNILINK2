@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { Users, UserCheck, BarChart, Menu, ChevronDown, FileCheck } from 'lucide-react';
+import { ListChecks, FilePlus, Menu, ChevronDown } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -24,21 +24,13 @@ interface User {
 
 const NavContent = () => (
   <nav className="flex flex-1 flex-col gap-2">
-    <Link href="/dashboard" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
-      <Users className="h-4 w-4" />
-      Mis Grupos
+    <Link href="/student/dashboard" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
+      <ListChecks className="h-4 w-4" />
+      Mis Asistencias
     </Link>
-    <Link href="/dashboard/asistencias" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
-      <UserCheck className="h-4 w-4" />
-      Pase de Asistencia
-    </Link>
-    <Link href="/dashboard/reportes" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
-      <BarChart className="h-4 w-4" />
-      Reportes de Asistencia
-    </Link>
-    <Link href="/dashboard/justificaciones" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
-      <FileCheck className="h-4 w-4" />
-      Justificaciones
+    <Link href="/student/justificaciones" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
+      <FilePlus className="h-4 w-4" />
+      Justificar Falta
     </Link>
     <div className="mt-auto">
       <LogoutButton />
@@ -46,13 +38,13 @@ const NavContent = () => (
   </nav>
 );
 
-export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
+export default function StudentLayout({ children }: { children: React.ReactNode; }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const { toast } = useToast();
 
-  const [activeRole, setActiveRole] = useState('Docente');
+  const [activeRole, setActiveRole] = useState('Alumno');
   const [isSwitchingRole, setIsSwitchingRole] = useState(false);
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
@@ -68,9 +60,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         const storedActiveRole = sessionStorage.getItem('unilink-active-role');
         const activeRoleForCheck = storedActiveRole || parsedUser.role;
 
-        if (activeRoleForCheck !== 'Docente') {
-            if (activeRoleForCheck === 'Alumno') {
-                router.replace('/student/dashboard');
+        if (activeRoleForCheck !== 'Alumno') {
+            if (activeRoleForCheck === 'Docente') {
+                router.replace('/dashboard');
             } else {
                 router.replace('/admin/dashboard');
             }
@@ -127,7 +119,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (isLoading || !user) {
     return (
       <div className="flex min-h-screen w-full flex-col items-center justify-center">
-        <p>Cargando panel de docente...</p>
+        <p>Cargando panel de estudiante...</p>
       </div>
     );
   }

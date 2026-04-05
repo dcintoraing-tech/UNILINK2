@@ -112,6 +112,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode; }
             router.replace('/dashboard');
             return;
         }
+        if (activeRoleForCheck === 'Alumno') {
+            router.replace('/student/dashboard');
+            return;
+        }
         
         setActiveRole(activeRoleForCheck);
 
@@ -138,6 +142,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode; }
 
         if (targetRole === 'Docente') {
             router.push('/dashboard');
+        } else if (targetRole === 'Alumno') {
+            router.push('/student/dashboard');
         } else {
             router.push('/admin/dashboard'); 
         }
@@ -194,7 +200,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode; }
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent>
-                                {['Admin', 'Jefe de carrera', 'Docente'].filter(role => role !== activeRole).map(role => (
+                                {['Admin', 'Jefe de carrera', 'Docente', 'Alumno'].filter(role => role !== activeRole).map(role => (
                                     <DropdownMenuItem key={role} onSelect={() => openSwitchRoleDialog(role)}>
                                         Cambiar a {role}
                                     </DropdownMenuItem>

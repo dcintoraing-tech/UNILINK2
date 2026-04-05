@@ -34,7 +34,7 @@ const formSchema = z.object({
     message: "La contraseña debe tener al menos 6 caracteres.",
   }),
   confirmPassword: z.string(),
-  role: z.enum(['Docente', 'Admin'], { required_error: "Debes seleccionar un rol." })
+  role: z.enum(['Docente', 'Admin', 'Alumno'], { required_error: "Debes seleccionar un rol." })
 }).refine(data => data.password === data.confirmPassword, {
   message: "Las contraseñas no coinciden",
   path: ["confirmPassword"],
@@ -214,6 +214,7 @@ export default function SignupPage() {
                       <SelectContent>
                         <SelectItem value="Docente">Docente</SelectItem>
                         <SelectItem value="Admin">Admin</SelectItem>
+                        <SelectItem value="Alumno">Alumno</SelectItem>
                       </SelectContent>
                     </Select>
                     {isFirstUser && (

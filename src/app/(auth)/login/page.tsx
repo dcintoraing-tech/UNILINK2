@@ -63,6 +63,25 @@ export default function LoginPage() {
             return;
         }
 
+        // Fallback for student login
+        if (values.username === 'alumno' && values.password === 'alumno') {
+            const userProfile = {
+                uid: "student-fallback-user",
+                name: "Estudiante de Prueba",
+                role: "Alumno",
+            };
+            if (typeof window !== 'undefined') {
+                sessionStorage.setItem("unilink-user", JSON.stringify(userProfile));
+            }
+            toast({
+                title: "Inicio de sesión exitoso",
+                description: "Redirigiendo a tu panel de estudiante...",
+            });
+            router.push("/student/dashboard");
+            return;
+        }
+
+
         // Logic for all other users (Admin, Docente) from localStorage
         if (typeof window !== 'undefined') {
             const storedUsersRaw = window.localStorage.getItem('unilink-users');
@@ -85,6 +104,10 @@ export default function LoginPage() {
 
                 if (foundUser.role === 'Admin') {
                     router.push("/admin/dashboard");
+                } else if (foundUser.role === 'Docente') {
+                    router.push("/dashboard");
+                } else if (foundUser.role === 'Alumno') {
+                    router.push("/student/dashboard");
                 } else {
                     router.push("/dashboard");
                 }

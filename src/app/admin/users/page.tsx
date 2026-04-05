@@ -50,7 +50,7 @@ import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-type UserRole = 'Docente' | 'Admin';
+type UserRole = 'Docente' | 'Admin' | 'Alumno';
 type UserStatus = 'Activo' | 'Inactivo';
 
 interface User {
@@ -250,7 +250,7 @@ export default function UsersPage() {
 
             const storedUsersRaw = window.localStorage.getItem('unilink-users');
             const currentUsers: User[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
-            const existingEmails = new Set(currentUsers.map(u => u.email.toLowerCase()));
+            const existingEmails = new Set(currentUsers.map(u => u.email.trim().toLowerCase()));
 
             const newUsers: User[] = [];
             let skippedCount = 0;
@@ -266,7 +266,7 @@ export default function UsersPage() {
                     skippedCount++;
                     continue;
                 }
-                if (!['Docente', 'Admin'].includes(item.role)) {
+                if (!['Docente', 'Admin', 'Alumno'].includes(item.role)) {
                     toast({ variant: "destructive", title: "Rol inválido", description: `El rol '${item.role}' para '${email}' no es válido. Se omitirá.` });
                     continue;
                 }
@@ -435,7 +435,11 @@ export default function UsersPage() {
                       <Label htmlFor="role">Rol</Label>
                       <Select name="role" defaultValue={editingUser?.role || 'Docente'}>
                         <SelectTrigger id="role"><SelectValue placeholder="Selecciona un rol" /></SelectTrigger>
-                        <SelectContent><SelectItem value="Docente">Docente</SelectItem><SelectItem value="Admin">Admin</SelectItem></SelectContent>
+                        <SelectContent>
+                          <SelectItem value="Docente">Docente</SelectItem>
+                          <SelectItem value="Admin">Admin</SelectItem>
+                          <SelectItem value="Alumno">Alumno</SelectItem>
+                        </SelectContent>
                       </Select>
                     </div>
                     {editingUser && (
