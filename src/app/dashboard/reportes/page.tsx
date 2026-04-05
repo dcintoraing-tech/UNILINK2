@@ -32,8 +32,18 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
 };
 
 interface User { id: string; name: string; }
-interface HorarioBlock { docenteId: string; materiaAsignacionId: string; horaInicio: string; }
-interface Horario { grupoId: string; dia: string; blocks: (HorarioBlock | undefined)[]; }
+interface HorarioBlock {
+    materiaId: string;
+    docenteId: string;
+    duracion: 1 | 2;
+}
+type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
+type ScheduleData = { [dayIndex: number]: DaySchedule };
+interface Horario {
+    id: string;
+    grupoId: string;
+    schedule: ScheduleData;
+}
 interface Grupo { id: string; name: string; }
 interface AsignacionMateria { id: string; materia: string; }
 interface Student { id: string; firstName: string; lastName: string; assignedGroupId: string; }
@@ -64,9 +74,17 @@ export default function TeacherReportsPage() {
         if (activeRole === 'Super Docente') return grupos;
         
         const groupIds = new Set<string>();
-        horarios.forEach(h => h.blocks.forEach(b => {
-            if (b?.docenteId === user.id) groupIds.add(h.grupoId);
-        }));
+        horarios.forEach(h => {
+            if (h.schedule) {
+                Object.values(h.schedule).forEach(day => {
+                    if (day) {
+                        Object.values(day).forEach(b => {
+                            if (b?.docenteId === user.id) groupIds.add(h.grupoId);
+                        });
+                    }
+                });
+            }
+        });
         return grupos.filter(g => groupIds.has(g.id));
     }, [user, activeRole, horarios, grupos]);
 

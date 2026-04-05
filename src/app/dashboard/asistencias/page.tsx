@@ -82,18 +82,18 @@ interface Student {
 }
 
 interface HorarioBlock {
+    materiaId: string;
     docenteId: string;
-    materiaAsignacionId: string;
-    horaInicio: string;
-    duracion: string; 
+    duracion: 1 | 2;
 }
-
+type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
+type ScheduleData = { [dayIndex: number]: DaySchedule };
 interface Horario {
     id: string;
     grupoId: string;
-    dia: string;
-    blocks: (HorarioBlock | undefined)[];
+    schedule: ScheduleData;
 }
+
 
 interface AttendanceConfig {
     toleranceMinutes: number;
@@ -132,7 +132,7 @@ function cosineSimilarity(vecA: number[], vecB: number[]): number {
     return dotProduct / (normA * normB);
 }
 
-const DIAS_SEMANA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+const HORAS_BLOQUE_INICIO = ["07:00", "08:00", "09:00", "10:00"];
 
 // --- MAIN COMPONENT ---
 export default function TeacherAttendancePage() {
@@ -178,9 +178,17 @@ export default function TeacherAttendancePage() {
         if (activeRole === 'Docente' && user) {
             const teacherGroupIds = new Set<string>();
             horarios.forEach(h => {
-                h.blocks.forEach(b => {
-                    if (b?.docenteId === user.id) teacherGroupIds.add(h.grupoId);
-                })
+                if (h.schedule) {
+                    Object.values(h.schedule).forEach(day => {
+                        if (day) {
+                            Object.values(day).forEach(block => {
+                                if (block?.docenteId === user.id) {
+                                    teacherGroupIds.add(h.grupoId);
+                                }
+                            });
+                        }
+                    });
+                }
             });
             return allStudents.filter(s => teacherGroupIds.has(s.assignedGroupId));
         }
@@ -226,17 +234,28 @@ export default function TeacherAttendancePage() {
             if (uiAttendanceRecords.some(r => r.studentId === student.id)) {
                 return;
             }
+            
+            const groupHorario = horarios.find(h => h.grupoId === student.assignedGroupId);
+            if (!groupHorario || !groupHorario.schedule) return;
 
-            const studentSchedule = horarios.find(h => h.grupoId === student.assignedGroupId && h.dia === DIAS_SEMANA[now.getDay()]);
-
-            if (!studentSchedule) return;
+            const todayIndex = now.getDay() - 1; // Monday is 1 -> 0
+            if (todayIndex < 0 || todayIndex > 4) return;
+            
+            const todaySchedule = groupHorario.schedule[todayIndex];
+            if (!todaySchedule) return;
 
             let checkedIn = false;
-            for (const block of studentSchedule.blocks) {
+            for (const blockIndexStr in todaySchedule) {
+                const blockIndex = parseInt(blockIndexStr);
+                const block = todaySchedule[blockIndex];
+
                 if (!block) continue;
                 if (activeRole === 'Docente' && user && block.docenteId !== user.id) continue;
+                
+                const horaInicio = HORAS_BLOQUE_INICIO[blockIndex];
+                if(!horaInicio) continue;
 
-                const [hours, minutes] = block.horaInicio.split(':').map(Number);
+                const [hours, minutes] = horaInicio.split(':').map(Number);
                 const startTime = new Date(now);
                 startTime.setHours(hours, minutes, 0, 0);
 
@@ -259,12 +278,12 @@ export default function TeacherAttendancePage() {
                     setUIAttendanceRecords(prev => [...prev, newUIRecord]);
 
                     const dateString = now.toISOString().split('T')[0];
-                    const recordId = `att-${student.id}-${dateString}-${block.materiaAsignacionId}`;
+                    const recordId = `att-${student.id}-${dateString}-${block.materiaId}`;
                     const newPersistedRecord: AttendanceRecord = {
                         id: recordId,
                         studentId: student.id,
                         date: dateString,
-                        materiaAsignacionId: block.materiaAsignacionId,
+                        materiaAsignacionId: block.materiaId,
                         status: status,
                     };
                     

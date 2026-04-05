@@ -34,18 +34,20 @@ interface User {
     name: string;
     role: 'Docente' | 'Admin' | 'Super Docente';
 }
+
 interface HorarioBlock {
+    materiaId: string;
     docenteId: string;
-    materiaAsignacionId: string;
-    horaInicio: string;
-    duracion: string;
+    duracion: 1 | 2;
 }
+type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
+type ScheduleData = { [dayIndex: number]: DaySchedule };
 interface Horario {
-    id:string;
+    id: string;
     grupoId: string;
-    dia: string;
-    blocks: (HorarioBlock | undefined)[];
+    schedule: ScheduleData;
 }
+
 interface Grupo {
     id: string;
     name: string;
@@ -60,6 +62,8 @@ interface Student {
     id: string;
     assignedGroupId: string;
 }
+
+const HORAS_BLOQUE_INICIO = ["07:00", "08:00", "09:00", "10:00"];
 
 export default function TeacherDashboardPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -88,11 +92,17 @@ export default function TeacherDashboardPage() {
     } else {
         const teacherGroupIds = new Set<string>();
         horarios.forEach(horario => {
-            horario.blocks.forEach(block => {
-                if (block && block.docenteId === user.id) {
-                    teacherGroupIds.add(horario.grupoId);
-                }
-            });
+            if (horario.schedule) {
+                Object.values(horario.schedule).forEach(daySchedule => {
+                    if (daySchedule) {
+                        Object.values(daySchedule).forEach(block => {
+                            if (block && block.docenteId === user.id) {
+                                teacherGroupIds.add(horario.grupoId);
+                            }
+                        });
+                    }
+                });
+            }
         });
         relevantGroups = grupos.filter(g => teacherGroupIds.has(g.id));
     }
@@ -102,15 +112,22 @@ export default function TeacherDashboardPage() {
         let earliestTime = '24:00';
         
         horarios.forEach(horario => {
-            if (horario.grupoId === group.id) {
-                horario.blocks.forEach(block => {
-                    if (block) {
-                        // For Super Docente, show all subjects. For regular teacher, only their own.
-                        if (activeRole === 'Super Docente' || block.docenteId === user.id) {
-                            const materia = materias.find(m => m.id === block.materiaAsignacionId);
-                            if (materia) subjects.add(materia.materia);
-                            if (block.horaInicio < earliestTime) earliestTime = block.horaInicio;
-                        }
+            if (horario.grupoId === group.id && horario.schedule) {
+                 Object.values(horario.schedule).forEach(daySchedule => {
+                    if (daySchedule) {
+                        Object.entries(daySchedule).forEach(([blockIndex, block]) => {
+                            if (block) {
+                                if (activeRole === 'Super Docente' || block.docenteId === user.id) {
+                                    const materia = materias.find(m => m.id === block.materiaId);
+                                    if (materia) subjects.add(materia.materia);
+                                    
+                                    const horaInicio = HORAS_BLOQUE_INICIO[parseInt(blockIndex)];
+                                    if (horaInicio && horaInicio < earliestTime) {
+                                        earliestTime = horaInicio;
+                                    }
+                                }
+                            }
+                        });
                     }
                 });
             }

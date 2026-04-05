@@ -31,8 +31,20 @@ interface Justificacion { id: string; studentId: string; date: string; reason: s
 interface Student { id: string; firstName: string; lastName: string; }
 interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: 'Presente' | 'Retardo' | 'Falta' | 'Falta Justificada'; }
 interface User { id: string; name: string; }
-interface HorarioBlock { docenteId: string; materiaAsignacionId: string; }
-interface Horario { grupoId: string; blocks: (HorarioBlock | undefined)[]; }
+
+interface HorarioBlock {
+    materiaId: string;
+    docenteId: string;
+    duracion: 1 | 2;
+}
+type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
+type ScheduleData = { [dayIndex: number]: DaySchedule };
+interface Horario {
+    id: string;
+    grupoId: string;
+    schedule: ScheduleData;
+}
+
 
 export default function TeacherJustificacionesPage() {
     const [justificaciones] = useLocalStorage<Justificacion[]>('unilink-justificaciones', []);
@@ -57,11 +69,17 @@ export default function TeacherJustificacionesPage() {
         
         const teacherMateriaIds = new Set<string>();
         horarios.forEach(h => {
-            h.blocks.forEach(b => {
-                if (b?.docenteId === user.id) {
-                    teacherMateriaIds.add(b.materiaAsignacionId);
-                }
-            });
+            if (h.schedule) {
+                Object.values(h.schedule).forEach(day => {
+                    if (day) {
+                        Object.values(day).forEach(block => {
+                            if (block?.docenteId === user.id) {
+                                teacherMateriaIds.add(block.materiaId);
+                            }
+                        });
+                    }
+                });
+            }
         });
 
         const teacherAttendanceRecordIds = new Set<string>();
