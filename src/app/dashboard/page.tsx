@@ -1,110 +1,174 @@
 "use client";
 
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { LogoutButton } from "@/components/logout-button";
-import { Logo } from "@/components/logo";
-import { PlaceHolderImages } from "@/lib/placeholder-images";
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Users, Clock } from 'lucide-react';
+
+// --- DATA PERSISTENCE & TYPES ---
+const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
+    const [storedValue, setStoredValue] = useState<T>(initialValue);
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const item = window.localStorage.getItem(key);
+                if (item) setStoredValue(JSON.parse(item));
+            } catch (error) { console.log(error); }
+        }
+    }, [key]);
+    const setValue = (value: T | ((val: T) => T)) => {
+        if (typeof window !== 'undefined') {
+            try {
+                const valueToStore = value instanceof Function ? value(storedValue) : value;
+                setStoredValue(valueToStore);
+                window.localStorage.setItem(key, JSON.stringify(valueToStore));
+            } catch (error) { console.log(error); }
+        }
+    };
+    return [storedValue, setValue];
+};
 
 interface User {
-  name: string;
-  email: string;
-  role: 'Docente' | 'Admin';
+    id: string;
+    name: string;
+    role: 'Docente' | 'Admin';
+}
+interface HorarioBlock {
+    docenteId: string;
+    materiaAsignacionId: string;
+    horaInicio: string;
+    duracion: string;
+}
+interface Horario {
+    id:string;
+    grupoId: string;
+    dia: string;
+    blocks: (HorarioBlock | undefined)[];
+}
+interface Grupo {
+    id: string;
+    name: string;
+    carreraId: string;
+    turno: string;
+}
+interface AsignacionMateria {
+    id: string;
+    materia: string;
+}
+interface Student {
+    id: string;
+    assignedGroupId: string;
 }
 
-export default function DashboardPage() {
+export default function TeacherDashboardPage() {
   const [user, setUser] = useState<User | null>(null);
-  const router = useRouter();
+  const [horarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
+  const [grupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
+  const [materias] = useLocalStorage<AsignacionMateria[]>('unilink-materia-asignaciones', []);
+  const [students] = useLocalStorage<Student[]>('unilink-students', []);
 
   useEffect(() => {
-    try {
+    if (typeof window !== 'undefined') {
       const storedUser = sessionStorage.getItem('unilink-user');
-      if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        if (parsedUser.role === 'Admin') {
-          router.replace('/admin/dashboard');
-        } else {
-          setUser(parsedUser);
-        }
-      } else {
-        router.replace('/login');
-      }
-    } catch (error) {
-      console.error("Failed to access sessionStorage:", error);
-      router.replace('/login');
+      if (storedUser) setUser(JSON.parse(storedUser));
     }
-  }, [router]);
+  }, []);
 
-  const userAvatar = PlaceHolderImages.find(p => p.id === 'user-avatar');
+  const assignedGroups = useMemo(() => {
+    if (!user) return [];
+    
+    const teacherGroupIds = new Set<string>();
+    horarios.forEach(horario => {
+        horario.blocks.forEach(block => {
+            if (block && block.docenteId === user.id) {
+                teacherGroupIds.add(horario.grupoId);
+            }
+        });
+    });
 
+    return Array.from(teacherGroupIds).map(groupId => {
+        const group = grupos.find(g => g.id === groupId);
+        if (!group) return null;
+
+        const subjects = new Set<string>();
+        let earliestTime = '24:00';
+        horarios.forEach(horario => {
+            if (horario.grupoId === groupId) {
+                horario.blocks.forEach(block => {
+                    if (block && block.docenteId === user.id) {
+                        const materia = materias.find(m => m.id === block.materiaAsignacionId);
+                        if (materia) subjects.add(materia.materia);
+                        if (block.horaInicio < earliestTime) earliestTime = block.horaInicio;
+                    }
+                });
+            }
+        });
+
+        const studentCount = students.filter(s => s.assignedGroupId === groupId).length;
+
+        return {
+            ...group,
+            subjects: Array.from(subjects),
+            scheduleInfo: `Inicia ${earliestTime === '24:00' ? 'N/A' : earliestTime}`,
+            studentCount,
+        };
+    }).filter((g): g is NonNullable<typeof g> => g !== null);
+  }, [user, horarios, grupos, materias, students]);
+  
   if (!user) {
-    return (
-      <div className="flex min-h-screen w-full flex-col items-center justify-center">
-        <p>Cargando...</p>
-      </div>
-    );
+    return <p>Cargando...</p>;
   }
 
-  const initials = user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-
   return (
-    <div className="flex min-h-screen w-full flex-col">
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b bg-background px-4 sm:px-6">
-        <div className="flex items-center gap-2">
-          <Logo className="h-8 w-8" />
-          <h1 className="text-xl font-semibold">Panel de UniLink</h1>
+    <div className="grid gap-6">
+        <div className="grid gap-2">
+            <h1 className="text-3xl font-semibold">¡Bienvenido, {user.name}!</h1>
+            <p className="text-muted-foreground">Aquí puedes ver los grupos que tienes asignados.</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="hidden sm:block text-right">
-            <p className="font-semibold">{user.name}</p>
-            <p className="text-xs text-muted-foreground">{user.role}</p>
-          </div>
-          <LogoutButton />
-        </div>
-      </header>
-      <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6">
-        <div className="mx-auto grid w-full max-w-6xl gap-2">
-          <h1 className="text-3xl font-semibold">¡Bienvenido, {user.name}!</h1>
-        </div>
-        <div className="mx-auto grid w-full max-w-6xl items-start gap-6 md:grid-cols-[180px_1fr] lg:grid-cols-[250px_1fr]">
-          <nav className="grid gap-4 text-sm text-muted-foreground">
-            <Link href="/dashboard" className="font-semibold text-primary">
-              Perfil
-            </Link>
-            <Link href="#" className="hover:text-primary">Configuración</Link>
-            <Link href="#" className="hover:text-primary">Soporte</Link>
-          </nav>
-          <div className="grid gap-6">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-lg font-medium">Tu perfil</CardTitle>
-              </CardHeader>
-              <CardContent className="flex items-center gap-4 pt-4">
-                <Avatar className="h-16 w-16">
-                  {userAvatar && <AvatarImage src={userAvatar.imageUrl} alt={user.name} data-ai-hint={userAvatar.imageHint} />}
-                  <AvatarFallback>{initials}</AvatarFallback>
-                </Avatar>
-                <div className="grid gap-1">
-                  <p className="text-lg font-medium leading-none">{user.name}</p>
-                  <p className="text-sm text-muted-foreground">{user.email}</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Novedades</CardTitle>
-                <CardDescription>Últimas actualizaciones y características de UniLink.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p>¡Bienvenido al nuevo y mejorado panel de UniLink Access! Estamos emocionados de tenerte aquí.</p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </main>
+        
+        <Card>
+            <CardHeader>
+                <CardTitle>Mis Grupos</CardTitle>
+                <CardDescription>Resumen de los grupos y materias que impartes.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {assignedGroups.length > 0 ? (
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        {assignedGroups.map(group => (
+                            <Card key={group.id}>
+                                <CardHeader>
+                                    <CardTitle className="text-lg">{group.name}</CardTitle>
+                                    <CardDescription>Turno {group.turno}</CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div>
+                                        <h4 className="text-sm font-medium mb-2">Materias Impartidas</h4>
+                                        <div className="flex flex-wrap gap-1">
+                                            {group.subjects.map(subject => <Badge key={subject} variant="secondary">{subject}</Badge>)}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center text-sm text-muted-foreground">
+                                        <Clock className="mr-2 h-4 w-4" />
+                                        <span>{group.scheduleInfo}</span>
+                                    </div>
+                                    <div className="flex items-center text-sm text-muted-foreground">
+                                        <Users className="mr-2 h-4 w-4" />
+                                        <span>{group.studentCount} estudiantes</span>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="flex flex-col items-center justify-center text-center text-muted-foreground h-40">
+                        <Users className="w-12 h-12 mb-4"/>
+                        <p>Aún no tienes grupos asignados.</p>
+                        <p className="text-xs">Contacta a un administrador para que te asignen materias y horarios.</p>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
     </div>
   );
 }
