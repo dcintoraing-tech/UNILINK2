@@ -573,6 +573,26 @@ function ScheduleWizard({
     const [workingSchedule, setWorkingSchedule] = useState<ScheduleData>(initialSchedule);
 
     const { toast } = useToast();
+    
+    const selectedGroupName = useMemo(() => grupos.find(g => g.value === selectedGroupId)?.label, [selectedGroupId, grupos]);
+    const progress = useMemo(() => {
+        const totalSteps = TOTAL_DAYS * TOTAL_BLOCKS_PER_DAY;
+        const currentStep = currentDay * TOTAL_BLOCKS_PER_DAY + currentBlock;
+        return (currentStep / totalSteps) * 100;
+    }, [currentDay, currentBlock]);
+
+    const isBlockOccupied = useMemo(() => {
+      for (let i = 1; i <= currentBlock; i++) {
+        const prevIndex = currentBlock - i;
+        if (prevIndex < 0) continue;
+
+        const prevBlock = workingSchedule[currentDay]?.[prevIndex];
+        if (prevBlock && (prevBlock.duracion || 1) > i) {
+          return true;
+        }
+      }
+      return false;
+    }, [workingSchedule, currentDay, currentBlock]);
 
     const handleScheduleChange = (field: 'materiaId' | 'docenteId' | 'duracion', value: string | number | null) => {
         setWorkingSchedule(prev => {
@@ -690,13 +710,6 @@ function ScheduleWizard({
         onSave(newHorario);
     };
 
-    const selectedGroupName = useMemo(() => grupos.find(g => g.value === selectedGroupId)?.label, [selectedGroupId, grupos]);
-    const progress = useMemo(() => {
-        const totalSteps = TOTAL_DAYS * TOTAL_BLOCKS_PER_DAY;
-        const currentStep = currentDay * TOTAL_BLOCKS_PER_DAY + currentBlock;
-        return (currentStep / totalSteps) * 100;
-    }, [currentDay, currentBlock]);
-
     const isLastStep = currentDay === TOTAL_DAYS - 1 && currentBlock >= TOTAL_BLOCKS_PER_DAY - (workingSchedule[TOTAL_DAYS - 1]?.[TOTAL_BLOCKS_PER_DAY-1]?.duracion || 1)
 
     if (wizardStep === 'select_group') {
@@ -725,19 +738,6 @@ function ScheduleWizard({
             </>
         );
     }
-    
-    const isBlockOccupied = useMemo(() => {
-      for (let i = 1; i <= currentBlock; i++) {
-        const prevIndex = currentBlock - i;
-        if (prevIndex < 0) continue;
-
-        const prevBlock = workingSchedule[currentDay]?.[prevIndex];
-        if (prevBlock && (prevBlock.duracion || 1) > i) {
-          return true;
-        }
-      }
-      return false;
-    }, [workingSchedule, currentDay, currentBlock]);
     
     return (
         <>
@@ -942,9 +942,6 @@ function HorariosContent({
             </CardContent>
              <Dialog open={isWizardOpen} onOpenChange={(open) => { if (!open) { setIsWizardOpen(false); setEditingHorario(null); } }}>
                 <DialogContent className="sm:max-w-2xl flex flex-col">
-                    <DialogHeader>
-                        <DialogTitle>Crear o Editar Horario</DialogTitle>
-                    </DialogHeader>
                      <ScheduleWizard
                         grupos={grupoOptions}
                         materias={materiaOptions}
