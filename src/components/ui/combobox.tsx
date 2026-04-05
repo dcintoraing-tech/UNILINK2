@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -60,7 +61,7 @@ export function Combobox({
   }, [defaultValue, isControlled]);
 
   const selectedLabel = React.useMemo(() => {
-    return options.find((option) => option.value.toLowerCase() === value.toLowerCase())?.label
+    return options.find((option) => option.value === value)?.label
   }, [options, value]);
 
   const hiddenInput = name ? <input type="hidden" name={name} value={value} /> : null;
@@ -94,7 +95,7 @@ export function Combobox({
                             key={option.value}
                             value={option.label}
                             onSelect={(currentLabel) => {
-                                const selectedOption = options.find(o => o.label.toLowerCase() === currentLabel.toLowerCase());
+                                const selectedOption = options.find(o => o.label === currentLabel);
                                 setValue(selectedOption ? selectedOption.value : "")
                                 setOpen(false)
                             }}
@@ -117,3 +118,5 @@ export function Combobox({
     </>
   )
 }
+
+    

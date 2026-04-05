@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
@@ -573,24 +574,27 @@ function ScheduleWizard({
     const { toast } = useToast();
 
     const handleScheduleChange = (field: 'materiaId' | 'docenteId' | 'duracion', value: string | number | null) => {
-        const newSchedule = { ...workingSchedule };
-        const day = newSchedule[currentDay] || {};
-        const block = day[currentBlock] ? { ...day[currentBlock] } : {} as HorarioBlock;
-
-        if (value === null) {
-            day[currentBlock] = null;
-        } else {
-            if (field === 'duracion') {
-                block[field] = value as (1 | 2);
+        setWorkingSchedule(prev => {
+            const newSchedule = { ...prev };
+            const newDay = { ...(newSchedule[currentDay] || {}) };
+    
+            if (value === null) {
+                newDay[currentBlock] = null;
             } else {
-                block[field] = value as string;
+                const currentBlockValue = newDay[currentBlock] || { duracion: 1 };
+                const newBlock = { ...currentBlockValue, [field]: value };
+                
+                // If block is "empty" (no materia or docente), treat as null
+                if (newBlock && !newBlock.materiaId && !newBlock.docenteId) {
+                    newDay[currentBlock] = null;
+                } else {
+                    newDay[currentBlock] = newBlock as HorarioBlock;
+                }
             }
-            if (!block.duracion) block.duracion = 1;
-            day[currentBlock] = block;
-        }
-
-        newSchedule[currentDay] = day;
-        setWorkingSchedule(newSchedule);
+            
+            newSchedule[currentDay] = newDay;
+            return newSchedule;
+        });
     };
 
     const currentBlockData = workingSchedule[currentDay]?.[currentBlock];
@@ -625,33 +629,37 @@ function ScheduleWizard({
         let prevBlock = currentBlock - 1;
         let prevDay = currentDay;
         
-        // Find previous filled block to determine its duration
-        let scanBlock = prevBlock;
-        let scanDay = prevDay;
-        if (scanBlock < 0) {
-            scanDay--;
-            scanBlock = TOTAL_BLOCKS_PER_DAY - 1;
-        }
-
-        if (scanDay >= 0) {
-            const prevBlockData = workingSchedule[scanDay]?.[scanBlock];
-            if(prevBlockData?.duracion === 2){
-                 prevBlock = scanBlock - 1;
-                 if(prevBlock < 0) {
-                    scanDay--;
-                    prevBlock = TOTAL_BLOCKS_PER_DAY - 1;
-                 }
-            }
-        }
-        
         if (prevBlock < 0) {
             prevDay--;
             prevBlock = TOTAL_BLOCKS_PER_DAY - 1;
         }
 
         if (prevDay >= 0) {
-            setCurrentDay(prevDay);
-            setCurrentBlock(prevBlock);
+            // Find previous filled block to determine its duration to go back correctly
+             let prevFilledBlockIndex = -1;
+             let prevFilledDayIndex = -1;
+
+             for(let d = prevDay; d >= 0; d--){
+                 const daySchedule = workingSchedule[d];
+                 if(daySchedule){
+                     for(let b = (d === prevDay ? prevBlock : TOTAL_BLOCKS_PER_DAY -1); b >= 0; b--){
+                        if(daySchedule[b]){
+                           prevFilledBlockIndex = b;
+                           prevFilledDayIndex = d;
+                           break;
+                        }
+                     }
+                 }
+                 if(prevFilledDayIndex !== -1) break;
+             }
+
+            if(prevFilledDayIndex !== -1){
+                setCurrentDay(prevFilledDayIndex);
+                setCurrentBlock(prevFilledBlockIndex);
+            } else {
+                setCurrentDay(0);
+                setCurrentBlock(0);
+            }
         }
     };
 
@@ -832,9 +840,9 @@ function HorariosContent({
         const docente = users.find(u => u.id === block.docenteId);
 
         return (
-            <TableCell key={`${dayIndex}-${blockIndex}`} rowSpan={block.duracion} className="align-top bg-muted/50 p-2">
-                <div className="font-bold truncate">{materia?.materia || 'Materia no encontrada'}</div>
-                <div className="text-xs text-muted-foreground truncate">{docente?.name || 'Docente no encontrado'}</div>
+            <TableCell key={`${dayIndex}-${blockIndex}`} rowSpan={block.duracion} className="align-top bg-muted/50 p-2 max-w-32">
+                <div className="font-bold truncate" title={materia?.materia}>{materia?.materia || 'Materia no encontrada'}</div>
+                <div className="text-xs text-muted-foreground truncate" title={docente?.name}>{docente?.name || 'Docente no encontrado'}</div>
             </TableCell>
         );
     };
@@ -876,11 +884,11 @@ function HorariosContent({
                                 </DropdownMenu>
                             </CardHeader>
                             <CardContent>
-                                <Table className="border">
+                                <Table className="border table-fixed w-full">
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead className="w-1/6">Hora</TableHead>
-                                            {DIAS_SEMANA.map(dia => <TableHead key={dia}>{dia}</TableHead>)}
+                                            <TableHead className="w-[12%]">Hora</TableHead>
+                                            {DIAS_SEMANA.map(dia => <TableHead key={dia} className="w-[17.6%]">{dia}</TableHead>)}
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -938,3 +946,5 @@ export default function CatalogsPage() {
         </Tabs>
     );
 }
+
+    
