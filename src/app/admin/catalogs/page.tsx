@@ -11,7 +11,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { MoreHorizontal, PlusCircle } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, ArrowLeft, ArrowRight, Trash2 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -21,7 +21,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-
+import { Combobox, ComboboxOption } from '@/components/ui/combobox';
+import { Progress } from '@/components/ui/progress';
 
 // --- DATA PERSISTENCE HOOK ---
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
@@ -83,25 +84,25 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
 };
 
 // --- INTERFACES ---
-interface CatalogItem {
-    id: string;
-    name: string;
+interface CatalogItem { id: string; name: string; }
+interface Grupo extends CatalogItem { carreraId: string; cuatrimestre: string; semestre: string; turno: string; }
+interface AsignacionMateria { id: string; materia: string; carreraId: string; cuatrimestre: string; semestre: string; }
+interface User { id: string; name: string; role: string; }
+
+// --- HORARIOS INTERFACES ---
+interface HorarioBlock {
+    materiaId: string;
+    docenteId: string;
+    duracion: 1 | 2;
+}
+type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
+type ScheduleData = { [dayIndex: number]: DaySchedule };
+interface Horario {
+    id: string; // Same as grupoId
+    grupoId: string;
+    schedule: ScheduleData;
 }
 
-interface Grupo extends CatalogItem {
-    carreraId: string;
-    cuatrimestre: string;
-    semestre: string;
-    turno: string;
-}
-
-interface AsignacionMateria {
-    id: string;
-    materia: string;
-    carreraId: string;
-    cuatrimestre: string;
-    semestre: string;
-}
 
 // --- GENERIC CATALOG COMPONENT ---
 function CatalogContent({ title, items, setItems, onAdd, onEdit, onDelete }: { title: string, items: CatalogItem[], setItems: (value: CatalogItem[] | ((val: CatalogItem[]) => CatalogItem[])) => void, onAdd?: (name: string) => void, onEdit?: (id: string, name: string) => void, onDelete?: (id: string) => void }) {
@@ -192,8 +193,7 @@ function CatalogContent({ title, items, setItems, onAdd, onEdit, onDelete }: { t
     );
 }
 
-// --- COMPONENTES DE GESTIÓN ---
-
+// --- GRUPOS COMPONENT ---
 function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGrupos: (value: Grupo[] | ((val: Grupo[]) => Grupo[])) => void, carreras: CatalogItem[] }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<Grupo | null>(null);
@@ -338,7 +338,7 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
     );
 }
 
-
+// --- MATERIAS COMPONENT ---
 function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaciones: AsignacionMateria[], setAsignaciones: (value: AsignacionMateria[] | ((val: AsignacionMateria[]) => AsignacionMateria[])) => void, carreras: CatalogItem[] }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<AsignacionMateria | null>(null);
@@ -530,21 +530,411 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
     );
 }
 
+// --- HORARIOS COMPONENT ---
+const DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
+const HORAS_BLOQUE = ["7:00 - 8:00", "8:00 - 9:00", "9:00 - 10:00", "10:00 - 11:00"];
+const TOTAL_DAYS = 5;
+const TOTAL_BLOCKS_PER_DAY = 4;
+
+function ScheduleWizard({
+    grupos,
+    materias,
+    docentes,
+    onSave,
+    onCancel,
+    existingHorario
+}: {
+    grupos: ComboboxOption[];
+    materias: ComboboxOption[];
+    docentes: ComboboxOption[];
+    onSave: (horario: Horario) => void;
+    onCancel: () => void;
+    existingHorario: Horario | null;
+}) {
+    const [wizardStep, setWizardStep] = useState(existingHorario ? 'build_schedule' : 'select_group');
+    const [selectedGroupId, setSelectedGroupId] = useState<string>(existingHorario?.grupoId || '');
+    const [currentDay, setCurrentDay] = useState(0);
+    const [currentBlock, setCurrentBlock] = useState(0);
+
+    const initialSchedule = useMemo(() => {
+        if (existingHorario) return existingHorario.schedule;
+        const newSchedule: ScheduleData = {};
+        for (let i = 0; i < TOTAL_DAYS; i++) {
+            newSchedule[i] = {};
+            for (let j = 0; j < TOTAL_BLOCKS_PER_DAY; j++) {
+                newSchedule[i][j] = null;
+            }
+        }
+        return newSchedule;
+    }, [existingHorario]);
+
+    const [workingSchedule, setWorkingSchedule] = useState<ScheduleData>(initialSchedule);
+
+    const { toast } = useToast();
+
+    const handleScheduleChange = (field: 'materiaId' | 'docenteId' | 'duracion', value: string | number | null) => {
+        const newSchedule = { ...workingSchedule };
+        const day = newSchedule[currentDay] || {};
+        const block = day[currentBlock] ? { ...day[currentBlock] } : {} as HorarioBlock;
+
+        if (value === null) {
+            day[currentBlock] = null;
+        } else {
+            if (field === 'duracion') {
+                block[field] = value as (1 | 2);
+            } else {
+                block[field] = value as string;
+            }
+            if (!block.duracion) block.duracion = 1;
+            day[currentBlock] = block;
+        }
+
+        newSchedule[currentDay] = day;
+        setWorkingSchedule(newSchedule);
+    };
+
+    const currentBlockData = workingSchedule[currentDay]?.[currentBlock];
+    const isPartiallyFilled = currentBlockData && (
+        (currentBlockData.materiaId && !currentBlockData.docenteId) ||
+        (!currentBlockData.materiaId && currentBlockData.docenteId)
+    );
+
+    const handleNext = () => {
+        if (isPartiallyFilled) {
+            toast({ variant: 'destructive', title: "Campos incompletos", description: "Debes seleccionar materia y docente para el bloque." });
+            return;
+        }
+        const duracion = currentBlockData?.duracion || 1;
+        let nextBlock = currentBlock + duracion;
+        let nextDay = currentDay;
+
+        if (nextBlock >= TOTAL_BLOCKS_PER_DAY) {
+            nextDay++;
+            nextBlock = 0;
+        }
+
+        if (nextDay < TOTAL_DAYS) {
+            setCurrentDay(nextDay);
+            setCurrentBlock(nextBlock);
+        } else {
+            handleSave();
+        }
+    };
+    
+    const handleBack = () => {
+        let prevBlock = currentBlock - 1;
+        let prevDay = currentDay;
+        
+        // Find previous filled block to determine its duration
+        let scanBlock = prevBlock;
+        let scanDay = prevDay;
+        if (scanBlock < 0) {
+            scanDay--;
+            scanBlock = TOTAL_BLOCKS_PER_DAY - 1;
+        }
+
+        if (scanDay >= 0) {
+            const prevBlockData = workingSchedule[scanDay]?.[scanBlock];
+            if(prevBlockData?.duracion === 2){
+                 prevBlock = scanBlock - 1;
+                 if(prevBlock < 0) {
+                    scanDay--;
+                    prevBlock = TOTAL_BLOCKS_PER_DAY - 1;
+                 }
+            }
+        }
+        
+        if (prevBlock < 0) {
+            prevDay--;
+            prevBlock = TOTAL_BLOCKS_PER_DAY - 1;
+        }
+
+        if (prevDay >= 0) {
+            setCurrentDay(prevDay);
+            setCurrentBlock(prevBlock);
+        }
+    };
+
+    const handleSave = () => {
+        if (isPartiallyFilled) {
+            toast({ variant: 'destructive', title: "Campos incompletos", description: "El último bloque está incompleto." });
+            return;
+        }
+        const newHorario: Horario = {
+            id: selectedGroupId,
+            grupoId: selectedGroupId,
+            schedule: workingSchedule,
+        };
+        onSave(newHorario);
+    };
+
+    const selectedGroupName = useMemo(() => grupos.find(g => g.value === selectedGroupId)?.label, [selectedGroupId, grupos]);
+    const progress = useMemo(() => {
+        const totalSteps = TOTAL_DAYS * TOTAL_BLOCKS_PER_DAY;
+        const currentStep = currentDay * TOTAL_BLOCKS_PER_DAY + currentBlock;
+        return (currentStep / totalSteps) * 100;
+    }, [currentDay, currentBlock]);
+
+    const isLastStep = currentDay === TOTAL_DAYS - 1 && currentBlock >= TOTAL_BLOCKS_PER_DAY - 1;
+
+    if (wizardStep === 'select_group') {
+        return (
+            <>
+                <DialogDescription>Selecciona el grupo para el cual deseas crear o editar un horario.</DialogDescription>
+                <div className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                        <Label htmlFor="grupo">Grupo</Label>
+                        <Select onValueChange={setSelectedGroupId} value={selectedGroupId}>
+                            <SelectTrigger id="grupo"><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger>
+                            <SelectContent>{grupos.map(g => <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>)}</SelectContent>
+                        </Select>
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
+                    <Button onClick={() => {
+                        if (selectedGroupId) setWizardStep('build_schedule')
+                        else toast({ variant: 'destructive', title: 'Selecciona un grupo' })
+                    }}>Comenzar</Button>
+                </DialogFooter>
+            </>
+        );
+    }
+    
+    return (
+        <>
+            <DialogDescription>
+                Configurando horario para <strong>{selectedGroupName}</strong>.
+                Estás en: <strong>{DIAS_SEMANA[currentDay]}</strong>, bloque de <strong>{HORAS_BLOQUE[currentBlock]}</strong>.
+            </DialogDescription>
+            <div className="space-y-6 py-4">
+                <Progress value={progress} />
+                {workingSchedule[currentDay]?.[currentBlock - 1]?.duracion === 2 ? (
+                    <div className="text-center text-muted-foreground py-10">
+                        Este bloque está ocupado por la clase anterior.
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label>Materia</Label>
+                            <Combobox 
+                                options={materias} 
+                                value={currentBlockData?.materiaId || ''}
+                                onValueChange={(val) => handleScheduleChange('materiaId', val || null)}
+                                placeholder="Seleccionar materia..."
+                                searchPlaceholder="Buscar materia..."
+                                emptyMessage="No se encontró la materia."
+                            />
+                        </div>
+                         <div className="space-y-2">
+                            <Label>Docente</Label>
+                             <Combobox 
+                                options={docentes} 
+                                value={currentBlockData?.docenteId || ''}
+                                onValueChange={(val) => handleScheduleChange('docenteId', val || null)}
+                                placeholder="Seleccionar docente..."
+                                searchPlaceholder="Buscar docente..."
+                                emptyMessage="No se encontró el docente."
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Duración (horas)</Label>
+                            <Select 
+                                value={String(currentBlockData?.duracion || 1)}
+                                onValueChange={(val) => handleScheduleChange('duracion', parseInt(val))}
+                                disabled={!currentBlockData || currentBlock === TOTAL_BLOCKS_PER_DAY - 1}
+                            >
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="1">1 hora</SelectItem>
+                                    <SelectItem value="2">2 horas</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                         <div className="flex items-end">
+                            <Button variant="outline" size="sm" onClick={() => handleScheduleChange('materiaId', null)}>
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Limpiar bloque
+                            </Button>
+                        </div>
+                    </div>
+                )}
+            </div>
+            <DialogFooter className="flex justify-between w-full">
+                <Button variant="outline" onClick={handleBack} disabled={currentDay === 0 && currentBlock === 0}>
+                    <ArrowLeft className="h-4 w-4 mr-2"/>
+                    Anterior
+                </Button>
+                <Button onClick={handleNext} disabled={isPartiallyFilled}>
+                    {isLastStep ? 'Guardar Horario' : 'Siguiente'}
+                    {!isLastStep && <ArrowRight className="h-4 w-4 ml-2"/>}
+                </Button>
+            </DialogFooter>
+        </>
+    )
+}
+
+function HorariosContent({
+    horarios, setHorarios, grupos, materias, users
+}: {
+    horarios: Horario[],
+    setHorarios: (value: Horario[] | ((val: Horario[]) => Horario[])) => void,
+    grupos: Grupo[],
+    materias: AsignacionMateria[],
+    users: User[],
+}) {
+    const { toast } = useToast();
+    const [isWizardOpen, setIsWizardOpen] = useState(false);
+    const [editingHorario, setEditingHorario] = useState<Horario | null>(null);
+
+    const docenteOptions = useMemo(() => users.filter(u => u.role === 'Docente').map(u => ({ value: u.id, label: u.name })), [users]);
+    const materiaOptions = useMemo(() => materias.map(m => ({ value: m.id, label: m.materia })), [materias]);
+    const grupoOptions = useMemo(() => grupos.map(g => ({ value: g.id, label: g.name })), [grupos]);
+
+    const handleSaveHorario = (horario: Horario) => {
+        setHorarios(prev => {
+            const existingIndex = prev.findIndex(h => h.id === horario.id);
+            if (existingIndex > -1) {
+                const newHorarios = [...prev];
+                newHorarios[existingIndex] = horario;
+                return newHorarios;
+            }
+            return [...prev, horario];
+        });
+        toast({ title: "Horario guardado", description: "El horario se ha guardado correctamente." });
+        setIsWizardOpen(false);
+        setEditingHorario(null);
+    };
+
+    const handleDeleteHorario = (grupoId: string) => {
+        setHorarios(prev => prev.filter(h => h.id !== grupoId));
+        toast({ title: "Horario eliminado" });
+    }
+
+    const openWizard = (horario: Horario | null = null) => {
+        setEditingHorario(horario);
+        setIsWizardOpen(true);
+    };
+
+    const renderCell = (horario: Horario, dayIndex: number, blockIndex: number) => {
+        const block = horario.schedule[dayIndex]?.[blockIndex];
+        const prevBlock = horario.schedule[dayIndex]?.[blockIndex - 1];
+
+        if (prevBlock?.duracion === 2) {
+            return null; // This cell is spanned by the previous one
+        }
+
+        if (!block) {
+            return <TableCell key={`${dayIndex}-${blockIndex}`}></TableCell>;
+        }
+
+        const materia = materias.find(m => m.id === block.materiaId);
+        const docente = users.find(u => u.id === block.docenteId);
+
+        return (
+            <TableCell key={`${dayIndex}-${blockIndex}`} rowSpan={block.duracion} className="align-top bg-muted/50 p-2">
+                <div className="font-bold truncate">{materia?.materia || 'Materia no encontrada'}</div>
+                <div className="text-xs text-muted-foreground truncate">{docente?.name || 'Docente no encontrado'}</div>
+            </TableCell>
+        );
+    };
+
+    return (
+        <Card>
+            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <CardTitle>Horarios</CardTitle>
+                    <CardDescription>Gestiona los horarios de los grupos.</CardDescription>
+                </div>
+                <Button size="sm" onClick={() => openWizard(null)} disabled={grupos.length === 0} className="w-full sm:w-auto">
+                     <PlusCircle className="h-4 w-4 mr-2" /> Crear Horario
+                </Button>
+            </CardHeader>
+            <CardContent className="space-y-6">
+                {horarios.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No hay horarios creados. ¡Crea el primero!</p>}
+                {horarios.map(horario => {
+                    const grupo = grupos.find(g => g.id === horario.grupoId);
+                    return (
+                        <Card key={horario.id}>
+                            <CardHeader className="flex-row items-center justify-between">
+                                <div>
+                                    <CardTitle>{grupo?.name || 'Grupo no encontrado'}</CardTitle>
+                                    <CardDescription>Turno {grupo?.turno}</CardDescription>
+                                </div>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                    <DropdownMenuContent>
+                                        <DropdownMenuItem onSelect={() => openWizard(horario)}>Editar</DropdownMenuItem>
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild><DropdownMenuItem onSelect={e => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esta acción eliminará permanentemente el horario de este grupo.</AlertDialogDescription></AlertDialogHeader>
+                                                <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteHorario(horario.id)} className="bg-destructive text-destructive-foreground">Eliminar</AlertDialogAction></AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </CardHeader>
+                            <CardContent>
+                                <Table className="border">
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="w-1/6">Hora</TableHead>
+                                            {DIAS_SEMANA.map(dia => <TableHead key={dia}>{dia}</TableHead>)}
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {HORAS_BLOQUE.map((hora, blockIndex) => (
+                                            <TableRow key={hora}>
+                                                <TableCell className="font-medium">{hora}</TableCell>
+                                                {DIAS_SEMANA.map((_, dayIndex) => renderCell(horario, dayIndex, blockIndex))}
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
+                    );
+                })}
+            </CardContent>
+             <Dialog open={isWizardOpen} onOpenChange={(open) => { if (!open) { setIsWizardOpen(false); setEditingHorario(null); } }}>
+                <DialogContent className="max-w-3xl">
+                     <DialogHeader>
+                        <DialogTitle>{editingHorario ? 'Editar Horario' : 'Crear Nuevo Horario'}</DialogTitle>
+                    </DialogHeader>
+                     <ScheduleWizard
+                        grupos={grupoOptions}
+                        materias={materiaOptions}
+                        docentes={docenteOptions}
+                        onSave={handleSaveHorario}
+                        onCancel={() => { setIsWizardOpen(false); setEditingHorario(null); }}
+                        existingHorario={editingHorario}
+                    />
+                </DialogContent>
+            </Dialog>
+        </Card>
+    );
+}
+
 export default function CatalogsPage() {
     const [carreras, setCarreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
     const [grupos, setGrupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
     const [materiaAsignaciones, setMateriaAsignaciones] = useLocalStorage<AsignacionMateria[]>('unilink-materia-asignaciones', []);
+    const [horarios, setHorarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
+    const [users] = useLocalStorage<User[]>('unilink-users', []);
 
     return (
         <Tabs defaultValue="carreras" className="w-full">
-            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3">
+            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4">
                 <TabsTrigger value="carreras">Carreras</TabsTrigger>
                 <TabsTrigger value="grupos">Grupos</TabsTrigger>
                 <TabsTrigger value="materias">Materias</TabsTrigger>
+                <TabsTrigger value="horarios">Horarios</TabsTrigger>
             </TabsList>
             <TabsContent value="carreras"><CatalogContent title="Carreras" items={carreras} setItems={setCarreras} /></TabsContent>
             <TabsContent value="grupos"><GruposContent grupos={grupos} setGrupos={setGrupos} carreras={carreras} /></TabsContent>
             <TabsContent value="materias"><MateriasContent asignaciones={materiaAsignaciones} setAsignaciones={setMateriaAsignaciones} carreras={carreras} /></TabsContent>
+            <TabsContent value="horarios"><HorariosContent horarios={horarios} setHorarios={setHorarios} grupos={grupos} materias={materiaAsignaciones} users={users} /></TabsContent>
         </Tabs>
     );
 }
