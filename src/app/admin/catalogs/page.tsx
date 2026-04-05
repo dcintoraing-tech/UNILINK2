@@ -575,24 +575,31 @@ function ScheduleWizard({
 
     const handleScheduleChange = (field: 'materiaId' | 'docenteId' | 'duracion', value: string | number | null) => {
         setWorkingSchedule(prev => {
-            const newSchedule = { ...prev };
-            const newDay = { ...(newSchedule[currentDay] || {}) };
+            const newSchedule: ScheduleData = JSON.parse(JSON.stringify(prev)); // Deep copy
+
+            const day = newSchedule[currentDay] = newSchedule[currentDay] || {};
+            let block = day[currentBlock];
+            const isClearingBlock = field === 'materiaId' && value === null;
     
-            if (value === null) {
-                newDay[currentBlock] = null;
-            } else {
-                const currentBlockValue = newDay[currentBlock] || { duracion: 1 };
-                const newBlock = { ...currentBlockValue, [field]: value };
-                
-                // If block is "empty" (no materia or docente), treat as null
-                if (newBlock && !newBlock.materiaId && !newBlock.docenteId) {
-                    newDay[currentBlock] = null;
-                } else {
-                    newDay[currentBlock] = newBlock as HorarioBlock;
+            if (isClearingBlock) {
+                day[currentBlock] = null;
+                return newSchedule;
+            }
+    
+            if (value) {
+                if (!block) {
+                    block = day[currentBlock] = { materiaId: '', docenteId: '', duracion: 1 };
+                }
+                (block as any)[field] = value;
+            } else { // value is empty string (from combobox clear)
+                if (block) {
+                    delete (block as any)[field];
+                    if (!block.materiaId && !block.docenteId) {
+                        day[currentBlock] = null;
+                    }
                 }
             }
             
-            newSchedule[currentDay] = newDay;
             return newSchedule;
         });
     };
@@ -605,7 +612,7 @@ function ScheduleWizard({
 
     const handleNext = () => {
         if (isPartiallyFilled) {
-            toast({ variant: 'destructive', title: "Campos incompletos", description: "Debes seleccionar materia y docente para el bloque." });
+            toast({ variant: 'destructive', title: "Campos incompletos", description: "Debes seleccionar materia y docente para el bloque, o dejarlo vacío." });
             return;
         }
         const duracion = currentBlockData?.duracion || 1;
@@ -631,35 +638,41 @@ function ScheduleWizard({
         
         if (prevBlock < 0) {
             prevDay--;
-            prevBlock = TOTAL_BLOCKS_PER_DAY - 1;
+            if (prevDay >= 0) {
+              prevBlock = TOTAL_BLOCKS_PER_DAY - 1;
+            }
         }
 
         if (prevDay >= 0) {
-            // Find previous filled block to determine its duration to go back correctly
-             let prevFilledBlockIndex = -1;
-             let prevFilledDayIndex = -1;
-
-             for(let d = prevDay; d >= 0; d--){
-                 const daySchedule = workingSchedule[d];
-                 if(daySchedule){
-                     for(let b = (d === prevDay ? prevBlock : TOTAL_BLOCKS_PER_DAY -1); b >= 0; b--){
-                        if(daySchedule[b]){
-                           prevFilledBlockIndex = b;
-                           prevFilledDayIndex = d;
-                           break;
-                        }
+             let targetBlock = prevBlock;
+             let targetDay = prevDay;
+             
+             // Look backwards for the previous actual block to edit
+             let found = false;
+             for (let d = prevDay; d >= 0; d--) {
+                 for (let b = (d === prevDay ? prevBlock : TOTAL_BLOCKS_PER_DAY - 1); b >=0; b--) {
+                     const blockToCheck = workingSchedule[d]?.[b];
+                     if(blockToCheck){
+                         const dur = blockToCheck.duracion || 1;
+                         // Check if this is where the previous step was
+                         if(b + dur > prevBlock || d < prevDay){
+                            targetDay = d;
+                            targetBlock = b;
+                            found = true;
+                            break;
+                         }
+                     } else {
+                        // Empty block, this must be the step
+                        targetDay = d;
+                        targetBlock = b;
+                        found = true;
+                        break;
                      }
                  }
-                 if(prevFilledDayIndex !== -1) break;
+                 if(found) break;
              }
-
-            if(prevFilledDayIndex !== -1){
-                setCurrentDay(prevFilledDayIndex);
-                setCurrentBlock(prevFilledBlockIndex);
-            } else {
-                setCurrentDay(0);
-                setCurrentBlock(0);
-            }
+             setCurrentDay(targetDay);
+             setCurrentBlock(targetBlock);
         }
     };
 
@@ -683,7 +696,7 @@ function ScheduleWizard({
         return (currentStep / totalSteps) * 100;
     }, [currentDay, currentBlock]);
 
-    const isLastStep = currentDay === TOTAL_DAYS - 1 && currentBlock >= TOTAL_BLOCKS_PER_DAY - 1;
+    const isLastStep = currentDay === TOTAL_DAYS - 1 && currentBlock >= TOTAL_BLOCKS_PER_DAY - (workingSchedule[TOTAL_DAYS - 1]?.[TOTAL_BLOCKS_PER_DAY-1]?.duracion || 1)
 
     if (wizardStep === 'select_group') {
         return (
@@ -709,15 +722,28 @@ function ScheduleWizard({
         );
     }
     
+    const isBlockOccupied = useMemo(() => {
+       for(let i = 1; i < TOTAL_BLOCKS_PER_DAY; i++){
+           const prevBlockToCheck = workingSchedule[currentDay]?.[currentBlock - i];
+           if(prevBlockToCheck && (prevBlockToCheck.duracion || 1) > i){
+               return true;
+           }
+       }
+       return false;
+
+    }, [currentDay, currentBlock, workingSchedule]);
+    
     return (
         <>
-            <DialogDescription>
-                Configurando horario para <strong>{selectedGroupName}</strong>.
-                Estás en: <strong>{DIAS_SEMANA[currentDay]}</strong>, bloque de <strong>{HORAS_BLOQUE[currentBlock]}</strong>.
-            </DialogDescription>
+            <DialogHeader>
+                <DialogTitle>{existingHorario ? 'Editar' : 'Crear'} Horario: {selectedGroupName}</DialogTitle>
+                <DialogDescription>
+                    Estás en: <strong>{DIAS_SEMANA[currentDay]}</strong>, bloque de <strong>{HORAS_BLOQUE[currentBlock]}</strong>.
+                </DialogDescription>
+            </DialogHeader>
             <div className="space-y-6 py-4">
                 <Progress value={progress} />
-                {workingSchedule[currentDay]?.[currentBlock - 1]?.duracion === 2 ? (
+                {isBlockOccupied ? (
                     <div className="text-center text-muted-foreground py-10">
                         Este bloque está ocupado por la clase anterior.
                     </div>
@@ -728,7 +754,7 @@ function ScheduleWizard({
                             <Combobox 
                                 options={materias} 
                                 value={currentBlockData?.materiaId || ''}
-                                onValueChange={(val) => handleScheduleChange('materiaId', val || null)}
+                                onValueChange={(val) => handleScheduleChange('materiaId', val)}
                                 placeholder="Seleccionar materia..."
                                 searchPlaceholder="Buscar materia..."
                                 emptyMessage="No se encontró la materia."
@@ -739,7 +765,7 @@ function ScheduleWizard({
                              <Combobox 
                                 options={docentes} 
                                 value={currentBlockData?.docenteId || ''}
-                                onValueChange={(val) => handleScheduleChange('docenteId', val || null)}
+                                onValueChange={(val) => handleScheduleChange('docenteId', val)}
                                 placeholder="Seleccionar docente..."
                                 searchPlaceholder="Buscar docente..."
                                 emptyMessage="No se encontró el docente."
@@ -826,12 +852,15 @@ function HorariosContent({
 
     const renderCell = (horario: Horario, dayIndex: number, blockIndex: number) => {
         const block = horario.schedule[dayIndex]?.[blockIndex];
-        const prevBlock = horario.schedule[dayIndex]?.[blockIndex - 1];
 
-        if (prevBlock?.duracion === 2) {
-            return null; // This cell is spanned by the previous one
+        // Check if a previous block spans over this one
+        for (let i = 1; i < TOTAL_BLOCKS_PER_DAY; i++) {
+            const prevBlock = horario.schedule[dayIndex]?.[blockIndex - i];
+            if (prevBlock && (prevBlock.duracion || 1) > i) {
+                return null; // This cell is spanned by a previous one, so don't render it.
+            }
         }
-
+        
         if (!block) {
             return <TableCell key={`${dayIndex}-${blockIndex}`}></TableCell>;
         }
@@ -906,10 +935,7 @@ function HorariosContent({
                 })}
             </CardContent>
              <Dialog open={isWizardOpen} onOpenChange={(open) => { if (!open) { setIsWizardOpen(false); setEditingHorario(null); } }}>
-                <DialogContent className="max-w-3xl">
-                     <DialogHeader>
-                        <DialogTitle>{editingHorario ? 'Editar Horario' : 'Crear Nuevo Horario'}</DialogTitle>
-                    </DialogHeader>
+                <DialogContent className="sm:max-w-2xl flex flex-col">
                      <ScheduleWizard
                         grupos={grupoOptions}
                         materias={materiaOptions}
@@ -946,5 +972,3 @@ export default function CatalogsPage() {
         </Tabs>
     );
 }
-
-    
