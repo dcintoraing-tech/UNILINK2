@@ -91,6 +91,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode; }
   const [isSwitchingRole, setIsSwitchingRole] = useState(false);
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [targetRole, setTargetRole] = useState('');
   
   useEffect(() => {
     try {
@@ -105,7 +106,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode; }
         setUserRole(user.role);
         
         const storedActiveRole = sessionStorage.getItem('unilink-active-role');
-        setActiveRole(storedActiveRole || user.role);
+        const activeRoleForCheck = storedActiveRole || user.role;
+        
+        if (activeRoleForCheck === 'Docente') {
+            router.replace('/dashboard');
+            return;
+        }
+        
+        setActiveRole(activeRoleForCheck);
 
       } else {
         router.replace('/login');
@@ -118,24 +126,33 @@ export default function AdminLayout({ children }: { children: React.ReactNode; }
 
   const handleSwitchRole = () => {
     if (password === '1234') {
-        const newRole = activeRole === 'Admin' ? 'Jefe de carrera' : 'Admin';
-        setActiveRole(newRole);
-        sessionStorage.setItem('unilink-active-role', newRole);
+        setActiveRole(targetRole);
+        sessionStorage.setItem('unilink-active-role', targetRole);
         toast({
             title: "Perfil Cambiado",
-            description: `Ahora estás viendo el panel como ${newRole}.`
+            description: `Ahora estás viendo el panel como ${targetRole}.`
         });
         setIsSwitchingRole(false);
         setPassword('');
         setPasswordError('');
-        router.push('/admin/dashboard'); 
+
+        if (targetRole === 'Docente') {
+            router.push('/dashboard');
+        } else {
+            router.push('/admin/dashboard'); 
+        }
         router.refresh();
     } else {
         setPasswordError("Contraseña incorrecta. Inténtalo de nuevo.");
     }
   };
-
-  const targetRole = activeRole === 'Admin' ? 'Jefe de carrera' : 'Admin';
+  
+  const openSwitchRoleDialog = (role: string) => {
+    setTargetRole(role);
+    setIsSwitchingRole(true);
+    setPassword('');
+    setPasswordError('');
+  }
 
   return (
     <div className="flex min-h-screen w-full">
@@ -177,9 +194,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode; }
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent>
-                                <DropdownMenuItem onSelect={() => setIsSwitchingRole(true)}>
-                                    Cambiar a {targetRole}
-                                </DropdownMenuItem>
+                                {['Admin', 'Jefe de carrera', 'Docente'].filter(role => role !== activeRole).map(role => (
+                                    <DropdownMenuItem key={role} onSelect={() => openSwitchRoleDialog(role)}>
+                                        Cambiar a {role}
+                                    </DropdownMenuItem>
+                                ))}
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
