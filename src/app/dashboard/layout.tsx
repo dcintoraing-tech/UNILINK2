@@ -26,7 +26,7 @@ const NavContent = () => (
   <nav className="flex flex-1 flex-col gap-2">
     <Link href="/dashboard" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
       <Users className="h-4 w-4" />
-      Mis Grupos
+      Grupos
     </Link>
     <Link href="/dashboard/asistencias" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
       <UserCheck className="h-4 w-4" />
