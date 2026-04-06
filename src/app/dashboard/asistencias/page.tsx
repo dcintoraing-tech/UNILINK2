@@ -1,11 +1,9 @@
-
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { User as UserIcon, Camera, Users, FilePlus, Group } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
@@ -167,6 +165,7 @@ export default function TeacherAttendancePage() {
     const [isTakingAttendance, setIsTakingAttendance] = useState(false);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
     const [scanProgress, setScanProgress] = useState(0);
+    const [detectionStatus, setDetectionStatus] = useState<'SEARCHING' | 'DETECTED'>('SEARCHING');
 
     const [isJustifyOpen, setIsJustifyOpen] = useState(false);
     const [justifyingStudent, setJustifyingStudent] = useState<DisplayStudent | null>(null);
@@ -202,24 +201,28 @@ export default function TeacherAttendancePage() {
     const handleRecognition = useCallback(() => {
         if (!videoRef.current || !selectedGroup || groupStudentList.length === 0) return;
 
-        const unmarkedStudents = groupStudentList.filter(s => s.status === 'Pendiente' && s.embedding);
+        const markedStudentIds = new Set(
+            groupStudentList.filter(s => s.status !== 'Pendiente').map(s => s.id)
+        );
+        const unmarkedStudents = groupStudentList.filter(s => s.embedding && !markedStudentIds.has(s.id));
+
         if (unmarkedStudents.length === 0) {
-            setIsTakingAttendance(false);
-            toast({ title: "Pase de lista completo", description: "Todos los estudiantes del grupo han sido procesados." });
+            if(isTakingAttendance) {
+                 setIsTakingAttendance(false);
+                 toast({ title: "Pase de lista completo", description: "Todos los estudiantes del grupo han sido procesados." });
+            }
             return;
         }
 
-        // Simulate capturing a frame and getting an embedding for the next unmarked student.
         const studentInFrame = unmarkedStudents[0];
         const liveEmbedding = studentInFrame.embedding;
 
         if (!liveEmbedding) return;
 
-        // Simulate comparing the "live" embedding against all students in the group.
         let bestMatch: { student: DisplayStudent | null; similarity: number } = { student: null, similarity: 0 };
         
-        for (const student of groupStudentList) {
-            if (student.embedding && student.status === 'Pendiente') {
+        for (const student of unmarkedStudents) {
+            if (student.embedding) {
                 const similarity = cosineSimilarity(liveEmbedding, student.embedding);
                 if (similarity > bestMatch.similarity) {
                     bestMatch = { student, similarity };
@@ -227,7 +230,7 @@ export default function TeacherAttendancePage() {
             }
         }
         
-        const SIMILARITY_THRESHOLD = 0.95; // High threshold for simulation accuracy
+        const SIMILARITY_THRESHOLD = 0.95;
         
         if (bestMatch.student && bestMatch.similarity >= SIMILARITY_THRESHOLD) {
             const matchedStudent = bestMatch.student;
@@ -296,7 +299,7 @@ export default function TeacherAttendancePage() {
                 }
             }
         }
-    }, [groupStudentList, selectedGroup, horarios, config, setAttendance, toast, materias]);
+    }, [groupStudentList, selectedGroup, horarios, config, setAttendance, toast, materias, isTakingAttendance]);
     
     // Camera start/stop effect
     useEffect(() => {
@@ -338,23 +341,35 @@ export default function TeacherAttendancePage() {
     
     // Recognition and progress interval effect
     useEffect(() => {
-        if (!isTakingAttendance || hasCameraPermission !== true) return;
+        if (!isTakingAttendance || hasCameraPermission !== true) {
+            setDetectionStatus('SEARCHING');
+            return;
+        };
 
+        let statusToggleTimeout: NodeJS.Timeout;
         const recognitionInterval = setInterval(() => {
+            setDetectionStatus('DETECTED');
             handleRecognition();
-        }, 2000);
-        
-        const progressInterval = setInterval(() => {
-            setScanProgress(prev => (prev >= 100 ? 0 : prev + 5));
-        }, 100);
+            
+            statusToggleTimeout = setTimeout(() => {
+                setDetectionStatus('SEARCHING');
+            }, 1500); // Show "DETECTED" for 1.5s
 
-        return () => { 
-            clearInterval(recognitionInterval); 
-            clearInterval(progressInterval); 
-            setScanProgress(0); 
+        }, 3000); // Full cycle is 3 seconds
+
+        const progressInterval = setInterval(() => {
+            // Fills up in 3 seconds (3000ms / 50ms = 60 steps. 100/60 = 1.66)
+            setScanProgress(prev => (prev >= 100 ? 0 : prev + 1.67));
+        }, 50);
+
+        return () => {
+            clearInterval(recognitionInterval);
+            clearInterval(progressInterval);
+            clearTimeout(statusToggleTimeout);
+            setScanProgress(0);
         };
     }, [isTakingAttendance, hasCameraPermission, handleRecognition]);
-
+    
     // Face detection overlay drawing effect
     useEffect(() => {
         if (!isTakingAttendance || !hasCameraPermission || !canvasRef.current || !videoRef.current) return;
@@ -372,13 +387,15 @@ export default function TeacherAttendancePage() {
             
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
-            
             context.clearRect(0, 0, canvas.width, canvas.height);
-            context.strokeStyle = 'hsl(var(--primary))';
-            context.lineWidth = 4;
-            context.beginPath();
-            context.ellipse(canvas.width / 2, canvas.height / 2, canvas.width * 0.25, canvas.height * 0.35, 0, 0, 2 * Math.PI);
-            context.stroke();
+            
+            if (detectionStatus === 'DETECTED') {
+                context.strokeStyle = 'hsl(var(--primary))';
+                context.lineWidth = 4;
+                context.beginPath();
+                context.ellipse(canvas.width / 2, canvas.height / 2, canvas.width * 0.25, canvas.height * 0.35, 0, 0, 2 * Math.PI);
+                context.stroke();
+            }
             
             animationFrameId = requestAnimationFrame(drawOverlay);
         };
@@ -391,7 +408,7 @@ export default function TeacherAttendancePage() {
                 context.clearRect(0, 0, canvas.width, canvas.height);
             }
         };
-    }, [isTakingAttendance, hasCameraPermission]);
+    }, [isTakingAttendance, hasCameraPermission, detectionStatus]);
 
 
     const handleToggleAttendance = () => {
@@ -555,7 +572,9 @@ export default function TeacherAttendancePage() {
                                     {isTakingAttendance && hasCameraPermission && (
                                         <div className="absolute bottom-4 left-4 right-4">
                                             <Progress value={scanProgress} />
-                                            <p className="text-center text-sm text-white font-medium mt-2" style={{textShadow: '0 0 5px black'}}>Escaneando...</p>
+                                            <p className="text-center text-sm text-white font-medium mt-2" style={{textShadow: '0 0 5px black'}}>
+                                                 {detectionStatus === 'SEARCHING' ? 'Buscando rostro...' : 'Rostro detectado, procesando...'}
+                                            </p>
                                         </div>
                                     )}
                                 </div>
