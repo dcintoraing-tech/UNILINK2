@@ -173,6 +173,7 @@ export default function TeacherAttendancePage() {
     const [justificationReason, setJustificationReason] = useState('');
 
     const videoRef = useRef<HTMLVideoElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
 
     useEffect(() => {
@@ -198,32 +199,35 @@ export default function TeacherAttendancePage() {
         }
     }, []);
 
-     const handleRecognition = useCallback(() => {
-        if (!videoRef.current || !selectedGroup || groupStudentList.length === 0 || horarios.length === 0) return;
+    const handleRecognition = useCallback(() => {
+        if (!videoRef.current || !selectedGroup || groupStudentList.length === 0) return;
 
-        const studentToRecognize = groupStudentList.find(s => s.embedding && s.status === 'Pendiente');
-
-        if (!studentToRecognize) {
+        const unmarkedStudents = groupStudentList.filter(s => s.status === 'Pendiente' && s.embedding);
+        if (unmarkedStudents.length === 0) {
             setIsTakingAttendance(false);
             toast({ title: "Pase de lista completo", description: "Todos los estudiantes del grupo han sido procesados." });
             return;
         }
 
-        const simulatedLiveEmbedding = studentToRecognize.embedding;
-        if (!simulatedLiveEmbedding) return;
+        // Simulate capturing a frame and getting an embedding for the next unmarked student.
+        const studentInFrame = unmarkedStudents[0];
+        const liveEmbedding = studentInFrame.embedding;
+
+        if (!liveEmbedding) return;
+
+        // Simulate comparing the "live" embedding against all students in the group.
+        let bestMatch: { student: DisplayStudent | null; similarity: number } = { student: null, similarity: 0 };
         
-        const studentsInGroup = allStudents.filter(s => s.assignedGroupId === selectedGroup);
-        let bestMatch: { student: Student | null; similarity: number } = { student: null, similarity: 0 };
-        for (const studentInLoop of studentsInGroup) {
-            if (studentInLoop.embedding) {
-                const similarity = cosineSimilarity(simulatedLiveEmbedding, studentInLoop.embedding);
+        for (const student of groupStudentList) {
+            if (student.embedding && student.status === 'Pendiente') {
+                const similarity = cosineSimilarity(liveEmbedding, student.embedding);
                 if (similarity > bestMatch.similarity) {
-                    bestMatch = { student: studentInLoop, similarity };
+                    bestMatch = { student, similarity };
                 }
             }
         }
-
-        const SIMILARITY_THRESHOLD = 0.95;
+        
+        const SIMILARITY_THRESHOLD = 0.95; // High threshold for simulation accuracy
         
         if (bestMatch.student && bestMatch.similarity >= SIMILARITY_THRESHOLD) {
             const matchedStudent = bestMatch.student;
@@ -292,7 +296,7 @@ export default function TeacherAttendancePage() {
                 }
             }
         }
-    }, [groupStudentList, selectedGroup, horarios, config, allStudents, setAttendance, toast, materias]);
+    }, [groupStudentList, selectedGroup, horarios, config, setAttendance, toast, materias]);
     
     // Camera start/stop effect
     useEffect(() => {
@@ -332,7 +336,7 @@ export default function TeacherAttendancePage() {
         return () => { isCancelled = true; stopCamera(); };
     }, [isTakingAttendance, stopCamera, toast]);
     
-    // Recognition interval effect
+    // Recognition and progress interval effect
     useEffect(() => {
         if (!isTakingAttendance || hasCameraPermission !== true) return;
 
@@ -350,6 +354,45 @@ export default function TeacherAttendancePage() {
             setScanProgress(0); 
         };
     }, [isTakingAttendance, hasCameraPermission, handleRecognition]);
+
+    // Face detection overlay drawing effect
+    useEffect(() => {
+        if (!isTakingAttendance || !hasCameraPermission || !canvasRef.current || !videoRef.current) return;
+
+        const canvas = canvasRef.current;
+        const video = videoRef.current;
+        const context = canvas.getContext('2d');
+        let animationFrameId: number;
+
+        const drawOverlay = () => {
+            if (!context || !video.videoWidth) {
+                animationFrameId = requestAnimationFrame(drawOverlay);
+                return;
+            }
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            context.strokeStyle = 'hsl(var(--primary))';
+            context.lineWidth = 4;
+            context.beginPath();
+            context.ellipse(canvas.width / 2, canvas.height / 2, canvas.width * 0.25, canvas.height * 0.35, 0, 0, 2 * Math.PI);
+            context.stroke();
+            
+            animationFrameId = requestAnimationFrame(drawOverlay);
+        };
+
+        drawOverlay();
+
+        return () => {
+            cancelAnimationFrame(animationFrameId);
+            if (context && canvas) {
+                context.clearRect(0, 0, canvas.width, canvas.height);
+            }
+        };
+    }, [isTakingAttendance, hasCameraPermission]);
+
 
     const handleToggleAttendance = () => {
         if (!isTakingAttendance) {
@@ -459,37 +502,6 @@ export default function TeacherAttendancePage() {
         }
     };
     
-    const renderCameraState = () => {
-        if (!selectedGroup) return null; 
-        
-        if (groupStudentList.length === 0) {
-             return (
-                <div className="flex flex-col items-center gap-4 text-muted-foreground">
-                    <Users className="w-16 h-16" />
-                    <p>Este grupo no tiene estudiantes registrados.</p>
-                </div>
-            );
-        }
-        if (!isTakingAttendance) {
-            return (
-                <div className="flex flex-col items-center gap-4 text-muted-foreground">
-                    <Camera className="w-16 h-16" />
-                    <p>La cámara está desactivada. Haz clic en "Iniciar" para comenzar.</p>
-                </div>
-            );
-        }
-        if (hasCameraPermission === null) return <p>Solicitando permiso de la cámara...</p>;
-        if (hasCameraPermission === false) {
-             return (
-                <Alert variant="destructive" className="max-w-md">
-                    <AlertTitle>Acceso a Cámara Requerido</AlertTitle>
-                    <AlertDescription>No se puede pasar lista sin acceso a la cámara.</AlertDescription>
-                </Alert>
-            );
-        }
-        return null;
-    };
-
     return (
         <>
             <div className="grid gap-6">
@@ -529,10 +541,17 @@ export default function TeacherAttendancePage() {
                             </CardHeader>
                             <CardContent>
                                 <div className="relative w-full aspect-video rounded-md overflow-hidden bg-muted border flex items-center justify-center">
-                                    <video ref={videoRef} className={cn("w-full h-full object-cover", (!isTakingAttendance || hasCameraPermission !== true) && "hidden")} autoPlay muted playsInline />
-                                    <div className={cn("absolute inset-0 flex items-center justify-center p-4", isTakingAttendance && hasCameraPermission ? 'hidden' : 'flex')}>
-                                        {renderCameraState()}
-                                    </div>
+                                    <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+                                    <canvas ref={canvasRef} className={cn("absolute inset-0 w-full h-full", !isTakingAttendance && "hidden")} />
+                                    
+                                    {!isTakingAttendance && (
+                                         <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-black/50 text-white">
+                                            <Camera className="w-16 h-16 mb-4" />
+                                            <p className="text-lg font-medium">La cámara está desactivada</p>
+                                            <p className="text-sm">Haz clic en "Iniciar" para comenzar.</p>
+                                        </div>
+                                    )}
+
                                     {isTakingAttendance && hasCameraPermission && (
                                         <div className="absolute bottom-4 left-4 right-4">
                                             <Progress value={scanProgress} />
@@ -635,3 +654,5 @@ export default function TeacherAttendancePage() {
         </>
     );
 }
+
+    
