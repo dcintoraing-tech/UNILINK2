@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { User as UserIcon, Camera, Users, FilePlus } from 'lucide-react';
+import { User as UserIcon, Camera, Users, FilePlus, Group, CheckCircle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -13,9 +13,11 @@ import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
-// --- DATA PERSISTENCE & TYPES (useLocalStorage) ---
-// This hook remains the same.
+
+// --- DATA PERSISTENCE & TYPES ---
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
     const [storedValue, setStoredValue] = useState<T>(initialValue);
     const [isInitialized, setIsInitialized] = useState(false);
@@ -82,6 +84,9 @@ interface Student {
     embedding: number[] | null;
 }
 
+interface Grupo { id: string; name: string; }
+interface AsignacionMateria { id: string; materia: string; }
+
 interface HorarioBlock {
     materiaId: string;
     docenteId: string;
@@ -108,9 +113,11 @@ interface AttendanceRecord {
     date: string;
     materiaAsignacionId: string;
     status: AttendanceStatus;
+    // Display-only fields
     arrivalTime?: string;
-    studentName?: string; // For local display
-    facialImage?: string | null; // For local display
+    studentName?: string; 
+    facialImage?: string | null;
+    subjectName?: string;
 }
 
 interface Justificacion { 
@@ -140,6 +147,8 @@ export default function TeacherAttendancePage() {
     // --- Local Storage Data ---
     const [allStudents] = useLocalStorage<Student[]>('unilink-students', []);
     const [horarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
+    const [grupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
+    const [materias] = useLocalStorage<AsignacionMateria[]>('unilink-materia-asignaciones', []);
     const [config] = useLocalStorage<AttendanceConfig>('unilink-attendance-config', {
         toleranceMinutes: 10,
         absenceLimitMinutes: 30,
@@ -148,6 +157,8 @@ export default function TeacherAttendancePage() {
     const [justificaciones, setJustificaciones] = useLocalStorage<Justificacion[]>('unilink-justificaciones', []);
     
     // --- Component State ---
+    const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+    const [studentsInGroup, setStudentsInGroup] = useState<Student[]>([]);
     const [isTakingAttendance, setIsTakingAttendance] = useState(false);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
     const [sessionRecords, setSessionRecords] = useState<AttendanceRecord[]>([]); // Records for this specific session
@@ -161,6 +172,16 @@ export default function TeacherAttendancePage() {
     const streamRef = useRef<MediaStream | null>(null);
     const lastRecognitionTime = useRef<number>(0);
 
+    useEffect(() => {
+        if (selectedGroup) {
+            const filteredStudents = allStudents.filter(s => s.assignedGroupId === selectedGroup);
+            setStudentsInGroup(filteredStudents);
+        } else {
+            setStudentsInGroup([]);
+        }
+        setSessionRecords([]); // Reset session when group changes
+    }, [selectedGroup, allStudents]);
+
     const stopCamera = useCallback(() => {
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(track => track.stop());
@@ -172,18 +193,19 @@ export default function TeacherAttendancePage() {
     }, []);
 
     const handleRecognition = useCallback(() => {
-        if (!videoRef.current || allStudents.length === 0 || horarios.length === 0) return;
+        if (!videoRef.current || studentsInGroup.length === 0 || horarios.length === 0) return;
 
-        const studentsWithEmbeddings = allStudents.filter(s => s.embedding);
+        const studentsWithEmbeddings = studentsInGroup.filter(s => s.embedding);
         if (studentsWithEmbeddings.length === 0) return;
         
-        // Simulate scanning a live face from the stream by picking a random registered student
+        // Simulate scanning a live face by picking a random registered student FROM THE SELECTED GROUP
         const randomIndex = Math.floor(Math.random() * studentsWithEmbeddings.length);
         const simulatedLiveEmbedding = studentsWithEmbeddings[randomIndex].embedding;
         if (!simulatedLiveEmbedding) return;
 
         let bestMatch: { student: Student | null; similarity: number } = { student: null, similarity: 0 };
-        for (const student of allStudents) {
+        // IMPORTANT: Search only within the selected group's students
+        for (const student of studentsInGroup) {
             if (student.embedding) {
                 const similarity = cosineSimilarity(simulatedLiveEmbedding, student.embedding);
                 if (similarity > bestMatch.similarity) {
@@ -232,6 +254,7 @@ export default function TeacherAttendancePage() {
                 
                 if (now >= startTime && now <= absenceLimitTime) {
                     const status = now <= toleranceTime ? 'Presente' : 'Retardo';
+                    const subjectName = materias.find(m => m.id === block.materiaId)?.materia || 'Materia Desconocida';
                     
                     const recordId = `att-${student.id}-${dateString}-${block.materiaId}`;
 
@@ -246,9 +269,10 @@ export default function TeacherAttendancePage() {
                         materiaAsignacionId: block.materiaId,
                         status: status,
                         // Display-only fields
-                        arrivalTime: now.toLocaleTimeString(),
+                        arrivalTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                         studentName: `${student.firstName} ${student.lastName}`,
                         facialImage: student.facialImage,
+                        subjectName: subjectName
                     };
                     
                     setSessionRecords(prev => [...prev, newRecord]);
@@ -262,13 +286,13 @@ export default function TeacherAttendancePage() {
 
                     toast({
                         title: `Asistencia Registrada (${status})`,
-                        description: `${newRecord.studentName} ha sido marcado a las ${newRecord.arrivalTime}.`,
+                        description: `${newRecord.studentName} ha sido marcado para ${subjectName}.`,
                     });
                     break; // Stop after first valid check-in
                 }
             }
         }
-    }, [allStudents, horarios, config, sessionRecords, attendance, setAttendance, toast]);
+    }, [studentsInGroup, horarios, config, sessionRecords, attendance, setAttendance, toast, materias]);
     
     // Camera start/stop effect
     useEffect(() => {
@@ -375,11 +399,13 @@ export default function TeacherAttendancePage() {
     };
     
     const renderCameraState = () => {
-        if (allStudents.length === 0) {
+        if (!selectedGroup) return null; // Should not be visible if no group is selected
+        
+        if (studentsInGroup.length === 0) {
              return (
                 <div className="flex flex-col items-center gap-4 text-muted-foreground">
                     <Users className="w-16 h-16" />
-                    <p>No hay estudiantes registrados para pasar lista.</p>
+                    <p>Este grupo no tiene estudiantes registrados.</p>
                 </div>
             );
         }
@@ -408,64 +434,116 @@ export default function TeacherAttendancePage() {
             <div className="grid gap-6">
                 <Card>
                     <CardHeader>
-                        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                                <CardTitle>Pase de Lista por Reconocimiento Facial</CardTitle>
-                                <CardDescription>Inicia el proceso para marcar la asistencia de los estudiantes.</CardDescription>
-                            </div>
-                            <Button onClick={handleToggleAttendance} size="lg" disabled={allStudents.length === 0}>
-                                {isTakingAttendance ? 'Detener Pase de Lista' : 'Iniciar Pase de Lista'}
-                            </Button>
-                        </div>
+                        <CardTitle>Pase de Lista por Grupo</CardTitle>
+                        <CardDescription>Selecciona un grupo para comenzar a pasar lista con reconocimiento facial.</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="relative w-full aspect-video rounded-md overflow-hidden bg-muted border flex items-center justify-center">
-                            <video ref={videoRef} className={cn("w-full h-full object-cover", (!isTakingAttendance || hasCameraPermission !== true) && "hidden")} autoPlay muted playsInline />
-                            <div className={cn("absolute inset-0 flex items-center justify-center p-4", isTakingAttendance && hasCameraPermission ? 'hidden' : 'flex')}>
-                                {renderCameraState()}
+                        <div className="grid gap-4 sm:grid-cols-3">
+                             <div className="grid gap-2">
+                                <Label htmlFor="group-select">Grupo</Label>
+                                <Select onValueChange={setSelectedGroup} value={selectedGroup || ''}>
+                                    <SelectTrigger id="group-select" className="w-full">
+                                        <SelectValue placeholder="Selecciona un grupo..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
                             </div>
-                            {isTakingAttendance && hasCameraPermission && (
-                                <div className="absolute bottom-4 left-4 right-4">
-                                    <Progress value={scanProgress} />
-                                    <p className="text-center text-sm text-white font-medium mt-2" style={{textShadow: '0 0 5px black'}}>Escaneando...</p>
-                                </div>
-                            )}
                         </div>
                     </CardContent>
                 </Card>
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Registros de Asistencia de esta Sesión ({sessionRecords.length})</CardTitle>
-                        <CardDescription>Estudiantes identificados durante esta sesión de pase de lista.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {sessionRecords.length > 0 ? (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
-                                {sessionRecords.map(record => (
-                                    <div key={record.studentId} className="flex flex-col items-center text-center gap-2 p-2 rounded-lg border">
-                                        <Avatar className="w-20 h-20 border-2" style={{ borderColor: record.status === 'Presente' ? 'hsl(var(--primary))' : 'hsl(var(--secondary))' }}>
-                                            <AvatarImage src={record.facialImage || undefined} alt={record.studentName} />
-                                            <AvatarFallback><UserIcon /></AvatarFallback>
-                                        </Avatar>
-                                        <p className="text-sm font-medium leading-tight">{record.studentName}</p>
-                                        <div className='text-xs text-muted-foreground'>{record.arrivalTime}</div>
-                                        <Badge variant={getStatusVariant(record.status)}>{record.status}</Badge>
-                                        <Button variant="outline" size="sm" className="mt-2" onClick={() => handleOpenJustifyDialog(record)}>
-                                            <FilePlus className="mr-2 h-3 w-3" />
-                                            Justificar
-                                        </Button>
+                {selectedGroup && (
+                    <>
+                        <Card>
+                            <CardHeader className="flex flex-row items-center justify-between">
+                                <div>
+                                    <CardTitle>Reconocimiento Facial</CardTitle>
+                                    <CardDescription>La cámara escaneará a los estudiantes del grupo seleccionado.</CardDescription>
+                                </div>
+                                <Button onClick={handleToggleAttendance} size="lg" disabled={studentsInGroup.length === 0}>
+                                    {isTakingAttendance ? 'Detener Pase de Lista' : 'Iniciar Pase de Lista'}
+                                </Button>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="relative w-full aspect-video rounded-md overflow-hidden bg-muted border flex items-center justify-center">
+                                    <video ref={videoRef} className={cn("w-full h-full object-cover", (!isTakingAttendance || hasCameraPermission !== true) && "hidden")} autoPlay muted playsInline />
+                                    <div className={cn("absolute inset-0 flex items-center justify-center p-4", isTakingAttendance && hasCameraPermission ? 'hidden' : 'flex')}>
+                                        {renderCameraState()}
                                     </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="flex flex-col items-center justify-center text-center text-muted-foreground h-40">
-                                <Users className="w-12 h-12 mb-4"/>
-                                <p>Esperando el primer registro de asistencia...</p>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                                    {isTakingAttendance && hasCameraPermission && (
+                                        <div className="absolute bottom-4 left-4 right-4">
+                                            <Progress value={scanProgress} />
+                                            <p className="text-center text-sm text-white font-medium mt-2" style={{textShadow: '0 0 5px black'}}>Escaneando...</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Registros de Asistencia para {grupos.find(g => g.id === selectedGroup)?.name}</CardTitle>
+                                <CardDescription>Estudiantes identificados en esta sesión.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Estudiante</TableHead>
+                                            <TableHead>Materia</TableHead>
+                                            <TableHead>Hora de Llegada</TableHead>
+                                            <TableHead>Estado</TableHead>
+                                            <TableHead className="text-right">Acciones</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {sessionRecords.length > 0 ? (
+                                            sessionRecords.map(record => (
+                                                <TableRow key={record.id}>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-3">
+                                                            <Avatar>
+                                                                <AvatarImage src={record.facialImage || undefined} alt={record.studentName} />
+                                                                <AvatarFallback><UserIcon /></AvatarFallback>
+                                                            </Avatar>
+                                                            <span className="font-medium">{record.studentName}</span>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>{record.subjectName}</TableCell>
+                                                    <TableCell>{record.arrivalTime}</TableCell>
+                                                    <TableCell>
+                                                        <Badge variant={getStatusVariant(record.status)}>{record.status}</Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                         <Button variant="outline" size="sm" onClick={() => handleOpenJustifyDialog(record)}>
+                                                            <FilePlus className="mr-2 h-3 w-3" />
+                                                            Justificar
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        ) : (
+                                            <TableRow>
+                                                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                                                    Aún no se ha registrado ninguna asistencia para este grupo.
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
+                    </>
+                )}
+                 {!selectedGroup && (
+                    <div className="flex flex-col items-center justify-center text-center text-muted-foreground h-60 rounded-lg border-2 border-dashed">
+                        <Group className="w-16 h-16 mb-4"/>
+                        <h3 className="text-lg font-semibold">Selecciona un grupo</h3>
+                        <p>Elige un grupo del menú de arriba para empezar a pasar lista.</p>
+                    </div>
+                )}
             </div>
             
             <Dialog open={isJustifyOpen} onOpenChange={setIsJustifyOpen}>
@@ -496,4 +574,3 @@ export default function TeacherAttendancePage() {
         </>
     );
 }
-    
