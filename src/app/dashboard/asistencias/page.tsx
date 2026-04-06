@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -116,6 +117,7 @@ interface AttendanceConfig {
 }
 
 type AttendanceStatus = 'Presente' | 'Retardo' | 'Falta' | 'Falta Justificada';
+type DisplayStatus = AttendanceStatus | 'Pendiente';
 
 interface AttendanceRecord {
     id: string;
@@ -123,10 +125,12 @@ interface AttendanceRecord {
     date: string;
     materiaAsignacionId: string;
     status: AttendanceStatus;
-    // Display-only fields
     arrivalTime?: string;
-    studentName?: string; 
-    facialImage?: string | null;
+}
+
+interface DisplayStudent extends Student {
+    status: DisplayStatus;
+    arrivalTime?: string;
     subjectName?: string;
 }
 
@@ -158,14 +162,14 @@ export default function TeacherAttendancePage() {
     
     // --- Component State ---
     const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
-    const [studentsInGroup, setStudentsInGroup] = useState<Student[]>([]);
+    const [groupStudentList, setGroupStudentList] = useState<DisplayStudent[]>([]);
+    
     const [isTakingAttendance, setIsTakingAttendance] = useState(false);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
-    const [sessionRecords, setSessionRecords] = useState<AttendanceRecord[]>([]); // Records for this specific session
     const [scanProgress, setScanProgress] = useState(0);
 
     const [isJustifyOpen, setIsJustifyOpen] = useState(false);
-    const [justifyingStudent, setJustifyingStudent] = useState<AttendanceRecord | null>(null);
+    const [justifyingStudent, setJustifyingStudent] = useState<DisplayStudent | null>(null);
     const [justificationReason, setJustificationReason] = useState('');
 
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -174,11 +178,14 @@ export default function TeacherAttendancePage() {
     useEffect(() => {
         if (selectedGroup) {
             const filteredStudents = allStudents.filter(s => s.assignedGroupId === selectedGroup);
-            setStudentsInGroup(filteredStudents);
+            const displayList: DisplayStudent[] = filteredStudents.map(student => ({
+                ...student,
+                status: 'Pendiente',
+            }));
+            setGroupStudentList(displayList);
         } else {
-            setStudentsInGroup([]);
+            setGroupStudentList([]);
         }
-        setSessionRecords([]); // Reset session when group changes
     }, [selectedGroup, allStudents]);
 
     const stopCamera = useCallback(() => {
@@ -192,23 +199,20 @@ export default function TeacherAttendancePage() {
     }, []);
 
      const handleRecognition = useCallback(() => {
-        if (!videoRef.current || studentsInGroup.length === 0 || horarios.length === 0) return;
+        if (!videoRef.current || !selectedGroup || groupStudentList.length === 0 || horarios.length === 0) return;
 
-        // 1. Find the next student to "recognize" who hasn't been marked yet in this session.
-        const studentToRecognize = studentsInGroup.find(
-            s => s.embedding && !sessionRecords.some(r => r.studentId === s.id)
-        );
+        const studentToRecognize = groupStudentList.find(s => s.embedding && s.status === 'Pendiente');
 
-        // If all students in the group have been processed for this session, stop.
         if (!studentToRecognize) {
+            setIsTakingAttendance(false);
+            toast({ title: "Pase de lista completo", description: "Todos los estudiantes del grupo han sido procesados." });
             return;
         }
 
-        // 2. This student's embedding becomes our simulated "live" embedding from the camera.
         const simulatedLiveEmbedding = studentToRecognize.embedding;
         if (!simulatedLiveEmbedding) return;
         
-        // 3. SIMULATE comparing the "live" embedding against all students in the group.
+        const studentsInGroup = allStudents.filter(s => s.assignedGroupId === selectedGroup);
         let bestMatch: { student: Student | null; similarity: number } = { student: null, similarity: 0 };
         for (const studentInLoop of studentsInGroup) {
             if (studentInLoop.embedding) {
@@ -219,25 +223,17 @@ export default function TeacherAttendancePage() {
             }
         }
 
-        // 4. Check if the best match meets the confidence threshold.
-        const SIMILARITY_THRESHOLD = 0.95; // High threshold since we know a perfect match exists in this simulation.
+        const SIMILARITY_THRESHOLD = 0.95;
         
         if (bestMatch.student && bestMatch.similarity >= SIMILARITY_THRESHOLD) {
-            const student = bestMatch.student;
+            const matchedStudent = bestMatch.student;
             
-            // This check is redundant due to the find method above, but it's a good safeguard.
-            if (sessionRecords.some(r => r.studentId === student.id)) {
-                return;
-            }
-
-            // --- Proceed with attendance logic for the matched student ---
             const now = new Date();
             const dateString = now.toISOString().split('T')[0];
-
             const dayIndex = now.getDay();
             if (dayIndex === 0 || dayIndex === 6) return;
 
-            const studentSchedule = horarios.find(h => h.grupoId === student.assignedGroupId);
+            const studentSchedule = horarios.find(h => h.grupoId === matchedStudent.assignedGroupId);
             const todaySchedule = studentSchedule?.schedule?.[dayIndex - 1];
             
             if (!todaySchedule) return;
@@ -245,7 +241,6 @@ export default function TeacherAttendancePage() {
             for (const blockIndexStr in todaySchedule) {
                 const blockIndex = parseInt(blockIndexStr);
                 const block = todaySchedule[blockIndex];
-                
                 if (!block) continue;
 
                 const horaInicio = HORAS_BLOQUE_INICIO[blockIndex];
@@ -262,55 +257,42 @@ export default function TeacherAttendancePage() {
                 absenceLimitTime.setMinutes(startTime.getMinutes() + config.absenceLimitMinutes);
                 
                 if (now >= startTime && now <= absenceLimitTime) {
-                    const status = now <= toleranceTime ? 'Presente' : 'Retardo';
+                    const status: AttendanceStatus = now <= toleranceTime ? 'Presente' : 'Retardo';
                     const subjectName = materias.find(m => m.id === block.materiaId)?.materia || 'Materia Desconocida';
+                    const arrivalTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                     
-                    const recordId = `att-${student.id}-${dateString}-${block.materiaId}`;
+                    const recordId = `att-${matchedStudent.id}-${dateString}-${block.materiaId}`;
 
-                    if (attendance.some(rec => rec.id === recordId)) {
-                        if (!sessionRecords.some(r => r.studentId === student.id)) {
-                             const existingRecord = attendance.find(rec => rec.id === recordId)!;
-                             setSessionRecords(prev => [...prev, {
-                                 ...existingRecord,
-                                 arrivalTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                                 studentName: `${student.firstName} ${student.lastName}`,
-                                 facialImage: student.facialImage,
-                                 subjectName: subjectName
-                             }]);
-                        }
-                        return;
-                    }
+                    setGroupStudentList(prevList => 
+                        prevList.map(s => 
+                            s.id === matchedStudent.id 
+                                ? { ...s, status, arrivalTime, subjectName } 
+                                : s
+                        )
+                    );
 
-                    const newRecord: AttendanceRecord = {
-                        id: recordId,
-                        studentId: student.id,
-                        date: dateString,
-                        materiaAsignacionId: block.materiaId,
-                        status: status,
-                        arrivalTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                        studentName: `${student.firstName} ${student.lastName}`,
-                        facialImage: student.facialImage,
-                        subjectName: subjectName
-                    };
-                    
-                    setSessionRecords(prev => [...prev, newRecord]);
-                    setAttendance(prev => [...prev, {
-                        id: newRecord.id,
-                        studentId: newRecord.studentId,
-                        date: newRecord.date,
-                        materiaAsignacionId: newRecord.materiaAsignacionId,
-                        status: newRecord.status
-                    }]);
+                    setAttendance(prevAtt => {
+                        const recordExists = prevAtt.some(rec => rec.id === recordId);
+                        if (recordExists) return prevAtt;
+                        return [...prevAtt, {
+                            id: recordId,
+                            studentId: matchedStudent.id,
+                            date: dateString,
+                            materiaAsignacionId: block.materiaId,
+                            status: status,
+                            arrivalTime: arrivalTime
+                        }];
+                    });
 
                     toast({
                         title: `Asistencia Registrada (${status})`,
-                        description: `${newRecord.studentName} ha sido marcado para ${subjectName}.`,
+                        description: `${matchedStudent.firstName} ${matchedStudent.lastName} marcado para ${subjectName}.`,
                     });
                     break; 
                 }
             }
         }
-    }, [studentsInGroup, horarios, config, sessionRecords, attendance, setAttendance, toast, materias]);
+    }, [groupStudentList, selectedGroup, horarios, config, allStudents, setAttendance, toast, materias]);
     
     // Camera start/stop effect
     useEffect(() => {
@@ -371,35 +353,95 @@ export default function TeacherAttendancePage() {
 
     const handleToggleAttendance = () => {
         if (!isTakingAttendance) {
-            setSessionRecords([]);
+            setIsTakingAttendance(true);
+        } else {
+            setIsTakingAttendance(false);
+            
+            const now = new Date();
+            const dateString = now.toISOString().split('T')[0];
+            const dayIndex = now.getDay();
+            if (dayIndex === 0 || dayIndex === 6) return;
+
+            const studentSchedule = horarios.find(h => h.grupoId === selectedGroup);
+            const todaySchedule = studentSchedule?.schedule?.[dayIndex - 1];
+
+            const updatedList = [...groupStudentList];
+            const newAbsenceRecords: AttendanceRecord[] = [];
+            let absencesCount = 0;
+
+            groupStudentList.forEach(student => {
+                if (student.status === 'Pendiente') {
+                    absencesCount++;
+                    const studentIndex = updatedList.findIndex(s => s.id === student.id);
+                    if (studentIndex > -1) {
+                        updatedList[studentIndex].status = 'Falta';
+                    }
+
+                     if (todaySchedule) {
+                        for (const blockIndexStr in todaySchedule) {
+                             const block = todaySchedule[parseInt(blockIndexStr)];
+                             if (block) {
+                                const recordId = `att-${student.id}-${dateString}-${block.materiaId}`;
+                                newAbsenceRecords.push({
+                                    id: recordId,
+                                    studentId: student.id,
+                                    date: dateString,
+                                    materiaAsignacionId: block.materiaId,
+                                    status: 'Falta',
+                                });
+                             }
+                        }
+                    }
+                }
+            });
+
+            setGroupStudentList(updatedList);
+            if (newAbsenceRecords.length > 0) {
+                 setAttendance(prev => {
+                    const existingIds = new Set(prev.map(r => r.id));
+                    const recordsToAdd = newAbsenceRecords.filter(r => !existingIds.has(r.id));
+                    return [...prev, ...recordsToAdd];
+                });
+            }
+            if (absencesCount > 0) {
+                toast({
+                    title: "Pase de lista detenido",
+                    description: `${absencesCount} estudiante(s) fueron marcados como 'Falta'.`
+                });
+            }
         }
-        setIsTakingAttendance(prev => !prev);
     };
 
-    const handleOpenJustifyDialog = (student: AttendanceRecord) => {
+    const handleOpenJustifyDialog = (student: DisplayStudent) => {
         setJustifyingStudent(student);
         setIsJustifyOpen(true);
     };
 
     const handleJustifySubmit = () => {
-        if (!justifyingStudent || !justificationReason) {
-             toast({ variant: "destructive", title: "Error", description: "El motivo de la justificación es obligatorio." });
+        const attendanceToJustify = attendance.find(a => 
+            a.studentId === justifyingStudent?.id &&
+            a.date === new Date().toISOString().split('T')[0] &&
+            (a.status === 'Falta' || a.status === 'Retardo')
+        );
+        
+        if (!justifyingStudent || !justificationReason || !attendanceToJustify) {
+             toast({ variant: "destructive", title: "Error", description: "No se encontró un registro de falta o retardo para justificar hoy, o falta el motivo." });
             return;
         }
         
         const newJustificacion: Justificacion = {
-            id: `just-${justifyingStudent.studentId}-${new Date().toISOString()}`,
-            studentId: justifyingStudent.studentId,
+            id: `just-${justifyingStudent.id}-${new Date().toISOString()}`,
+            studentId: justifyingStudent.id,
             date: new Date().toISOString().split('T')[0],
             reason: justificationReason,
             status: 'Pendiente',
-            attendanceRecordId: justifyingStudent.id, // Link to the attendance record
+            attendanceRecordId: attendanceToJustify.id,
         };
 
         setJustificaciones(prev => [...prev, newJustificacion]);
         toast({
             title: "Justificación Enviada",
-            description: `Se ha enviado una justificación para ${justifyingStudent.studentName}.`,
+            description: `Se ha enviado una justificación para ${justifyingStudent.firstName}.`,
         });
 
         setIsJustifyOpen(false);
@@ -407,19 +449,20 @@ export default function TeacherAttendancePage() {
         setJustificationReason('');
     };
 
-    const getStatusVariant = (status: AttendanceStatus): "default" | "secondary" | "destructive" | "outline" => {
+    const getStatusVariant = (status: DisplayStatus): "default" | "secondary" | "destructive" | "outline" => {
         switch (status) {
             case 'Presente': return 'default';
             case 'Retardo': return 'secondary';
             case 'Falta': return 'destructive';
             case 'Falta Justificada': return 'outline';
+            case 'Pendiente': return 'outline';
         }
     };
     
     const renderCameraState = () => {
-        if (!selectedGroup) return null; // Should not be visible if no group is selected
+        if (!selectedGroup) return null; 
         
-        if (studentsInGroup.length === 0) {
+        if (groupStudentList.length === 0) {
              return (
                 <div className="flex flex-col items-center gap-4 text-muted-foreground">
                     <Users className="w-16 h-16" />
@@ -459,7 +502,7 @@ export default function TeacherAttendancePage() {
                         <div className="grid gap-4 sm:grid-cols-3">
                              <div className="grid gap-2">
                                 <Label htmlFor="group-select">Grupo</Label>
-                                <Select onValueChange={setSelectedGroup} value={selectedGroup || ''}>
+                                <Select onValueChange={setSelectedGroup} value={selectedGroup || ''} disabled={isTakingAttendance}>
                                     <SelectTrigger id="group-select" className="w-full">
                                         <SelectValue placeholder="Selecciona un grupo..." />
                                     </SelectTrigger>
@@ -480,7 +523,7 @@ export default function TeacherAttendancePage() {
                                     <CardTitle>Reconocimiento Facial</CardTitle>
                                     <CardDescription>La cámara escaneará a los estudiantes del grupo seleccionado.</CardDescription>
                                 </div>
-                                <Button onClick={handleToggleAttendance} size="lg" disabled={studentsInGroup.length === 0}>
+                                <Button onClick={handleToggleAttendance} size="lg" disabled={groupStudentList.length === 0}>
                                     {isTakingAttendance ? 'Detener Pase de Lista' : 'Iniciar Pase de Lista'}
                                 </Button>
                             </CardHeader>
@@ -503,39 +546,39 @@ export default function TeacherAttendancePage() {
                         <Card>
                              <CardHeader>
                                 <CardTitle>Registros de Asistencia para {grupos.find(g => g.id === selectedGroup)?.name}</CardTitle>
-                                <CardDescription>Estudiantes identificados en esta sesión de clase.</CardDescription>
+                                <CardDescription>El estado se actualizará en tiempo real a medida que los estudiantes sean reconocidos.</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>Estudiante</TableHead>
-                                            <TableHead>Materia</TableHead>
+                                            <TableHead>Materia Asignada</TableHead>
                                             <TableHead>Hora de Llegada</TableHead>
                                             <TableHead>Estado</TableHead>
                                             <TableHead className="text-right">Acciones</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {sessionRecords.length > 0 ? (
-                                            sessionRecords.map(record => (
-                                                <TableRow key={record.id}>
+                                        {groupStudentList.length > 0 ? (
+                                            groupStudentList.map(student => (
+                                                <TableRow key={student.id}>
                                                     <TableCell>
                                                         <div className="flex items-center gap-3">
                                                             <Avatar>
-                                                                <AvatarImage src={record.facialImage || undefined} alt={record.studentName} />
+                                                                <AvatarImage src={student.facialImage || undefined} alt={`${student.firstName} ${student.lastName}`} />
                                                                 <AvatarFallback><UserIcon /></AvatarFallback>
                                                             </Avatar>
-                                                            <span className="font-medium">{record.studentName}</span>
+                                                            <span className="font-medium">{student.firstName} {student.lastName}</span>
                                                         </div>
                                                     </TableCell>
-                                                    <TableCell>{record.subjectName}</TableCell>
-                                                    <TableCell>{record.arrivalTime}</TableCell>
+                                                    <TableCell>{student.subjectName || 'N/A'}</TableCell>
+                                                    <TableCell>{student.arrivalTime || 'N/A'}</TableCell>
                                                     <TableCell>
-                                                        <Badge variant={getStatusVariant(record.status as AttendanceStatus)}>{record.status}</Badge>
+                                                        <Badge variant={getStatusVariant(student.status)}>{student.status}</Badge>
                                                     </TableCell>
                                                     <TableCell className="text-right">
-                                                         <Button variant="outline" size="sm" onClick={() => handleOpenJustifyDialog(record)}>
+                                                        <Button variant="outline" size="sm" onClick={() => handleOpenJustifyDialog(student)} disabled={student.status === 'Presente'}>
                                                             <FilePlus className="mr-2 h-3 w-3" />
                                                             Justificar
                                                         </Button>
@@ -545,7 +588,7 @@ export default function TeacherAttendancePage() {
                                         ) : (
                                             <TableRow>
                                                 <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                                                    Aún no se ha registrado ninguna asistencia para este grupo.
+                                                    Este grupo no tiene estudiantes.
                                                 </TableCell>
                                             </TableRow>
                                         )}
@@ -569,7 +612,7 @@ export default function TeacherAttendancePage() {
                     <DialogHeader>
                         <DialogTitle>Justificar Asistencia</DialogTitle>
                         <DialogDescription>
-                            Enviar una justificación para {justifyingStudent?.studentName} para la fecha de hoy.
+                            Enviar una justificación para {justifyingStudent?.firstName} para la fecha de hoy.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
@@ -592,7 +635,3 @@ export default function TeacherAttendancePage() {
         </>
     );
 }
-
-    
-
-    
