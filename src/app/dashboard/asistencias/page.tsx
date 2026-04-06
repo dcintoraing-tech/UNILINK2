@@ -72,6 +72,16 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
     return [storedValue, setValue] as const;
 };
 
+// --- UTILITY FUNCTIONS ---
+function cosineSimilarity(vecA: number[], vecB: number[]): number {
+    if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+    const dotProduct = vecA.map((val, i) => val * vecB[i]).reduce((acc, val) => acc + val, 0);
+    const normA = Math.sqrt(vecA.reduce((acc, val) => acc + val * val, 0));
+    const normB = Math.sqrt(vecB.reduce((acc, val) => acc + val * val, 0));
+    if (normA === 0 || normB === 0) return 0;
+    return dotProduct / (normA * normB);
+}
+
 // --- INTERFACES ---
 interface Student {
     id: string;
@@ -181,112 +191,125 @@ export default function TeacherAttendancePage() {
         }
     }, []);
 
-    const handleRecognition = useCallback(() => {
-        // Ensure all necessary data is available
+     const handleRecognition = useCallback(() => {
         if (!videoRef.current || studentsInGroup.length === 0 || horarios.length === 0) return;
 
-        // Get IDs of students already marked in this session
-        const markedStudentIds = new Set(sessionRecords.map(r => r.studentId));
-
-        // Find the next student in the group who has an embedding and has not been marked yet
+        // 1. Find the next student to "recognize" who hasn't been marked yet in this session.
         const studentToRecognize = studentsInGroup.find(
-            s => s.embedding && !markedStudentIds.has(s.id)
+            s => s.embedding && !sessionRecords.some(r => r.studentId === s.id)
         );
 
-        // If no student is found, it means everyone is marked. Stop.
+        // If all students in the group have been processed for this session, stop.
         if (!studentToRecognize) {
-            // Optional: could stop the interval here if all students are recognized.
             return;
         }
 
-        // --- Start of attendance logic for the recognized student ---
-        const student = studentToRecognize;
-        const now = new Date();
-        const dateString = now.toISOString().split('T')[0];
-
-        if (sessionRecords.some(r => r.studentId === student.id)) {
-            return; // Safety check, should not happen with the new logic
-        }
+        // 2. This student's embedding becomes our simulated "live" embedding from the camera.
+        const simulatedLiveEmbedding = studentToRecognize.embedding;
+        if (!simulatedLiveEmbedding) return;
         
-        const dayIndex = now.getDay();
-        if (dayIndex === 0 || dayIndex === 6) return; // No classes on weekends
-
-        const studentSchedule = horarios.find(h => h.grupoId === student.assignedGroupId);
-        const todaySchedule = studentSchedule?.schedule?.[dayIndex - 1];
-        
-        if (!todaySchedule) return; // No schedule for today for this student's group
-
-        for (const blockIndexStr in todaySchedule) {
-            const blockIndex = parseInt(blockIndexStr);
-            const block = todaySchedule[blockIndex];
-            
-            if (!block) continue;
-
-            const horaInicio = HORAS_BLOQUE_INICIO[blockIndex];
-            if (!horaInicio) continue;
-
-            const [hours, minutes] = horaInicio.split(':').map(Number);
-            const startTime = new Date(now);
-            startTime.setHours(hours, minutes, 0, 0);
-
-            const toleranceTime = new Date(startTime);
-            toleranceTime.setMinutes(startTime.getMinutes() + config.toleranceMinutes);
-
-            const absenceLimitTime = new Date(startTime);
-            absenceLimitTime.setMinutes(startTime.getMinutes() + config.absenceLimitMinutes);
-            
-            // Check if current time is within a valid check-in window for any block
-            if (now >= startTime && now <= absenceLimitTime) {
-                const status = now <= toleranceTime ? 'Presente' : 'Retardo';
-                const subjectName = materias.find(m => m.id === block.materiaId)?.materia || 'Materia Desconocida';
-                
-                const recordId = `att-${student.id}-${dateString}-${block.materiaId}`;
-
-                // Check global attendance records to prevent duplicates across sessions
-                if (attendance.some(rec => rec.id === recordId)) {
-                    if (!sessionRecords.some(r => r.studentId === student.id)) {
-                         const existingRecord = attendance.find(rec => rec.id === recordId)!;
-                         setSessionRecords(prev => [...prev, {
-                             ...existingRecord,
-                             arrivalTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                             studentName: `${student.firstName} ${student.lastName}`,
-                             facialImage: student.facialImage,
-                             subjectName: subjectName
-                         }]);
-                    }
-                    return; // Stop processing for this student
+        // 3. SIMULATE comparing the "live" embedding against all students in the group.
+        let bestMatch: { student: Student | null; similarity: number } = { student: null, similarity: 0 };
+        for (const studentInLoop of studentsInGroup) {
+            if (studentInLoop.embedding) {
+                const similarity = cosineSimilarity(simulatedLiveEmbedding, studentInLoop.embedding);
+                if (similarity > bestMatch.similarity) {
+                    bestMatch = { student: studentInLoop, similarity };
                 }
-
-                const newRecord: AttendanceRecord = {
-                    id: recordId,
-                    studentId: student.id,
-                    date: dateString,
-                    materiaAsignacionId: block.materiaId,
-                    status: status,
-                    // Display-only fields
-                    arrivalTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                    studentName: `${student.firstName} ${student.lastName}`,
-                    facialImage: student.facialImage,
-                    subjectName: subjectName
-                };
-                
-                setSessionRecords(prev => [...prev, newRecord]);
-                setAttendance(prev => [...prev, {
-                    id: newRecord.id,
-                    studentId: newRecord.studentId,
-                    date: newRecord.date,
-                    materiaAsignacionId: newRecord.materiaAsignacionId,
-                    status: newRecord.status
-                }]);
-
-                toast({
-                    title: `Asistencia Registrada (${status})`,
-                    description: `${newRecord.studentName} ha sido marcado para ${subjectName}.`,
-                });
-                break; // Stop after first valid check-in for this student
             }
         }
-        // --- End of attendance logic ---
+
+        // 4. Check if the best match meets the confidence threshold.
+        const SIMILARITY_THRESHOLD = 0.95; // High threshold since we know a perfect match exists in this simulation.
+        
+        if (bestMatch.student && bestMatch.similarity >= SIMILARITY_THRESHOLD) {
+            const student = bestMatch.student;
+            
+            // This check is redundant due to the find method above, but it's a good safeguard.
+            if (sessionRecords.some(r => r.studentId === student.id)) {
+                return;
+            }
+
+            // --- Proceed with attendance logic for the matched student ---
+            const now = new Date();
+            const dateString = now.toISOString().split('T')[0];
+
+            const dayIndex = now.getDay();
+            if (dayIndex === 0 || dayIndex === 6) return;
+
+            const studentSchedule = horarios.find(h => h.grupoId === student.assignedGroupId);
+            const todaySchedule = studentSchedule?.schedule?.[dayIndex - 1];
+            
+            if (!todaySchedule) return;
+
+            for (const blockIndexStr in todaySchedule) {
+                const blockIndex = parseInt(blockIndexStr);
+                const block = todaySchedule[blockIndex];
+                
+                if (!block) continue;
+
+                const horaInicio = HORAS_BLOQUE_INICIO[blockIndex];
+                if (!horaInicio) continue;
+
+                const [hours, minutes] = horaInicio.split(':').map(Number);
+                const startTime = new Date(now);
+                startTime.setHours(hours, minutes, 0, 0);
+
+                const toleranceTime = new Date(startTime);
+                toleranceTime.setMinutes(startTime.getMinutes() + config.toleranceMinutes);
+
+                const absenceLimitTime = new Date(startTime);
+                absenceLimitTime.setMinutes(startTime.getMinutes() + config.absenceLimitMinutes);
+                
+                if (now >= startTime && now <= absenceLimitTime) {
+                    const status = now <= toleranceTime ? 'Presente' : 'Retardo';
+                    const subjectName = materias.find(m => m.id === block.materiaId)?.materia || 'Materia Desconocida';
+                    
+                    const recordId = `att-${student.id}-${dateString}-${block.materiaId}`;
+
+                    if (attendance.some(rec => rec.id === recordId)) {
+                        if (!sessionRecords.some(r => r.studentId === student.id)) {
+                             const existingRecord = attendance.find(rec => rec.id === recordId)!;
+                             setSessionRecords(prev => [...prev, {
+                                 ...existingRecord,
+                                 arrivalTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                                 studentName: `${student.firstName} ${student.lastName}`,
+                                 facialImage: student.facialImage,
+                                 subjectName: subjectName
+                             }]);
+                        }
+                        return;
+                    }
+
+                    const newRecord: AttendanceRecord = {
+                        id: recordId,
+                        studentId: student.id,
+                        date: dateString,
+                        materiaAsignacionId: block.materiaId,
+                        status: status,
+                        arrivalTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                        studentName: `${student.firstName} ${student.lastName}`,
+                        facialImage: student.facialImage,
+                        subjectName: subjectName
+                    };
+                    
+                    setSessionRecords(prev => [...prev, newRecord]);
+                    setAttendance(prev => [...prev, {
+                        id: newRecord.id,
+                        studentId: newRecord.studentId,
+                        date: newRecord.date,
+                        materiaAsignacionId: newRecord.materiaAsignacionId,
+                        status: newRecord.status
+                    }]);
+
+                    toast({
+                        title: `Asistencia Registrada (${status})`,
+                        description: `${newRecord.studentName} ha sido marcado para ${subjectName}.`,
+                    });
+                    break; 
+                }
+            }
+        }
     }, [studentsInGroup, horarios, config, sessionRecords, attendance, setAttendance, toast, materias]);
     
     // Camera start/stop effect
@@ -331,17 +354,14 @@ export default function TeacherAttendancePage() {
     useEffect(() => {
         if (!isTakingAttendance || hasCameraPermission !== true) return;
 
-        // Interval to simulate recognizing one student every 2 seconds
         const recognitionInterval = setInterval(() => {
             handleRecognition();
         }, 2000);
         
-        // Interval for the scanning progress bar animation
         const progressInterval = setInterval(() => {
             setScanProgress(prev => (prev >= 100 ? 0 : prev + 5));
         }, 100);
 
-        // Cleanup on component unmount or when attendance stops
         return () => { 
             clearInterval(recognitionInterval); 
             clearInterval(progressInterval); 
@@ -483,7 +503,7 @@ export default function TeacherAttendancePage() {
                         <Card>
                              <CardHeader>
                                 <CardTitle>Registros de Asistencia para {grupos.find(g => g.id === selectedGroup)?.name}</CardTitle>
-                                <CardDescription>Estudiantes identificados en esta sesión.</CardDescription>
+                                <CardDescription>Estudiantes identificados en esta sesión de clase.</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <Table>
@@ -572,5 +592,7 @@ export default function TeacherAttendancePage() {
         </>
     );
 }
+
+    
 
     
