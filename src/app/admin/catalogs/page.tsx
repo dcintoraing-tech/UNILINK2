@@ -9,6 +9,7 @@ import {
     CardHeader,
     CardTitle,
     CardDescription,
+    CardFooter,
 } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -150,7 +151,7 @@ function CatalogContent({ title, items, setItems, onAdd, onEdit, onDelete }: { t
             </CardHeader>
             <CardContent>
                 <Table>
-                    <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead className="text-right"><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
                     <TableBody>
                         {items.map((item) => (
                             <TableRow key={item.id}>
@@ -255,7 +256,45 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
                 </Button>
             </CardHeader>
             <CardContent>
-                <Table>
+                {/* Mobile View */}
+                <div className="grid gap-4 md:hidden">
+                    {grupos.map((item) => (
+                        <Card key={item.id}>
+                            <CardHeader className="flex flex-row items-start justify-between pb-2">
+                                <div>
+                                    <CardTitle className="text-base font-semibold">{item.name}</CardTitle>
+                                    <CardDescription>{getCarreraName(item.carreraId)}</CardDescription>
+                                </div>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="h-8 w-8 -mt-2 -mr-2"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                    <DropdownMenuContent>
+                                        <DropdownMenuItem onSelect={() => handleOpenDialog(item)}>Editar</DropdownMenuItem>
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription></AlertDialogHeader>
+                                                <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(item.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction></AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </CardHeader>
+                            <CardContent>
+                                <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                                    <dt className="text-muted-foreground">Cuatrimestre</dt>
+                                    <dd>{item.cuatrimestre === "NONE" ? "N/A" : item.cuatrimestre}</dd>
+                                    <dt className="text-muted-foreground">Semestre</dt>
+                                    <dd>{item.semestre === "NONE" ? "N/A" : item.semestre}</dd>
+                                    <dt className="text-muted-foreground">Turno</dt>
+                                    <dd>{item.turno}</dd>
+                                </dl>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+
+                {/* Desktop View */}
+                <Table className="hidden md:table">
                     <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Carrera</TableHead><TableHead>Cuatrimestre</TableHead><TableHead>Semestre</TableHead><TableHead>Turno</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
                     <TableBody>
                         {grupos.map((item) => (
@@ -445,14 +484,50 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
                 </div>
             </CardHeader>
             <CardContent>
-                <Table>
+                {/* Mobile View */}
+                <div className="grid gap-4 md:hidden">
+                    {filteredAsignaciones.map((a) => (
+                        <Card key={a.id}>
+                            <CardHeader className="flex flex-row items-start justify-between pb-2">
+                                <div>
+                                    <CardTitle className="text-base font-semibold">{a.materia}</CardTitle>
+                                    <CardDescription>{getCarreraName(a.carreraId)}</CardDescription>
+                                </div>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="h-8 w-8 -mt-2 -mr-2"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                    <DropdownMenuContent>
+                                        <DropdownMenuItem onClick={() => openDialog(a)}>Editar</DropdownMenuItem>
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild><DropdownMenuItem onSelect={e => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription></AlertDialogHeader>
+                                                <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(a.id)} className="bg-destructive text-destructive-foreground">Eliminar</AlertDialogAction></AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </CardHeader>
+                            <CardContent>
+                                <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                                    <dt className="text-muted-foreground">Cuatrimestre</dt>
+                                    <dd>{a.cuatrimestre === 'NONE' ? 'N/A' : a.cuatrimestre}</dd>
+                                    <dt className="text-muted-foreground">Semestre</dt>
+                                    <dd>{a.semestre === 'NONE' ? 'N/A' : a.semestre}</dd>
+                                </dl>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+
+                {/* Desktop View */}
+                <Table className="hidden md:table">
                     <TableHeader>
                         <TableRow>
                             <TableHead>Materia</TableHead>
                             <TableHead>Carrera</TableHead>
                             <TableHead>Cuatrimestre</TableHead>
                             <TableHead>Semestre</TableHead>
-                            <TableHead><span className="sr-only">Acciones</span></TableHead>
+                            <TableHead className="text-right"><span className="sr-only">Acciones</span></TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -581,18 +656,18 @@ function ScheduleWizard({
         return (currentStep / totalSteps) * 100;
     }, [currentDay, currentBlock]);
 
-    const isBlockOccupied = useMemo(() => {
-      for (let i = 1; i <= currentBlock; i++) {
-        const prevIndex = currentBlock - i;
-        if (prevIndex < 0) continue;
-
-        const prevBlock = workingSchedule[currentDay]?.[prevIndex];
-        if (prevBlock && (prevBlock.duracion || 1) > i) {
-          return true;
+    const isBlockOccupied = (() => {
+        for (let i = 1; i <= currentBlock; i++) {
+          const prevIndex = currentBlock - i;
+          if (prevIndex < 0) continue;
+      
+          const prevBlock = workingSchedule[currentDay]?.[prevIndex];
+          if (prevBlock && (prevBlock.duracion || 1) > i) {
+            return true;
+          }
         }
-      }
-      return false;
-    }, [workingSchedule, currentDay, currentBlock]);
+        return false;
+    })();
 
     const handleScheduleChange = (field: 'materiaId' | 'docenteId' | 'duracion', value: string | number | null) => {
         setWorkingSchedule(prev => {
@@ -919,7 +994,54 @@ function HorariosContent({
                                 </DropdownMenu>
                             </CardHeader>
                             <CardContent>
-                                <Table className="border table-fixed w-full">
+                                {/* Mobile View */}
+                                <div className="md:hidden space-y-4">
+                                    {DIAS_SEMANA.map((dia, dayIndex) => {
+                                        const daySchedule = horario.schedule[dayIndex];
+                                        if (!daySchedule || Object.keys(daySchedule).length === 0) return null;
+
+                                        const blockIndices = Object.keys(daySchedule).map(Number).sort((a, b) => a - b);
+                                        const visibleBlocks = [];
+                                        let coveredUntil = -1;
+                                        for (const blockIndex of blockIndices) {
+                                            if (blockIndex > coveredUntil) {
+                                                const block = daySchedule[blockIndex];
+                                                if (block) {
+                                                    visibleBlocks.push({ blockIndex, block });
+                                                    coveredUntil = blockIndex + (block.duracion || 1) - 1;
+                                                }
+                                            }
+                                        }
+
+                                        if (visibleBlocks.length === 0) return null;
+
+                                        return (
+                                            <div key={dia}>
+                                                <h4 className="font-semibold text-sm mb-2 border-b pb-1">{dia}</h4>
+                                                <div className="space-y-2">
+                                                    {visibleBlocks.map(({ blockIndex, block }) => {
+                                                        const materia = materias.find(m => m.id === block.materiaId);
+                                                        const docente = users.find(u => u.id === block.docenteId);
+                                                        const horaInicio = HORAS_BLOQUE[blockIndex];
+                                                        const duracion = block.duracion || 1;
+                                                        return (
+                                                            <div key={blockIndex} className="p-2 rounded-md bg-muted/50 text-sm">
+                                                                <p className="font-bold">{materia?.materia || 'Materia no encontrada'}</p>
+                                                                <p className="text-xs text-muted-foreground">{docente?.name || 'Docente no encontrado'}</p>
+                                                                <p className="text-xs text-muted-foreground mt-1">
+                                                                    {horaInicio} ({duracion}h)
+                                                                </p>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Desktop View */}
+                                <Table className="hidden md:table border table-fixed w-full">
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead className="w-[12%]">Hora</TableHead>
@@ -941,7 +1063,12 @@ function HorariosContent({
                 })}
             </CardContent>
              <Dialog open={isWizardOpen} onOpenChange={(open) => { if (!open) { setIsWizardOpen(false); setEditingHorario(null); } }}>
-                <DialogContent className="sm:max-w-2xl flex flex-col">
+                <DialogContent className="sm:max-w-2xl" onInteractOutside={(e) => {
+                    const target = e.target as HTMLElement;
+                    if (target.closest('[data-radix-popper-content-wrapper]')) {
+                        e.preventDefault();
+                    }
+                }}>
                      <ScheduleWizard
                         grupos={grupoOptions}
                         materias={materiaOptions}
@@ -965,7 +1092,7 @@ export default function CatalogsPage() {
 
     return (
         <Tabs defaultValue="carreras" className="w-full">
-            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4">
+            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-4 h-auto md:h-10">
                 <TabsTrigger value="carreras">Carreras</TabsTrigger>
                 <TabsTrigger value="grupos">Grupos</TabsTrigger>
                 <TabsTrigger value="materias">Materias</TabsTrigger>
