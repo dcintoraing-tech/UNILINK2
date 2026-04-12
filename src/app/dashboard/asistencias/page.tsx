@@ -104,7 +104,7 @@ interface HorarioBlock {
 type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
 type ScheduleData = { [dayIndex: number]: DaySchedule };
 interface Horario {
-    id: string;
+    id: string; // Same as grupoId
     grupoId: string;
     schedule: ScheduleData;
 }
@@ -207,9 +207,9 @@ export default function TeacherAttendancePage() {
         const unmarkedStudents = groupStudentList.filter(s => s.embedding && !markedStudentIds.has(s.id));
 
         if (unmarkedStudents.length === 0) {
-            if(isTakingAttendance) {
-                 setIsTakingAttendance(false);
-                 toast({ title: "Pase de lista completo", description: "Todos los estudiantes del grupo han sido procesados." });
+            if (isTakingAttendance) {
+                setIsTakingAttendance(false);
+                toast({ title: "Pase de lista completo", description: "Todos los estudiantes del grupo han sido procesados." });
             }
             return;
         }
@@ -235,6 +235,10 @@ export default function TeacherAttendancePage() {
         if (bestMatch.student && bestMatch.similarity >= SIMILARITY_THRESHOLD) {
             const matchedStudent = bestMatch.student;
             
+            if (groupStudentList.find(s => s.id === matchedStudent.id)?.status !== 'Pendiente') {
+                return;
+            }
+
             const now = new Date();
             const dateString = now.toISOString().split('T')[0];
             const dayIndex = now.getDay();
@@ -245,61 +249,55 @@ export default function TeacherAttendancePage() {
             
             if (!todaySchedule) return;
 
-            for (const blockIndexStr in todaySchedule) {
-                const blockIndex = parseInt(blockIndexStr);
-                const block = todaySchedule[blockIndex];
-                if (!block) continue;
+            const firstBlockKey = Object.keys(todaySchedule).sort((a,b) => Number(a) - Number(b))[0];
+            if (!firstBlockKey) return;
 
-                const horaInicio = HORAS_BLOQUE_INICIO[blockIndex];
-                if (!horaInicio) continue;
-
-                const [hours, minutes] = horaInicio.split(':').map(Number);
-                const startTime = new Date(now);
-                startTime.setHours(hours, minutes, 0, 0);
-
-                const toleranceTime = new Date(startTime);
-                toleranceTime.setMinutes(startTime.getMinutes() + config.toleranceMinutes);
-
-                const absenceLimitTime = new Date(startTime);
-                absenceLimitTime.setMinutes(startTime.getMinutes() + config.absenceLimitMinutes);
-                
-                if (now >= startTime && now <= absenceLimitTime) {
-                    const status: AttendanceStatus = now <= toleranceTime ? 'Presente' : 'Retardo';
-                    const subjectName = materias.find(m => m.id === block.materiaId)?.materia || 'Materia Desconocida';
-                    const arrivalTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                    
-                    const recordId = `att-${matchedStudent.id}-${dateString}-${block.materiaId}`;
-
-                    setGroupStudentList(prevList => 
-                        prevList.map(s => 
-                            s.id === matchedStudent.id 
-                                ? { ...s, status, arrivalTime, subjectName } 
-                                : s
-                        )
-                    );
-
-                    setAttendance(prevAtt => {
-                        const recordExists = prevAtt.some(rec => rec.id === recordId);
-                        if (recordExists) return prevAtt;
-                        return [...prevAtt, {
-                            id: recordId,
-                            studentId: matchedStudent.id,
-                            date: dateString,
-                            materiaAsignacionId: block.materiaId,
-                            status: status,
-                            arrivalTime: arrivalTime
-                        }];
-                    });
-
-                    toast({
-                        title: `Asistencia Registrada (${status})`,
-                        description: `${matchedStudent.firstName} ${matchedStudent.lastName} marcado para ${subjectName}.`,
-                    });
-                    break; 
-                }
+            const blockIndex = parseInt(firstBlockKey);
+            const block = todaySchedule[blockIndex];
+            if (!block) return;
+            
+            const recordId = `att-${matchedStudent.id}-${dateString}-${block.materiaId}`;
+            if (attendance.some(a => a.id === recordId)) {
+                return;
             }
+
+            const horaInicio = HORAS_BLOQUE_INICIO[blockIndex];
+            if (!horaInicio) return;
+
+            const [hours, minutes] = horaInicio.split(':').map(Number);
+            const startTime = new Date(now);
+            startTime.setHours(hours, minutes, 0, 0);
+
+            const toleranceTime = new Date(startTime);
+            toleranceTime.setMinutes(startTime.getMinutes() + config.toleranceMinutes);
+
+            const status: AttendanceStatus = now <= toleranceTime ? 'Presente' : 'Retardo';
+            const subjectName = materias.find(m => m.id === block.materiaId)?.materia || 'Materia Desconocida';
+            const arrivalTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            setGroupStudentList(prevList => 
+                prevList.map(s => 
+                    s.id === matchedStudent.id 
+                        ? { ...s, status, arrivalTime, subjectName } 
+                        : s
+                )
+            );
+
+            setAttendance(prevAtt => [...prevAtt, {
+                id: recordId,
+                studentId: matchedStudent.id,
+                date: dateString,
+                materiaAsignacionId: block.materiaId,
+                status: status,
+                arrivalTime: arrivalTime
+            }]);
+
+            toast({
+                title: `Asistencia Registrada (${status})`,
+                description: `${matchedStudent.firstName} ${matchedStudent.lastName} para ${subjectName}.`,
+            });
         }
-    }, [groupStudentList, selectedGroup, horarios, config, setAttendance, toast, materias, isTakingAttendance]);
+    }, [groupStudentList, selectedGroup, horarios, config, setAttendance, toast, materias, isTakingAttendance, attendance]);
     
     // Camera start/stop effect
     useEffect(() => {
