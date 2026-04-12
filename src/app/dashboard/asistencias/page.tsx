@@ -168,9 +168,10 @@ export default function TeacherAttendancePage() {
     // Load face-api.js models
     useEffect(() => {
         const loadModels = async () => {
-             // 1. Secure context check
+            if (typeof window === 'undefined') return;
+
             if (window.location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
-                 const errorMsg = 'El acceso a la cámara no está disponible. Por favor, usa una conexión segura (HTTPS) o localhost.';
+                const errorMsg = 'El acceso a la cámara no está disponible. Por favor, usa una conexión segura (HTTPS) o localhost.';
                 setModelError(errorMsg);
                 toast({
                     variant: 'destructive',
@@ -183,7 +184,9 @@ export default function TeacherAttendancePage() {
 
             const MODEL_URL = '/models';
             try {
-                // This implicitly checks for manifest and shard files. A failure here would be a network error (404) or parsing error.
+                await faceapi.tf.setBackend('webgl');
+                await faceapi.tf.ready();
+                
                 await Promise.all([
                     faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
                     faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
@@ -192,10 +195,7 @@ export default function TeacherAttendancePage() {
                 setModelsLoaded(true);
             } catch (error) {
                 console.error("Error detallado al cargar los modelos de face-api:", error);
-                let userFriendlyMessage = 'No se pudieron cargar los modelos de reconocimiento facial. Revisa la consola para más detalles.';
-                if (error instanceof Error && (error.message.includes('404') || error.message.includes('failed to fetch'))) {
-                    userFriendlyMessage = `No se encontraron los archivos del modelo en la ruta '${MODEL_URL}'. Asegúrate de que la carpeta 'public/models' existe y contiene los archivos correctos.`;
-                }
+                const userFriendlyMessage = "No se pudieron cargar los modelos de IA. Esto suele ocurrir si los archivos en la carpeta `public/models` no son accesibles o están corruptos. Por favor, verifica la consola del navegador para ver el error específico.";
                 setModelError(userFriendlyMessage);
                 toast({
                     variant: 'destructive',
