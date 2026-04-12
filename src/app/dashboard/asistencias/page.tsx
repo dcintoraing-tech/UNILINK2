@@ -171,7 +171,7 @@ export default function TeacherAttendancePage() {
             if (typeof window === 'undefined') return;
 
             if (window.location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
-                const errorMsg = 'El acceso a la cámara no está disponible. Por favor, usa una conexión segura (HTTPS) o localhost.';
+                const errorMsg = 'El acceso a la cámara y los modelos de IA no están disponibles en un entorno no seguro. Por favor, usa una conexión HTTPS.';
                 setModelError(errorMsg);
                 toast({
                     variant: 'destructive',
@@ -182,29 +182,32 @@ export default function TeacherAttendancePage() {
                 return;
             }
 
-            const MODEL_URL = '/models';
+            const MODEL_URL = window.location.origin + '/models';
+            console.log("URL de modelos construida:", MODEL_URL);
+
             try {
-                console.log("Cargando modelos desde:", MODEL_URL);
+                console.log("Iniciando carga de modelos desde:", MODEL_URL);
 
                 await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-                console.log("tiny ok");
+                console.log("tinyFaceDetector cargado correctamente.");
 
                 await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-                console.log("landmark ok");
+                console.log("faceLandmark68Net cargado correctamente.");
 
                 await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-                console.log("recognition ok");
+                console.log("faceRecognitionNet cargado correctamente.");
                 
-                console.log("Modelos cargados correctamente ✅");
+                console.log("¡Todos los modelos de IA se cargaron exitosamente! ✅");
                 setModelsLoaded(true);
+                setModelError(null);
 
             } catch (error) {
-                console.error("ERROR REAL DE MODELOS:", error);
-                const userFriendlyMessage = "No se pudieron cargar los modelos de IA. Revisa la carpeta /public/models y la consola para más detalles.";
+                console.error("ERROR REAL AL CARGAR MODELOS:", error);
+                const userFriendlyMessage = "No se pudieron cargar los modelos de IA. Esto suele ocurrir si la ruta es incorrecta o los archivos están corruptos. Verifica la consola para el error específico.";
                 setModelError(userFriendlyMessage);
                 toast({
                     variant: 'destructive',
-                    title: 'Error de Modelos de IA',
+                    title: 'Error de Carga de Modelos de IA',
                     description: userFriendlyMessage,
                     duration: 10000,
                 });
@@ -581,7 +584,7 @@ export default function TeacherAttendancePage() {
                                             {modelError ? (
                                                 <>
                                                     <XCircle className="w-16 h-16 mb-4 text-destructive" />
-                                                    <p className="text-lg font-medium">Error al cargar modelos</p>
+                                                    <p className="text-lg font-medium">Error al cargar modelos de IA</p>
                                                     <p className="text-sm max-w-md">{modelError}</p>
                                                 </>
                                             ) : !modelsLoaded ? (
