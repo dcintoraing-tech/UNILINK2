@@ -151,8 +151,8 @@ export default function UsersPage() {
       }
     }
 
-    if (userData.role === 'Jefe de carrera' && !userData.carreraId) {
-        toast({ variant: "destructive", title: "Campo requerido", description: "Debe seleccionar una carrera para el Jefe de Carrera." });
+    if ((userData.role === 'Jefe de carrera' || userData.role === 'Docente') && !userData.carreraId) {
+        toast({ variant: "destructive", title: "Campo requerido", description: "Debe seleccionar una carrera para el Jefe de Carrera o Docente." });
         return;
     }
 
@@ -173,7 +173,7 @@ export default function UsersPage() {
                     name: userData.name,
                     email: userData.email,
                     role: userData.role,
-                    carreraId: userData.role === 'Jefe de carrera' ? userData.carreraId : undefined,
+                    carreraId: (userData.role === 'Jefe de carrera' || userData.role === 'Docente') ? userData.carreraId : undefined,
                     status: userData.status,
                 };
                 if (userData.password) {
@@ -198,7 +198,7 @@ export default function UsersPage() {
             email: userData.email,
             password: userData.password,
             role: userData.role,
-            carreraId: userData.role === 'Jefe de carrera' ? userData.carreraId : undefined,
+            carreraId: (userData.role === 'Jefe de carrera' || userData.role === 'Docente') ? userData.carreraId : undefined,
             status: 'Activo',
             createdAt: new Date().toISOString(),
         };
@@ -385,7 +385,7 @@ export default function UsersPage() {
                       </TableCell>
                       <TableCell>
                         {user.role}
-                        {user.role === 'Jefe de carrera' && user.carreraId && (
+                        {(user.role === 'Jefe de carrera' || user.role === 'Docente') && user.carreraId && (
                             <div className="text-xs text-muted-foreground">({getCarreraName(user.carreraId)})</div>
                         )}
                       </TableCell>
@@ -473,7 +473,7 @@ export default function UsersPage() {
                       </Select>
                     </div>
 
-                    {selectedFormRole === 'Jefe de carrera' && (
+                    {(selectedFormRole === 'Jefe de carrera' || selectedFormRole === 'Docente') && (
                         <div className="grid gap-2">
                             <Label htmlFor="carreraId">Carrera / Área Académica</Label>
                             <Select name="carreraId" defaultValue={editingUser?.carreraId} required>

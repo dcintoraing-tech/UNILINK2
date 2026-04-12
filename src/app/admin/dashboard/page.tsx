@@ -73,7 +73,6 @@ const AdminDashboard = () => (
 const JefeCarreraDashboard = () => {
     const [carreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
     const [grupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
-    const [horarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
     const [users] = useLocalStorage<User[]>('unilink-users', []);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
 
@@ -93,28 +92,11 @@ const JefeCarreraDashboard = () => {
         if (!assignedCarrera) return { groups: [], teachers: [] };
 
         const careerGroups = grupos.filter(g => g.carreraId === assignedCarrera.id);
-        const careerGroupIds = new Set(careerGroups.map(g => g.id));
-
-        const careerHorarios = horarios.filter(h => h.grupoId && careerGroupIds.has(h.grupoId));
-        
-        const teacherIds = new Set<string>();
-        careerHorarios.forEach(horario => {
-            if (!horario.schedule) return;
-            Object.values(horario.schedule).forEach(day => {
-                if (!day) return;
-                Object.values(day).forEach(block => {
-                    if (block && block.docenteId) {
-                        teacherIds.add(block.docenteId);
-                    }
-                });
-            });
-        });
-
-        const careerTeachers = users.filter(u => u.role === 'Docente' && teacherIds.has(u.id));
+        const careerTeachers = users.filter(u => u.role === 'Docente' && u.carreraId === assignedCarrera.id);
         
         return { groups: careerGroups, teachers: careerTeachers };
 
-    }, [assignedCarrera, grupos, horarios, users]);
+    }, [assignedCarrera, grupos, users]);
 
     if (!assignedCarrera) {
         return (
