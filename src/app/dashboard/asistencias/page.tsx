@@ -189,21 +189,36 @@ export default function TeacherAttendancePage() {
     
     // Create FaceMatcher when group changes
     const faceMatcher = useMemo(() => {
-        if (!selectedGroup || allStudents.length === 0) return null;
+        if (!selectedGroup || allStudents.length === 0 || !modelsLoaded) return null;
 
-        const studentsInGroup = allStudents.filter(s => s.assignedGroupId === selectedGroup && s.embedding);
+        const studentsInGroup = allStudents.filter(s => s.assignedGroupId === selectedGroup && s.embedding && s.embedding.length > 0);
         
-        if (studentsInGroup.length === 0) return null;
+        if (studentsInGroup.length === 0) {
+            console.log("No students with embeddings in this group.");
+            return null;
+        }
 
-        const labeledFaceDescriptors = studentsInGroup.map(student =>
-            new faceapi.LabeledFaceDescriptor(
-                student.id,
-                [Float32Array.from(student.embedding!)]
-            )
-        );
-        
-        return new faceapi.FaceMatcher(labeledFaceDescriptors, 0.6); // Threshold set to 0.6
-    }, [selectedGroup, allStudents]);
+        try {
+            const labeledFaceDescriptors = studentsInGroup.map(student =>
+                new faceapi.LabeledFaceDescriptors(
+                    student.id,
+                    [Float32Array.from(student.embedding!)]
+                )
+            );
+            
+            if (labeledFaceDescriptors.length === 0) return null;
+
+            return new faceapi.FaceMatcher(labeledFaceDescriptors, 0.6); // Threshold set to 0.6
+        } catch (error) {
+            console.error("Error creating FaceMatcher:", error);
+            toast({
+                variant: 'destructive',
+                title: 'Error de IA',
+                description: 'No se pudo crear el comparador de rostros.',
+            });
+            return null;
+        }
+    }, [selectedGroup, allStudents, modelsLoaded, toast]);
 
     useEffect(() => {
         if (selectedGroup) {
@@ -308,7 +323,7 @@ export default function TeacherAttendancePage() {
                 if (videoRef.current && canvasRef.current && !videoRef.current.paused && videoRef.current.readyState >= 3) {
                     setIsDetecting(true);
                     const video = videoRef.current;
-                    const canvas = canvas.current;
+                    const canvas = canvasRef.current;
                     const displaySize = { width: video.videoWidth, height: video.videoHeight };
                     faceapi.matchDimensions(canvas, displaySize);
 
