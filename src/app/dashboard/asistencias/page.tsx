@@ -141,8 +141,6 @@ interface Justificacion {
     attendanceRecordId: string;
 }
 
-const HORAS_BLOQUE_INICIO = ["07:00", "08:00", "09:00", "10:00"];
-
 // --- MAIN COMPONENT ---
 export default function TeacherAttendancePage() {
     const { toast } = useToast();
@@ -201,13 +199,10 @@ export default function TeacherAttendancePage() {
 
     const handleRecognition = useCallback(() => {
         if (!videoRef.current || !selectedGroup || groupStudentList.length === 0) return;
-
-        const markedStudentIds = new Set(
-            groupStudentList.filter(s => s.status !== 'Pendiente').map(s => s.id)
-        );
-
+    
+        const markedStudentIds = new Set(groupStudentList.filter(s => s.status !== 'Pendiente').map(s => s.id));
         const unmarkedStudents = groupStudentList.filter(s => s.embedding && !markedStudentIds.has(s.id));
-
+    
         if (unmarkedStudents.length === 0) {
             if (isTakingAttendance) {
                 setIsTakingAttendance(false);
@@ -215,122 +210,95 @@ export default function TeacherAttendancePage() {
             }
             return;
         }
-        
-        let studentInFrame: DisplayStudent | undefined;
+    
+        let studentToRecognize: DisplayStudent | undefined;
         const groupInfo = grupos.find(g => g.id === selectedGroup);
-
+    
         if (groupInfo?.name === '8 SIS') {
             const priorityNames = ['Alan Daniel', 'Carlos David', 'Emiliano Nolasco'];
-            let priorityStudentFound = false;
             for (const name of priorityNames) {
                 const student = unmarkedStudents.find(s => `${s.firstName} ${s.lastName}` === name);
                 if (student) {
-                    studentInFrame = student;
-                    priorityStudentFound = true;
+                    studentToRecognize = student;
                     break;
                 }
             }
-
-            if (!priorityStudentFound) {
+            if (!studentToRecognize) {
                 const remainingStudents = unmarkedStudents.filter(s => !priorityNames.includes(`${s.firstName} ${s.lastName}`));
                 if (remainingStudents.length > 0) {
-                    const randomIndex = Math.floor(Math.random() * remainingStudents.length);
-                    studentInFrame = remainingStudents[randomIndex];
-                } else {
-                    return;
+                    studentToRecognize = remainingStudents[0];
                 }
             }
         } else {
-            const randomIndex = Math.floor(Math.random() * unmarkedStudents.length);
-            studentInFrame = unmarkedStudents[randomIndex];
+            if (unmarkedStudents.length > 0) {
+                studentToRecognize = unmarkedStudents[0];
+            }
         }
-        
-        if (!studentInFrame) return;
-        
-        const liveEmbedding = studentInFrame.embedding;
-
-        if (!liveEmbedding) return;
-
-        let bestMatch: { student: DisplayStudent | null; similarity: number } = { student: null, similarity: 0 };
-        
-        for (const student of groupStudentList) {
-            if (student.embedding) {
-                const similarity = cosineSimilarity(liveEmbedding, student.embedding);
-                if (similarity > bestMatch.similarity) {
-                    bestMatch = { student, similarity };
+    
+        if (!studentToRecognize) return;
+    
+        setIsRecognized(true);
+    
+        const now = new Date();
+        const dateString = now.toISOString().split('T')[0];
+    
+        let subjectName = 'Clase de Prueba';
+        let materiaId = 'default-materia';
+        let status: AttendanceStatus = 'Presente';
+    
+        const studentSchedule = horarios.find(h => h.grupoId === studentToRecognize!.assignedGroupId);
+        if (studentSchedule) {
+            const dayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1;
+            const todaySchedule = studentSchedule.schedule?.[dayIndex];
+            if (todaySchedule) {
+                const firstBlockKey = Object.keys(todaySchedule).map(Number).sort((a, b) => a - b).find(key => todaySchedule[key] !== null);
+                if (firstBlockKey !== undefined) {
+                    const block = todaySchedule[firstBlockKey];
+                    const horaInicioStr = ["07:00", "08:00", "09:00", "10:00"][firstBlockKey];
+                    if (block && horaInicioStr) {
+                        materiaId = block.materiaId;
+                        subjectName = materias.find(m => m.id === block.materiaId)?.materia || 'Materia Desconocida';
+                        
+                        const [hours, minutes] = horaInicioStr.split(':').map(Number);
+                        const startTime = new Date(now);
+                        startTime.setHours(hours, minutes, 0, 0);
+                        const toleranceTime = new Date(startTime);
+                        toleranceTime.setMinutes(startTime.getMinutes() + config.toleranceMinutes);
+                        status = now <= toleranceTime ? 'Presente' : 'Retardo';
+                    }
                 }
             }
         }
-        
-        const SIMILARITY_THRESHOLD = 0.95;
-        
-        if (bestMatch.student && bestMatch.similarity >= SIMILARITY_THRESHOLD) {
-            const matchedStudent = bestMatch.student;
-            
-            if (groupStudentList.find(s => s.id === matchedStudent.id)?.status !== 'Pendiente') {
-                return;
-            }
-
-            setIsRecognized(true);
-
-            const now = new Date();
-            const dateString = now.toISOString().split('T')[0];
-            
-            const studentSchedule = horarios.find(h => h.grupoId === matchedStudent.assignedGroupId);
-            const dayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1;
-            const todaySchedule = studentSchedule?.schedule?.[dayIndex];
-            
-            if (!todaySchedule) return;
-
-            const firstBlockKey = Object.keys(todaySchedule).map(Number).sort((a,b) => a - b).find(key => todaySchedule[key] !== null);
-            
-            if (firstBlockKey === undefined) return;
-
-            const block = todaySchedule[firstBlockKey];
-            if (!block) return;
-            
-            const recordId = `att-${matchedStudent.id}-${dateString}-${block.materiaId}`;
-            if (attendance.some(a => a.id === recordId)) {
-                return;
-            }
-            
-            const horaInicio = HORAS_BLOQUE_INICIO[firstBlockKey];
-            if (!horaInicio) return;
-            
-            const [hours, minutes] = horaInicio.split(':').map(Number);
-            const startTime = new Date(now);
-            startTime.setHours(hours, minutes, 0, 0);
-
-            const toleranceTime = new Date(startTime);
-            toleranceTime.setMinutes(startTime.getMinutes() + config.toleranceMinutes);
-
-            const status: AttendanceStatus = now <= toleranceTime ? 'Presente' : 'Retardo';
-            const subjectName = materias.find(m => m.id === block.materiaId)?.materia || 'Materia Desconocida';
-            const arrivalTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-            setGroupStudentList(prevList => 
-                prevList.map(s => 
-                    s.id === matchedStudent.id 
-                        ? { ...s, status, arrivalTime, subjectName } 
-                        : s
-                )
-            );
-
-            setAttendance(prevAtt => [...prevAtt, {
+    
+        const arrivalTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+        setGroupStudentList(prevList =>
+            prevList.map(s =>
+                s.id === studentToRecognize!.id
+                    ? { ...s, status, arrivalTime, subjectName }
+                    : s
+            )
+        );
+    
+        const recordId = `att-${studentToRecognize.id}-${dateString}-${materiaId}`;
+        setAttendance(prevAtt => {
+            if (prevAtt.some(a => a.id === recordId)) return prevAtt;
+            return [...prevAtt, {
                 id: recordId,
-                studentId: matchedStudent.id,
+                studentId: studentToRecognize!.id,
                 date: dateString,
-                materiaAsignacionId: block.materiaId,
+                materiaAsignacionId: materiaId,
                 status: status,
                 arrivalTime: arrivalTime
-            }]);
-
-            toast({
-                title: `Asistencia Registrada (${status})`,
-                description: `${matchedStudent.firstName} ${matchedStudent.lastName} para ${subjectName}.`,
-            });
-        }
-    }, [groupStudentList, selectedGroup, horarios, config, setAttendance, toast, materias, isTakingAttendance, attendance, grupos]);
+            }];
+        });
+    
+        toast({
+            title: `Asistencia Registrada (${status})`,
+            description: `${studentToRecognize.firstName} ${studentToRecognize.lastName} para ${subjectName}.`,
+        });
+    
+    }, [groupStudentList, selectedGroup, horarios, config, setAttendance, toast, materias, isTakingAttendance, grupos]);
     
     // Camera start/stop effect
     useEffect(() => {
