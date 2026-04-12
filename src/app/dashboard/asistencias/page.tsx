@@ -245,28 +245,29 @@ export default function TeacherAttendancePage() {
 
             const now = new Date();
             const dateString = now.toISOString().split('T')[0];
-            const dayIndex = now.getDay(); 
-            if (dayIndex === 0 || dayIndex === 6) return; // No classes on weekends
-
+            
             const studentSchedule = horarios.find(h => h.grupoId === matchedStudent.assignedGroupId);
-            const todaySchedule = studentSchedule?.schedule?.[dayIndex - 1];
+            const dayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1; // Sunday is 0, make it 6
+            const todaySchedule = studentSchedule?.schedule?.[dayIndex];
             
             if (!todaySchedule) return;
 
+            // Find the first class block for the student for the current day
             const firstBlockKey = Object.keys(todaySchedule).map(Number).sort((a,b) => a - b).find(key => todaySchedule[key] !== null);
-            if (firstBlockKey === undefined) return;
+            
+            if (firstBlockKey === undefined) return; // No classes scheduled for today
 
             const block = todaySchedule[firstBlockKey];
             if (!block) return;
             
             const recordId = `att-${matchedStudent.id}-${dateString}-${block.materiaId}`;
             if (attendance.some(a => a.id === recordId)) {
-                return;
+                return; // Already marked for this subject today
             }
-
+            
             const horaInicio = HORAS_BLOQUE_INICIO[firstBlockKey];
             if (!horaInicio) return;
-
+            
             const [hours, minutes] = horaInicio.split(':').map(Number);
             const startTime = new Date(now);
             startTime.setHours(hours, minutes, 0, 0);
@@ -420,11 +421,10 @@ export default function TeacherAttendancePage() {
             
             const now = new Date();
             const dateString = now.toISOString().split('T')[0];
-            const dayIndex = now.getDay();
-            if (dayIndex === 0 || dayIndex === 6) return;
 
             const studentSchedule = horarios.find(h => h.grupoId === selectedGroup);
-            const todaySchedule = studentSchedule?.schedule?.[dayIndex - 1];
+            const dayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1;
+            const todaySchedule = studentSchedule?.schedule?.[dayIndex];
 
             const updatedList = [...groupStudentList];
             const newAbsenceRecords: AttendanceRecord[] = [];
@@ -674,5 +674,7 @@ export default function TeacherAttendancePage() {
         </>
     );
 }
+
+    
 
     
