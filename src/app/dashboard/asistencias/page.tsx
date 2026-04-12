@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { User as UserIcon, Camera, Users, FilePlus, Group } from 'lucide-react';
+import { User as UserIcon, Camera, Users, FilePlus, Group, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import * as faceapi from 'face-api.js';
 
 
 // --- DATA PERSISTENCE & TYPES ---
@@ -151,13 +152,58 @@ export default function TeacherAttendancePage() {
     
     const [isTakingAttendance, setIsTakingAttendance] = useState(false);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+    const [modelsLoaded, setModelsLoaded] = useState(false);
+    const [isDetecting, setIsDetecting] = useState(false);
     
     const [isJustifyOpen, setIsJustifyOpen] = useState(false);
     const [justifyingStudent, setJustifyingStudent] = useState<DisplayStudent | null>(null);
     const [justificationReason, setJustificationReason] = useState('');
 
     const videoRef = useRef<HTMLVideoElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
+    const recognitionIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Load face-api.js models
+    useEffect(() => {
+        const loadModels = async () => {
+            const MODEL_URL = '/models';
+            try {
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+                ]);
+                setModelsLoaded(true);
+            } catch (error) {
+                console.error("Error loading face-api models", error);
+                toast({
+                    variant: 'destructive',
+                    title: 'Error de Modelos de IA',
+                    description: 'No se pudieron cargar los modelos de reconocimiento facial.',
+                });
+            }
+        };
+        loadModels();
+    }, [toast]);
+    
+    // Create FaceMatcher when group changes
+    const faceMatcher = useMemo(() => {
+        if (!selectedGroup || allStudents.length === 0) return null;
+
+        const studentsInGroup = allStudents.filter(s => s.assignedGroupId === selectedGroup && s.embedding);
+        
+        if (studentsInGroup.length === 0) return null;
+
+        const labeledFaceDescriptors = studentsInGroup.map(student =>
+            new faceapi.LabeledFaceDescriptor(
+                student.id,
+                [Float32Array.from(student.embedding!)]
+            )
+        );
+        
+        return new faceapi.FaceMatcher(labeledFaceDescriptors, 0.6); // Threshold set to 0.6
+    }, [selectedGroup, allStudents]);
 
     useEffect(() => {
         if (selectedGroup) {
@@ -173,6 +219,10 @@ export default function TeacherAttendancePage() {
     }, [selectedGroup, allStudents]);
 
     const stopCamera = useCallback(() => {
+        if (recognitionIntervalRef.current) {
+            clearInterval(recognitionIntervalRef.current);
+            recognitionIntervalRef.current = null;
+        }
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(track => track.stop());
             streamRef.current = null;
@@ -180,17 +230,16 @@ export default function TeacherAttendancePage() {
         if (videoRef.current) {
             videoRef.current.srcObject = null;
         }
+        if (canvasRef.current) {
+            canvasRef.current.getContext('2d')?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        }
     }, []);
     
-    const handleManualAttendance = (studentId: string) => {
+    const markAttendance = useCallback((studentId: string) => {
         const studentToMark = groupStudentList.find(s => s.id === studentId);
+        
         if (!studentToMark || studentToMark.status !== 'Pendiente') {
-            toast({
-                variant: 'destructive',
-                title: 'Error',
-                description: 'Este estudiante ya ha sido marcado.',
-            });
-            return;
+            return; // Already marked
         }
 
         const now = new Date();
@@ -250,7 +299,51 @@ export default function TeacherAttendancePage() {
             title: `Asistencia Registrada (${status})`,
             description: `${studentToMark.firstName} ${studentToMark.lastName} para ${subjectName}.`,
         });
-    };
+    }, [groupStudentList, horarios, materias, config, setAttendance, toast]);
+    
+    // Recognition loop
+    useEffect(() => {
+        if (isTakingAttendance && modelsLoaded && faceMatcher) {
+            recognitionIntervalRef.current = setInterval(async () => {
+                if (videoRef.current && canvasRef.current && !videoRef.current.paused && videoRef.current.readyState >= 3) {
+                    setIsDetecting(true);
+                    const video = videoRef.current;
+                    const canvas = canvas.current;
+                    const displaySize = { width: video.videoWidth, height: video.videoHeight };
+                    faceapi.matchDimensions(canvas, displaySize);
+
+                    const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptors();
+                    const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                    
+                    const ctx = canvas.getContext('2d');
+                    if (ctx) {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        faceapi.draw.drawDetections(canvas, resizedDetections);
+                    }
+
+                    if (detections.length > 0) {
+                        for (const detection of detections) {
+                            const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+                            if (bestMatch.label !== 'unknown') {
+                                markAttendance(bestMatch.label);
+                            }
+                        }
+                    }
+                    setIsDetecting(false);
+                }
+            }, 1000); // Run detection every second
+        } else {
+             if (recognitionIntervalRef.current) {
+                clearInterval(recognitionIntervalRef.current);
+            }
+        }
+
+        return () => {
+            if (recognitionIntervalRef.current) {
+                clearInterval(recognitionIntervalRef.current);
+            }
+        };
+    }, [isTakingAttendance, modelsLoaded, faceMatcher, markAttendance]);
     
     // Camera start/stop effect
     useEffect(() => {
@@ -271,6 +364,7 @@ export default function TeacherAttendancePage() {
                 streamRef.current = stream;
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
+                    videoRef.current.play();
                 }
                 setHasCameraPermission(true);
             } catch (error) {
@@ -428,21 +522,34 @@ export default function TeacherAttendancePage() {
                             <CardHeader className="flex flex-row items-center justify-between">
                                 <div>
                                     <CardTitle>Cámara en Vivo</CardTitle>
-                                    <CardDescription>Confirma manualmente la asistencia de los estudiantes.</CardDescription>
+                                    <CardDescription>
+                                        {isTakingAttendance ? 'El sistema está detectando rostros...' : 'Inicia el pase de lista para activar la cámara.'}
+                                     </CardDescription>
                                 </div>
-                                <Button onClick={handleToggleAttendance} size="lg" disabled={groupStudentList.length === 0}>
+                                <Button onClick={handleToggleAttendance} size="lg" disabled={!modelsLoaded || groupStudentList.length === 0 || !faceMatcher}>
                                     {isTakingAttendance ? 'Detener Pase de Lista' : 'Iniciar Pase de Lista'}
                                 </Button>
                             </CardHeader>
                             <CardContent>
                                 <div className="relative w-full aspect-video rounded-md overflow-hidden bg-muted border flex items-center justify-center">
                                     <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+                                    <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
                                     
                                     {!isTakingAttendance && (
                                          <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-black/50 text-white">
-                                            <Camera className="w-16 h-16 mb-4" />
-                                            <p className="text-lg font-medium">La cámara está desactivada</p>
-                                            <p className="text-sm">Haz clic en "Iniciar" para comenzar.</p>
+                                            {!modelsLoaded ? (
+                                                <>
+                                                    <Loader2 className="w-16 h-16 mb-4 animate-spin" />
+                                                    <p className="text-lg font-medium">Cargando modelos de IA...</p>
+                                                    <p className="text-sm">Esto puede tardar un momento.</p>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Camera className="w-16 h-16 mb-4" />
+                                                    <p className="text-lg font-medium">La cámara está desactivada</p>
+                                                    <p className="text-sm">Haz clic en "Iniciar" para comenzar.</p>
+                                                </>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -452,7 +559,7 @@ export default function TeacherAttendancePage() {
                         <Card>
                              <CardHeader>
                                 <CardTitle>Registros de Asistencia para {grupos.find(g => g.id === selectedGroup)?.name}</CardTitle>
-                                <CardDescription>El estado se actualizará en tiempo real a medida que marques a los estudiantes.</CardDescription>
+                                <CardDescription>El estado se actualizará en tiempo real a medida que el sistema reconozca a los estudiantes.</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <Table>
@@ -484,9 +591,6 @@ export default function TeacherAttendancePage() {
                                                         <Badge variant={getStatusVariant(student.status)}>{student.status}</Badge>
                                                     </TableCell>
                                                     <TableCell className="text-right space-x-2">
-                                                        <Button variant="outline" size="sm" onClick={() => handleManualAttendance(student.id)} disabled={student.status !== 'Pendiente' || !isTakingAttendance}>
-                                                            Marcar Asistencia
-                                                        </Button>
                                                         <Button variant="secondary" size="sm" onClick={() => handleOpenJustifyDialog(student)} disabled={student.status === 'Presente'}>
                                                             <FilePlus className="mr-2 h-3 w-3" />
                                                             Justificar
@@ -497,7 +601,7 @@ export default function TeacherAttendancePage() {
                                         ) : (
                                             <TableRow>
                                                 <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                                                    Este grupo no tiene estudiantes.
+                                                    Este grupo no tiene estudiantes registrados.
                                                 </TableCell>
                                             </TableRow>
                                         )}
