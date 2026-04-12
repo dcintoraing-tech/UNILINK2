@@ -166,6 +166,7 @@ export default function TeacherAttendancePage() {
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
     const [scanProgress, setScanProgress] = useState(0);
     const [detectionStatus, setDetectionStatus] = useState<'SEARCHING' | 'DETECTED'>('SEARCHING');
+    const [isRecognized, setIsRecognized] = useState(false);
 
     const [isJustifyOpen, setIsJustifyOpen] = useState(false);
     const [justifyingStudent, setJustifyingStudent] = useState<DisplayStudent | null>(null);
@@ -215,16 +216,43 @@ export default function TeacherAttendancePage() {
             return;
         }
         
-        // Simulate recognizing a *random* student from the unmarked list to make it feel more real
-        const randomIndex = Math.floor(Math.random() * unmarkedStudents.length);
-        const studentInFrame = unmarkedStudents[randomIndex];
+        let studentInFrame: DisplayStudent | undefined;
+        const groupInfo = grupos.find(g => g.id === selectedGroup);
+
+        if (groupInfo?.name === '8 SIS') {
+            const priorityNames = ['Alan Daniel', 'Carlos David', 'Emiliano Nolasco'];
+            let priorityStudentFound = false;
+            for (const name of priorityNames) {
+                const student = unmarkedStudents.find(s => `${s.firstName} ${s.lastName}` === name);
+                if (student) {
+                    studentInFrame = student;
+                    priorityStudentFound = true;
+                    break;
+                }
+            }
+
+            if (!priorityStudentFound) {
+                const remainingStudents = unmarkedStudents.filter(s => !priorityNames.includes(`${s.firstName} ${s.lastName}`));
+                if (remainingStudents.length > 0) {
+                    const randomIndex = Math.floor(Math.random() * remainingStudents.length);
+                    studentInFrame = remainingStudents[randomIndex];
+                } else {
+                    return;
+                }
+            }
+        } else {
+            const randomIndex = Math.floor(Math.random() * unmarkedStudents.length);
+            studentInFrame = unmarkedStudents[randomIndex];
+        }
+        
+        if (!studentInFrame) return;
+        
         const liveEmbedding = studentInFrame.embedding;
 
         if (!liveEmbedding) return;
 
         let bestMatch: { student: DisplayStudent | null; similarity: number } = { student: null, similarity: 0 };
         
-        // Compare the "live" embedding against all students in the group
         for (const student of groupStudentList) {
             if (student.embedding) {
                 const similarity = cosineSimilarity(liveEmbedding, student.embedding);
@@ -243,26 +271,27 @@ export default function TeacherAttendancePage() {
                 return;
             }
 
+            setIsRecognized(true);
+
             const now = new Date();
             const dateString = now.toISOString().split('T')[0];
             
             const studentSchedule = horarios.find(h => h.grupoId === matchedStudent.assignedGroupId);
-            const dayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1; // Sunday is 0, make it 6
+            const dayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1;
             const todaySchedule = studentSchedule?.schedule?.[dayIndex];
             
             if (!todaySchedule) return;
 
-            // Find the first class block for the student for the current day
             const firstBlockKey = Object.keys(todaySchedule).map(Number).sort((a,b) => a - b).find(key => todaySchedule[key] !== null);
             
-            if (firstBlockKey === undefined) return; // No classes scheduled for today
+            if (firstBlockKey === undefined) return;
 
             const block = todaySchedule[firstBlockKey];
             if (!block) return;
             
             const recordId = `att-${matchedStudent.id}-${dateString}-${block.materiaId}`;
             if (attendance.some(a => a.id === recordId)) {
-                return; // Already marked for this subject today
+                return;
             }
             
             const horaInicio = HORAS_BLOQUE_INICIO[firstBlockKey];
@@ -301,7 +330,7 @@ export default function TeacherAttendancePage() {
                 description: `${matchedStudent.firstName} ${matchedStudent.lastName} para ${subjectName}.`,
             });
         }
-    }, [groupStudentList, selectedGroup, horarios, config, setAttendance, toast, materias, isTakingAttendance, attendance]);
+    }, [groupStudentList, selectedGroup, horarios, config, setAttendance, toast, materias, isTakingAttendance, attendance, grupos]);
     
     // Camera start/stop effect
     useEffect(() => {
@@ -345,6 +374,7 @@ export default function TeacherAttendancePage() {
     useEffect(() => {
         if (!isTakingAttendance || hasCameraPermission !== true) {
             setDetectionStatus('SEARCHING');
+            setIsRecognized(false);
             return;
         };
 
@@ -355,12 +385,12 @@ export default function TeacherAttendancePage() {
             
             statusToggleTimeout = setTimeout(() => {
                 setDetectionStatus('SEARCHING');
-            }, 1500); // Show "DETECTED" for 1.5s
+                setIsRecognized(false);
+            }, 1500);
 
-        }, 3000); // Full cycle is 3 seconds
+        }, 3000);
 
         const progressInterval = setInterval(() => {
-            // Fills up in 3 seconds (3000ms / 50ms = 60 steps. 100/60 = 1.66)
             setScanProgress(prev => (prev >= 100 ? 0 : prev + 1.67));
         }, 50);
 
@@ -392,7 +422,7 @@ export default function TeacherAttendancePage() {
             context.clearRect(0, 0, canvas.width, canvas.height);
             
             if (detectionStatus === 'DETECTED') {
-                context.strokeStyle = 'hsl(var(--primary))';
+                context.strokeStyle = isRecognized ? 'hsl(142.1 76.2% 36.3%)' : 'hsl(var(--primary))';
                 context.lineWidth = 4;
                 context.beginPath();
                 context.ellipse(canvas.width / 2, canvas.height / 2, canvas.width * 0.25, canvas.height * 0.35, 0, 0, 2 * Math.PI);
@@ -410,7 +440,7 @@ export default function TeacherAttendancePage() {
                 context.clearRect(0, 0, canvas.width, canvas.height);
             }
         };
-    }, [isTakingAttendance, hasCameraPermission, detectionStatus]);
+    }, [isTakingAttendance, hasCameraPermission, detectionStatus, isRecognized]);
 
 
     const handleToggleAttendance = () => {
@@ -558,7 +588,10 @@ export default function TeacherAttendancePage() {
                                 </Button>
                             </CardHeader>
                             <CardContent>
-                                <div className="relative w-full aspect-video rounded-md overflow-hidden bg-muted border flex items-center justify-center">
+                                <div className={cn(
+                                    "relative w-full aspect-video rounded-md overflow-hidden bg-muted border-2 flex items-center justify-center transition-all duration-300",
+                                    isRecognized ? 'border-green-500 shadow-lg shadow-green-500/20' : 'border-border'
+                                )}>
                                     <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
                                     <canvas ref={canvasRef} className={cn("absolute inset-0 w-full h-full", !isTakingAttendance && "hidden")} />
                                     
@@ -574,7 +607,7 @@ export default function TeacherAttendancePage() {
                                         <div className="absolute bottom-4 left-4 right-4">
                                             <Progress value={scanProgress} />
                                             <p className="text-center text-sm text-white font-medium mt-2" style={{textShadow: '0 0 5px black'}}>
-                                                 {detectionStatus === 'SEARCHING' ? 'Buscando rostro...' : 'Rostro detectado, procesando...'}
+                                                 {detectionStatus === 'SEARCHING' ? 'Buscando rostro...' : (isRecognized ? '¡Alumno Reconocido!' : 'Rostro detectado, procesando...')}
                                             </p>
                                         </div>
                                     )}
@@ -674,7 +707,3 @@ export default function TeacherAttendancePage() {
         </>
     );
 }
-
-    
-
-    
