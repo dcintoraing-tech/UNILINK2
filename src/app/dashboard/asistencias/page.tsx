@@ -31,7 +31,7 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
             } catch (error) {
                 console.log(error);
             }
-            setIsInitialized(true); 
+            setIsInitialized(true);
         }
     }, [key]);
 
@@ -50,7 +50,7 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
             console.log(error);
         }
     };
-    
+
     useEffect(() => {
         const handleStorageChange = (e: StorageEvent) => {
             if (e.key === key && e.newValue) {
@@ -122,12 +122,12 @@ interface DisplayStudent extends Student {
     subjectName?: string;
 }
 
-interface Justificacion { 
-    id: string; 
+interface Justificacion {
+    id: string;
     studentId: string;
-    date: string; 
-    reason: string; 
-    status: 'Pendiente' | 'Aprobado' | 'Rechazado'; 
+    date: string;
+    reason: string;
+    status: 'Pendiente' | 'Aprobado' | 'Rechazado';
     attendanceRecordId: string;
 }
 
@@ -145,17 +145,17 @@ export default function TeacherAttendancePage() {
     });
     const [attendance, setAttendance] = useLocalStorage<AttendanceRecord[]>('unilink-attendance', []);
     const [justificaciones, setJustificaciones] = useLocalStorage<Justificacion[]>('unilink-justificaciones', []);
-    
+
     // --- Component State ---
     const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
     const [groupStudentList, setGroupStudentList] = useState<DisplayStudent[]>([]);
-    
+
     const [isTakingAttendance, setIsTakingAttendance] = useState(false);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
     const [modelsLoaded, setModelsLoaded] = useState(false);
     const [modelError, setModelError] = useState<string | null>(null);
     const [isDetecting, setIsDetecting] = useState(false);
-    
+
     const [isJustifyOpen, setIsJustifyOpen] = useState(false);
     const [justifyingStudent, setJustifyingStudent] = useState<DisplayStudent | null>(null);
     const [justificationReason, setJustificationReason] = useState('');
@@ -186,8 +186,8 @@ export default function TeacherAttendancePage() {
             console.log("URL de modelos construida:", MODEL_URL);
 
             try {
-                console.log("Iniciando carga de modelos desde:", MODEL_URL);
-
+                console.log("Cargando modelos desde:", MODEL_URL);
+                
                 await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
                 console.log("tinyFaceDetector cargado correctamente.");
 
@@ -196,7 +196,7 @@ export default function TeacherAttendancePage() {
 
                 await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
                 console.log("faceRecognitionNet cargado correctamente.");
-                
+
                 console.log("¡Todos los modelos de IA se cargaron exitosamente! ✅");
                 setModelsLoaded(true);
                 setModelError(null);
@@ -215,13 +215,13 @@ export default function TeacherAttendancePage() {
         };
         loadModels();
     }, [toast]);
-    
+
     // Create FaceMatcher when group changes
     const faceMatcher = useMemo(() => {
         if (!selectedGroup || allStudents.length === 0 || !modelsLoaded) return null;
 
         const studentsInGroup = allStudents.filter(s => s.assignedGroupId === selectedGroup && s.embedding && s.embedding.length > 0);
-        
+
         if (studentsInGroup.length === 0) {
             console.log("No students with embeddings in this group.");
             return null;
@@ -234,7 +234,7 @@ export default function TeacherAttendancePage() {
                     [Float32Array.from(student.embedding!)]
                 )
             );
-            
+
             if (labeledFaceDescriptors.length === 0) return null;
 
             return new faceapi.FaceMatcher(labeledFaceDescriptors, 0.6); // Threshold set to 0.6
@@ -278,10 +278,10 @@ export default function TeacherAttendancePage() {
             canvasRef.current.getContext('2d')?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
         }
     }, []);
-    
+
     const markAttendance = useCallback((studentId: string) => {
         const studentToMark = groupStudentList.find(s => s.id === studentId);
-        
+
         if (!studentToMark || studentToMark.status !== 'Pendiente') {
             return; // Already marked
         }
@@ -304,7 +304,7 @@ export default function TeacherAttendancePage() {
                     if (block && horaInicioStr) {
                         materiaId = block.materiaId;
                         subjectName = materias.find(m => m.id === block.materiaId)?.materia || 'Materia Desconocida';
-                        
+
                         const [hours, minutes] = horaInicioStr.split(':').map(Number);
                         const startTime = new Date(now);
                         startTime.setHours(hours, minutes, 0, 0);
@@ -344,7 +344,7 @@ export default function TeacherAttendancePage() {
             description: `${studentToMark.firstName} ${studentToMark.lastName} para ${subjectName}.`,
         });
     }, [groupStudentList, horarios, materias, config, setAttendance, toast]);
-    
+
     // Recognition loop
     useEffect(() => {
         if (isTakingAttendance && modelsLoaded && faceMatcher) {
@@ -359,7 +359,7 @@ export default function TeacherAttendancePage() {
                     try {
                         const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptors();
                         const resizedDetections = faceapi.resizeResults(detections, displaySize);
-                        
+
                         const ctx = canvas.getContext('2d');
                         if (ctx) {
                             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -392,7 +392,7 @@ export default function TeacherAttendancePage() {
             }
         };
     }, [isTakingAttendance, modelsLoaded, faceMatcher, markAttendance]);
-    
+
     // Camera start/stop effect
     useEffect(() => {
         let isCancelled = false;
@@ -431,13 +431,13 @@ export default function TeacherAttendancePage() {
         startCamera();
         return () => { isCancelled = true; stopCamera(); };
     }, [isTakingAttendance, stopCamera, toast]);
-    
+
     const handleToggleAttendance = () => {
         if (!isTakingAttendance) {
             setIsTakingAttendance(true);
         } else {
             setIsTakingAttendance(false);
-            
+
             const now = new Date();
             const dateString = now.toISOString().split('T')[0];
 
@@ -498,17 +498,17 @@ export default function TeacherAttendancePage() {
     };
 
     const handleJustifySubmit = () => {
-        const attendanceToJustify = attendance.find(a => 
+        const attendanceToJustify = attendance.find(a =>
             a.studentId === justifyingStudent?.id &&
             a.date === new Date().toISOString().split('T')[0] &&
             (a.status === 'Falta' || a.status === 'Retardo')
         );
-        
+
         if (!justifyingStudent || !justificationReason || !attendanceToJustify) {
              toast({ variant: "destructive", title: "Error", description: "No se encontró un registro de falta o retardo para justificar hoy, o falta el motivo." });
             return;
         }
-        
+
         const newJustificacion: Justificacion = {
             id: `just-${justifyingStudent.id}-${new Date().toISOString()}`,
             studentId: justifyingStudent.id,
@@ -538,7 +538,7 @@ export default function TeacherAttendancePage() {
             case 'Pendiente': return 'outline';
         }
     };
-    
+
     return (
         <>
             <div className="grid gap-6">
@@ -580,9 +580,9 @@ export default function TeacherAttendancePage() {
                             </CardHeader>
                             <CardContent>
                                 <div className="relative w-full aspect-video rounded-md overflow-hidden bg-muted border flex items-center justify-center">
-                                    <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+                                    <video ref={videoRef} className="w-full h-full" autoPlay muted playsInline />
                                     <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
-                                    
+
                                     {!isTakingAttendance && (
                                         <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-black/50 text-white text-center">
                                             {modelError ? (
@@ -673,7 +673,7 @@ export default function TeacherAttendancePage() {
                     </div>
                 )}
             </div>
-            
+
             <Dialog open={isJustifyOpen} onOpenChange={setIsJustifyOpen}>
                 <DialogContent>
                     <DialogHeader>
