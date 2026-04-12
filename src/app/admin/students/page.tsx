@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Camera, User as UserIcon, PlusCircle, MoreHorizontal, Search } from 'lucide-react';
+import { Camera, User as UserIcon, PlusCircle, MoreHorizontal, Search, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -17,6 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import * as faceapi from 'face-api.js';
 
 // --- DATA PERSISTENCE HOOK ---
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
@@ -86,7 +87,34 @@ function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished:
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
 
+    const [modelsLoaded, setModelsLoaded] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [modelError, setModelError] = useState<string | null>(null);
+
     const studentPlaceholder = PlaceHolderImages.find(p => p.id === 'student-placeholder');
+
+    useEffect(() => {
+        const loadModels = async () => {
+            if (typeof window !== 'undefined' && window.location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+                const errorMsg = 'El acceso a la cámara y los modelos de IA no están disponibles en un entorno no seguro. Por favor, usa una conexión HTTPS.';
+                setModelError(errorMsg);
+                return;
+            }
+            try {
+                const MODEL_URL = window.location.origin + '/models';
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+                ]);
+                setModelsLoaded(true);
+            } catch (error) {
+                console.error("ERROR REAL DE MODELOS:", error);
+                setModelError("Error cargando modelos de IA. Revisa la carpeta /public/models y la consola.");
+            }
+        };
+        loadModels();
+    }, []);
 
     const stopCapture = () => {
         if (streamRef.current) {
@@ -137,7 +165,7 @@ function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished:
         stopCapture();
     };
 
-    const handleRegisterStudent = (e: React.FormEvent) => {
+    const handleRegisterStudent = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!firstName || !lastName || !controlNumber || !academicProgram || !assignedGroup) {
             toast({
@@ -145,6 +173,50 @@ function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished:
                 title: 'Campos requeridos',
                 description: 'Por favor, completa toda la información del estudiante.',
             });
+            return;
+        }
+        if (!capturedImage) {
+            toast({
+                variant: 'destructive',
+                title: 'Imagen requerida',
+                description: 'Por favor, captura una imagen del rostro del estudiante.',
+            });
+            return;
+        }
+
+        setIsProcessing(true);
+
+        let embedding: number[] | null = null;
+        try {
+            const img = document.createElement('img');
+            img.src = capturedImage;
+            await new Promise(resolve => { img.onload = resolve; });
+
+            const detection = await faceapi
+                .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+                .withFaceLandmarks()
+                .withFaceDescriptor();
+            
+            if (!detection) {
+                toast({
+                    variant: 'destructive',
+                    title: 'Rostro no detectado',
+                    description: 'No se pudo encontrar un rostro en la imagen. Por favor, intenta de nuevo con buena iluminación y el rostro centrado.',
+                });
+                setIsProcessing(false);
+                return;
+            }
+
+            embedding = Array.from(detection.descriptor);
+
+        } catch (error) {
+            console.error("Error generating embedding:", error);
+            toast({
+                variant: 'destructive',
+                title: 'Error de Procesamiento',
+                description: 'No se pudo procesar la imagen facial.',
+            });
+            setIsProcessing(false);
             return;
         }
 
@@ -156,18 +228,17 @@ function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished:
             academicProgramId: academicProgram,
             assignedGroupId: assignedGroup,
             facialImage: capturedImage,
-            // Simulate embedding generation. In a real application, this would
-            // be a call to an AI service to get a facial embedding vector.
-            embedding: Array.from({ length: 128 }, () => Math.random() * 2 - 1),
+            embedding: embedding,
         };
 
         setStudents(prev => [...prev, newStudent]);
 
         toast({
             title: 'Estudiante Registrado',
-            description: `El estudiante ${firstName} ${lastName} ha sido guardado.`,
+            description: `El estudiante ${firstName} ${lastName} ha sido guardado con su huella facial.`,
         });
-
+        
+        setIsProcessing(false);
         onFinished();
     };
     
@@ -231,7 +302,7 @@ function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished:
                             <div className="relative w-full aspect-video rounded-md overflow-hidden bg-muted border flex items-center justify-center">
                                 <video 
                                     ref={videoRef}
-                                    className={cn("w-full h-full object-cover", !isCapturing && "hidden")}
+                                    className={cn("w-full h-full", !isCapturing && "hidden")}
                                     autoPlay
                                     muted
                                     playsInline
@@ -265,13 +336,29 @@ function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished:
                                 </div>
                             )}
                         </CardContent>
+                        <CardFooter className="flex-col gap-2 pt-4">
+                            {modelError && (
+                                <Alert variant="destructive" className="text-xs">
+                                    <AlertTitle>Error de Modelos</AlertTitle>
+                                    <AlertDescription>{modelError}</AlertDescription>
+                                </Alert>
+                            )}
+                            {!modelsLoaded && !modelError && (
+                                <Alert className="text-xs">
+                                    <AlertDescription>Cargando modelos de IA...</AlertDescription>
+                                </Alert>
+                            )}
+                        </CardFooter>
                     </Card>
                 </div>
             </ScrollArea>
 
             <DialogFooter>
                 <Button type="button" variant="ghost" onClick={onFinished}>Cancelar</Button>
-                <Button type="submit">Registrar Estudiante</Button>
+                <Button type="submit" disabled={!modelsLoaded || isProcessing}>
+                    {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {isProcessing ? 'Procesando...' : 'Registrar Estudiante'}
+                </Button>
             </DialogFooter>
 
             <canvas ref={canvasRef} className="hidden"></canvas>
