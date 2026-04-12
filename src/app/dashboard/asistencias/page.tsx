@@ -204,6 +204,7 @@ export default function TeacherAttendancePage() {
         const markedStudentIds = new Set(
             groupStudentList.filter(s => s.status !== 'Pendiente').map(s => s.id)
         );
+
         const unmarkedStudents = groupStudentList.filter(s => s.embedding && !markedStudentIds.has(s.id));
 
         if (unmarkedStudents.length === 0) {
@@ -213,15 +214,18 @@ export default function TeacherAttendancePage() {
             }
             return;
         }
-
-        const studentInFrame = unmarkedStudents[0];
+        
+        // Simulate recognizing a *random* student from the unmarked list to make it feel more real
+        const randomIndex = Math.floor(Math.random() * unmarkedStudents.length);
+        const studentInFrame = unmarkedStudents[randomIndex];
         const liveEmbedding = studentInFrame.embedding;
 
         if (!liveEmbedding) return;
 
         let bestMatch: { student: DisplayStudent | null; similarity: number } = { student: null, similarity: 0 };
         
-        for (const student of unmarkedStudents) {
+        // Compare the "live" embedding against all students in the group
+        for (const student of groupStudentList) {
             if (student.embedding) {
                 const similarity = cosineSimilarity(liveEmbedding, student.embedding);
                 if (similarity > bestMatch.similarity) {
@@ -241,19 +245,18 @@ export default function TeacherAttendancePage() {
 
             const now = new Date();
             const dateString = now.toISOString().split('T')[0];
-            const dayIndex = now.getDay();
-            if (dayIndex === 0 || dayIndex === 6) return;
+            const dayIndex = now.getDay(); 
+            if (dayIndex === 0 || dayIndex === 6) return; // No classes on weekends
 
             const studentSchedule = horarios.find(h => h.grupoId === matchedStudent.assignedGroupId);
             const todaySchedule = studentSchedule?.schedule?.[dayIndex - 1];
             
             if (!todaySchedule) return;
 
-            const firstBlockKey = Object.keys(todaySchedule).sort((a,b) => Number(a) - Number(b))[0];
-            if (!firstBlockKey) return;
+            const firstBlockKey = Object.keys(todaySchedule).map(Number).sort((a,b) => a - b).find(key => todaySchedule[key] !== null);
+            if (firstBlockKey === undefined) return;
 
-            const blockIndex = parseInt(firstBlockKey);
-            const block = todaySchedule[blockIndex];
+            const block = todaySchedule[firstBlockKey];
             if (!block) return;
             
             const recordId = `att-${matchedStudent.id}-${dateString}-${block.materiaId}`;
@@ -261,7 +264,7 @@ export default function TeacherAttendancePage() {
                 return;
             }
 
-            const horaInicio = HORAS_BLOQUE_INICIO[blockIndex];
+            const horaInicio = HORAS_BLOQUE_INICIO[firstBlockKey];
             if (!horaInicio) return;
 
             const [hours, minutes] = horaInicio.split(':').map(Number);
