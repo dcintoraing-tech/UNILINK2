@@ -50,7 +50,7 @@ import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-type UserRole = 'Docente' | 'Admin' | 'Alumno';
+type UserRole = 'Docente' | 'Admin' | 'Alumno' | 'Jefe de carrera';
 type UserStatus = 'Activo' | 'Inactivo';
 
 interface User {
@@ -59,8 +59,14 @@ interface User {
     email: string;
     password?: string;
     role: UserRole;
+    carreraId?: string;
     status: UserStatus;
     createdAt: string;
+}
+
+interface CatalogItem {
+    id: string;
+    name: string;
 }
 
 const useLocalStorage = <T,>(key: string, initialValue: T) => {
@@ -125,6 +131,9 @@ export default function UsersPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [carreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
+  const [selectedFormRole, setSelectedFormRole] = useState<UserRole | ''>('');
+
 
   const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -140,6 +149,11 @@ export default function UsersPage() {
         });
         return;
       }
+    }
+
+    if (userData.role === 'Jefe de carrera' && !userData.carreraId) {
+        toast({ variant: "destructive", title: "Campo requerido", description: "Debe seleccionar una carrera para el Jefe de Carrera." });
+        return;
     }
 
     const storedUsersRaw = window.localStorage.getItem('unilink-users');
@@ -159,6 +173,7 @@ export default function UsersPage() {
                     name: userData.name,
                     email: userData.email,
                     role: userData.role,
+                    carreraId: userData.role === 'Jefe de carrera' ? userData.carreraId : undefined,
                     status: userData.status,
                 };
                 if (userData.password) {
@@ -183,6 +198,7 @@ export default function UsersPage() {
             email: userData.email,
             password: userData.password,
             role: userData.role,
+            carreraId: userData.role === 'Jefe de carrera' ? userData.carreraId : undefined,
             status: 'Activo',
             createdAt: new Date().toISOString(),
         };
@@ -196,6 +212,7 @@ export default function UsersPage() {
 
   const openEditDialog = (user: User) => {
     setEditingUser(user);
+    setSelectedFormRole(user.role);
     setShowPassword(false);
     setShowConfirmPassword(false);
     setIsDialogOpen(true);
@@ -203,6 +220,7 @@ export default function UsersPage() {
 
   const openCreateDialog = () => {
     setEditingUser(null);
+    setSelectedFormRole('');
     setShowPassword(false);
     setShowConfirmPassword(false);
     setIsDialogOpen(true);
@@ -214,7 +232,7 @@ export default function UsersPage() {
   };
   
   const handleDownloadTemplate = () => {
-    const headers = [['name', 'email', 'password', 'role']];
+    const headers = [['name', 'email', 'password', 'role', 'carreraId (solo para Jefe de carrera)']];
     const ws = XLSX.utils.aoa_to_sheet(headers);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
@@ -266,7 +284,7 @@ export default function UsersPage() {
                     skippedCount++;
                     continue;
                 }
-                if (!['Docente', 'Admin', 'Alumno'].includes(item.role)) {
+                if (!['Docente', 'Admin', 'Alumno', 'Jefe de carrera'].includes(item.role)) {
                     toast({ variant: "destructive", title: "Rol inválido", description: `El rol '${item.role}' para '${email}' no es válido. Se omitirá.` });
                     continue;
                 }
@@ -277,6 +295,7 @@ export default function UsersPage() {
                     email: email,
                     password: String(item.password),
                     role: item.role,
+                    carreraId: item.role === 'Jefe de carrera' ? item.carreraId : undefined,
                     status: 'Activo',
                     createdAt: new Date().toISOString(),
                 });
@@ -303,6 +322,11 @@ export default function UsersPage() {
     };
     reader.readAsBinaryString(file);
   };
+  
+  const getCarreraName = (carreraId?: string) => {
+    if (!carreraId) return '';
+    return carreras.find(c => c.id === carreraId)?.name || 'Desconocida';
+  }
 
 
   return (
@@ -359,7 +383,12 @@ export default function UsersPage() {
                           <div>{user.name}</div>
                           <div className="text-sm text-muted-foreground">{user.email}</div>
                       </TableCell>
-                      <TableCell>{user.role}</TableCell>
+                      <TableCell>
+                        {user.role}
+                        {user.role === 'Jefe de carrera' && user.carreraId && (
+                            <div className="text-xs text-muted-foreground">({getCarreraName(user.carreraId)})</div>
+                        )}
+                      </TableCell>
                       <TableCell><Badge variant={user.status === 'Activo' ? 'default' : 'secondary'}>{user.status}</Badge></TableCell>
                       <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
                       <TableCell>
@@ -433,15 +462,29 @@ export default function UsersPage() {
 
                     <div className="grid gap-2">
                       <Label htmlFor="role">Rol</Label>
-                      <Select name="role" defaultValue={editingUser?.role || 'Docente'}>
+                      <Select name="role" defaultValue={editingUser?.role || 'Docente'} onValueChange={(value) => setSelectedFormRole(value as UserRole)}>
                         <SelectTrigger id="role"><SelectValue placeholder="Selecciona un rol" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="Docente">Docente</SelectItem>
                           <SelectItem value="Admin">Admin</SelectItem>
                           <SelectItem value="Alumno">Alumno</SelectItem>
+                          <SelectItem value="Jefe de carrera">Jefe de carrera</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
+
+                    {selectedFormRole === 'Jefe de carrera' && (
+                        <div className="grid gap-2">
+                            <Label htmlFor="carreraId">Carrera / Área Académica</Label>
+                            <Select name="carreraId" defaultValue={editingUser?.carreraId} required>
+                                <SelectTrigger id="carreraId"><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger>
+                                <SelectContent>
+                                    {carreras.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
                     {editingUser && (
                       <div className="grid gap-2">
                           <Label htmlFor="status">Estado</Label>

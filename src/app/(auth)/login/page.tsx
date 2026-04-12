@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -82,7 +83,7 @@ export default function LoginPage() {
         }
 
 
-        // Logic for all other users (Admin, Docente) from localStorage
+        // Logic for all other users (Admin, Docente, Jefe de carrera) from localStorage
         if (typeof window !== 'undefined') {
             const storedUsersRaw = window.localStorage.getItem('unilink-users');
             const users = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
@@ -90,19 +91,24 @@ export default function LoginPage() {
             const foundUser = users.find((u: any) => (u.email === values.username || u.name === values.username));
 
             if (foundUser && foundUser.password === values.password) {
-                const userProfile = {
+                const userProfile: any = {
                     uid: foundUser.id,
                     name: foundUser.name,
                     email: foundUser.email,
                     role: foundUser.role,
                 };
+
+                if (foundUser.role === 'Jefe de carrera' && foundUser.carreraId) {
+                    userProfile.carreraId = foundUser.carreraId;
+                }
+
                 sessionStorage.setItem('unilink-user', JSON.stringify(userProfile));
                 toast({
                     title: "Inicio de sesión exitoso",
                     description: "Redirigiendo a tu panel de control...",
                 });
 
-                if (foundUser.role === 'Admin') {
+                if (foundUser.role === 'Admin' || foundUser.role === 'Jefe de carrera') {
                     router.push("/admin/dashboard");
                 } else if (foundUser.role === 'Docente') {
                     router.push("/dashboard");

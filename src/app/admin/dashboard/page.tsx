@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,7 +44,7 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
 
 interface CatalogItem { id: string; name: string; }
 interface Grupo extends CatalogItem { carreraId: string; }
-interface User { id: string; name: string; role: string; }
+interface User { id: string; name: string; role: string; carreraId?: string; }
 interface HorarioBlock { materiaId: string; docenteId: string; duracion: 1 | 2; }
 type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
 type ScheduleData = { [dayIndex: number]: DaySchedule };
@@ -74,13 +75,24 @@ const JefeCarreraDashboard = () => {
     const [grupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
     const [horarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
     const [users] = useLocalStorage<User[]>('unilink-users', []);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+    useEffect(() => {
+        const storedUser = sessionStorage.getItem('unilink-user');
+        if (storedUser) {
+            setCurrentUser(JSON.parse(storedUser));
+        }
+    }, []);
     
-    const [selectedCarrera, setSelectedCarrera] = useState<string>('');
+    const assignedCarrera = useMemo(() => {
+        if (!currentUser || !currentUser.carreraId) return null;
+        return carreras.find(c => c.id === currentUser.carreraId);
+    }, [currentUser, carreras]);
 
     const filteredData = useMemo(() => {
-        if (!selectedCarrera) return { groups: [], teachers: [] };
+        if (!assignedCarrera) return { groups: [], teachers: [] };
 
-        const careerGroups = grupos.filter(g => g.carreraId === selectedCarrera);
+        const careerGroups = grupos.filter(g => g.carreraId === assignedCarrera.id);
         const careerGroupIds = new Set(careerGroups.map(g => g.id));
 
         const careerHorarios = horarios.filter(h => h.grupoId && careerGroupIds.has(h.grupoId));
@@ -102,74 +114,60 @@ const JefeCarreraDashboard = () => {
         
         return { groups: careerGroups, teachers: careerTeachers };
 
-    }, [selectedCarrera, grupos, horarios, users]);
+    }, [assignedCarrera, grupos, horarios, users]);
+
+    if (!assignedCarrera) {
+        return (
+             <div className="grid gap-2 mb-4">
+              <h1 className="text-3xl font-semibold">Dashboard: Jefe de Carrera</h1>
+              <p className="text-muted-foreground">Cargando información de tu carrera...</p>
+            </div>
+        )
+    }
 
     return (
         <div>
             <div className="grid gap-2 mb-4">
-              <h1 className="text-3xl font-semibold">Dashboard: Jefe de Carrera</h1>
-              <p className="text-muted-foreground">Selecciona una carrera para ver sus grupos y docentes.</p>
+              <h1 className="text-3xl font-semibold">Dashboard: {assignedCarrera.name}</h1>
+              <p className="text-muted-foreground">Resumen de grupos y docentes de tu área.</p>
             </div>
 
-            <Card className="mb-6">
-                <CardHeader>
-                    <CardTitle>Filtro por Carrera</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="max-w-sm">
-                        <Label htmlFor="career-select">Selecciona un área o carrera</Label>
-                        <Select value={selectedCarrera} onValueChange={setSelectedCarrera}>
-                            <SelectTrigger id="career-select">
-                                <SelectValue placeholder="Selecciona una carrera..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {carreras.map(c => (
-                                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+            <div className="grid gap-6 md:grid-cols-2">
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2"><GraduationCap /> Grupos de la Carrera</CardTitle>
+                        <CardDescription>Total de grupos: {filteredData.groups.length}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {filteredData.groups.length > 0 ? (
+                            <ul className="space-y-2">
+                                {filteredData.groups.map(group => (
+                                    <li key={group.id} className="p-2 border rounded-md text-sm">{group.name}</li>
                                 ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                </CardContent>
-            </Card>
-
-            {selectedCarrera && (
-                 <div className="grid gap-6 md:grid-cols-2">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2"><GraduationCap /> Grupos de la Carrera</CardTitle>
-                            <CardDescription>Total de grupos: {filteredData.groups.length}</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            {filteredData.groups.length > 0 ? (
-                                <ul className="space-y-2">
-                                    {filteredData.groups.map(group => (
-                                        <li key={group.id} className="p-2 border rounded-md text-sm">{group.name}</li>
-                                    ))}
-                                </ul>
-                            ): (
-                                <p className="text-sm text-muted-foreground">No hay grupos para esta carrera.</p>
-                            )}
-                        </CardContent>
-                    </Card>
-                     <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2"><Briefcase /> Docentes de la Carrera</CardTitle>
-                            <CardDescription>Total de docentes: {filteredData.teachers.length}</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                             {filteredData.teachers.length > 0 ? (
-                                <ul className="space-y-2">
-                                    {filteredData.teachers.map(teacher => (
-                                        <li key={teacher.id} className="p-2 border rounded-md text-sm">{teacher.name}</li>
-                                    ))}
-                                </ul>
-                            ): (
-                                <p className="text-sm text-muted-foreground">No hay docentes asignados a esta carrera.</p>
-                            )}
-                        </CardContent>
-                    </Card>
-                 </div>
-            )}
+                            </ul>
+                        ): (
+                            <p className="text-sm text-muted-foreground">No hay grupos para esta carrera.</p>
+                        )}
+                    </CardContent>
+                </Card>
+                 <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2"><Briefcase /> Docentes de la Carrera</CardTitle>
+                        <CardDescription>Total de docentes: {filteredData.teachers.length}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                         {filteredData.teachers.length > 0 ? (
+                            <ul className="space-y-2">
+                                {filteredData.teachers.map(teacher => (
+                                    <li key={teacher.id} className="p-2 border rounded-md text-sm">{teacher.name}</li>
+                                ))}
+                            </ul>
+                        ): (
+                            <p className="text-sm text-muted-foreground">No hay docentes asignados a esta carrera.</p>
+                        )}
+                    </CardContent>
+                </Card>
+             </div>
         </div>
     );
 };

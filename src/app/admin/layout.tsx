@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -86,10 +87,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode; }
       const storedUser = sessionStorage.getItem('unilink-user');
       if (storedUser) {
         const user = JSON.parse(storedUser);
-        if (user.role !== 'Admin') {
-            router.replace('/dashboard');
-            return;
-        }
         setUserName(user.name);
         setUserRole(user.role);
         
