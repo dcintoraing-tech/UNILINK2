@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { User as UserIcon, Camera, Users, FilePlus, Group, Loader2 } from 'lucide-react';
+import { User as UserIcon, Camera, Users, FilePlus, Group, Loader2, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -153,6 +153,7 @@ export default function TeacherAttendancePage() {
     const [isTakingAttendance, setIsTakingAttendance] = useState(false);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
     const [modelsLoaded, setModelsLoaded] = useState(false);
+    const [modelError, setModelError] = useState<string | null>(null);
     const [isDetecting, setIsDetecting] = useState(false);
     
     const [isJustifyOpen, setIsJustifyOpen] = useState(false);
@@ -167,8 +168,22 @@ export default function TeacherAttendancePage() {
     // Load face-api.js models
     useEffect(() => {
         const loadModels = async () => {
+             // 1. Secure context check
+            if (window.location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+                 const errorMsg = 'El acceso a la cámara no está disponible. Por favor, usa una conexión segura (HTTPS) o localhost.';
+                setModelError(errorMsg);
+                toast({
+                    variant: 'destructive',
+                    title: 'Entorno no seguro',
+                    description: errorMsg,
+                    duration: 10000,
+                });
+                return;
+            }
+
             const MODEL_URL = '/models';
             try {
+                // This implicitly checks for manifest and shard files. A failure here would be a network error (404) or parsing error.
                 await Promise.all([
                     faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
                     faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
@@ -176,11 +191,17 @@ export default function TeacherAttendancePage() {
                 ]);
                 setModelsLoaded(true);
             } catch (error) {
-                console.error("Error loading face-api models", error);
+                console.error("Error detallado al cargar los modelos de face-api:", error);
+                let userFriendlyMessage = 'No se pudieron cargar los modelos de reconocimiento facial. Revisa la consola para más detalles.';
+                if (error instanceof Error && (error.message.includes('404') || error.message.includes('failed to fetch'))) {
+                    userFriendlyMessage = `No se encontraron los archivos del modelo en la ruta '${MODEL_URL}'. Asegúrate de que la carpeta 'public/models' existe y contiene los archivos correctos.`;
+                }
+                setModelError(userFriendlyMessage);
                 toast({
                     variant: 'destructive',
                     title: 'Error de Modelos de IA',
-                    description: 'No se pudieron cargar los modelos de reconocimiento facial.',
+                    description: userFriendlyMessage,
+                    duration: 10000,
                 });
             }
         };
@@ -541,7 +562,7 @@ export default function TeacherAttendancePage() {
                                         {isTakingAttendance ? 'El sistema está detectando rostros...' : 'Inicia el pase de lista para activar la cámara.'}
                                      </CardDescription>
                                 </div>
-                                <Button onClick={handleToggleAttendance} size="lg" disabled={!modelsLoaded || groupStudentList.length === 0 || !faceMatcher}>
+                                <Button onClick={handleToggleAttendance} size="lg" disabled={!modelsLoaded || !!modelError || groupStudentList.length === 0 || !faceMatcher}>
                                     {isTakingAttendance ? 'Detener Pase de Lista' : 'Iniciar Pase de Lista'}
                                 </Button>
                             </CardHeader>
@@ -551,8 +572,14 @@ export default function TeacherAttendancePage() {
                                     <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
                                     
                                     {!isTakingAttendance && (
-                                         <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-black/50 text-white">
-                                            {!modelsLoaded ? (
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-black/50 text-white text-center">
+                                            {modelError ? (
+                                                <>
+                                                    <XCircle className="w-16 h-16 mb-4 text-destructive" />
+                                                    <p className="text-lg font-medium">Error al cargar modelos</p>
+                                                    <p className="text-sm max-w-md">{modelError}</p>
+                                                </>
+                                            ) : !modelsLoaded ? (
                                                 <>
                                                     <Loader2 className="w-16 h-16 mb-4 animate-spin" />
                                                     <p className="text-lg font-medium">Cargando modelos de IA...</p>
