@@ -1,9 +1,54 @@
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useState, useEffect } from "react";
-import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts';
-import { Users, UserCheck } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { GraduationCap, Briefcase } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+
+// --- DATA PERSISTENCE & TYPES ---
+const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
+    const [storedValue, setStoredValue] = useState<T>(initialValue);
+    const [isInitialized, setIsInitialized] = useState(false);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const item = window.localStorage.getItem(key);
+                if (item) {
+                    setStoredValue(JSON.parse(item));
+                }
+            } catch (error) {
+                console.log(error);
+            }
+            setIsInitialized(true); 
+        }
+    }, [key]);
+
+    const setValue = (value: T | ((val: T) => T)) => {
+        if (!isInitialized) return;
+        try {
+            const valueToStore = value instanceof Function ? value(storedValue) : value;
+            setStoredValue(valueToStore);
+            if (typeof window !== 'undefined') {
+                window.localStorage.setItem(key, JSON.stringify(valueToStore));
+            }
+        } catch (error) {
+            console.log(error);
+        }
+    };
+    
+    return [storedValue, setValue] as const;
+};
+
+interface CatalogItem { id: string; name: string; }
+interface Grupo extends CatalogItem { carreraId: string; }
+interface User { id: string; name: string; role: string; }
+interface HorarioBlock { materiaId: string; docenteId: string; duracion: 1 | 2; }
+type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
+type ScheduleData = { [dayIndex: number]: DaySchedule };
+interface Horario { id: string; grupoId: string; schedule: ScheduleData; }
+
 
 const AdminDashboard = () => (
     <div>
@@ -23,69 +68,111 @@ const AdminDashboard = () => (
     </div>
 );
 
-const attendanceData = [
-  { name: 'Grupo A', asistencia: 95, faltas: 5 },
-  { name: 'Grupo B', asistencia: 88, faltas: 12 },
-  { name: 'Grupo C', asistencia: 92, faltas: 8 },
-  { name: 'Grupo D', asistencia: 78, faltas: 22 },
-];
 
-const professorData = [
-    { name: 'Ana Gómez', groups: 3, attendanceRate: 94 },
-    { name: 'Luis Pérez', groups: 2, attendanceRate: 89 },
-    { name: 'Carla Solís', groups: 4, attendanceRate: 91 },
-]
+const JefeCarreraDashboard = () => {
+    const [carreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
+    const [grupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
+    const [horarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
+    const [users] = useLocalStorage<User[]>('unilink-users', []);
+    
+    const [selectedCarrera, setSelectedCarrera] = useState<string>('');
 
-const JefeCarreraDashboard = () => (
-    <div>
-        <div className="grid gap-2 mb-4">
-          <h1 className="text-3xl font-semibold">Dashboard: Jefe de Carrera</h1>
-          <p className="text-muted-foreground">Resumen de desempeño de grupos y profesores.</p>
-        </div>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-             <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Grupos Activos</CardTitle>
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold">12</div>
-                    <p className="text-xs text-muted-foreground">Grupos bajo tu supervisión</p>
-                </CardContent>
-            </Card>
-             <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Asistencia Promedio</CardTitle>
-                    <UserCheck className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold">91%</div>
-                    <p className="text-xs text-muted-foreground">+2% desde el mes pasado</p>
-                </CardContent>
-            </Card>
-        </div>
-        <div className="grid gap-6 mt-6">
-            <Card>
+    const filteredData = useMemo(() => {
+        if (!selectedCarrera) return { groups: [], teachers: [] };
+
+        const careerGroups = grupos.filter(g => g.carreraId === selectedCarrera);
+        const careerGroupIds = new Set(careerGroups.map(g => g.id));
+
+        const careerHorarios = horarios.filter(h => h.grupoId && careerGroupIds.has(h.grupoId));
+        
+        const teacherIds = new Set<string>();
+        careerHorarios.forEach(horario => {
+            if (!horario.schedule) return;
+            Object.values(horario.schedule).forEach(day => {
+                if (!day) return;
+                Object.values(day).forEach(block => {
+                    if (block && block.docenteId) {
+                        teacherIds.add(block.docenteId);
+                    }
+                });
+            });
+        });
+
+        const careerTeachers = users.filter(u => u.role === 'Docente' && teacherIds.has(u.id));
+        
+        return { groups: careerGroups, teachers: careerTeachers };
+
+    }, [selectedCarrera, grupos, horarios, users]);
+
+    return (
+        <div>
+            <div className="grid gap-2 mb-4">
+              <h1 className="text-3xl font-semibold">Dashboard: Jefe de Carrera</h1>
+              <p className="text-muted-foreground">Selecciona una carrera para ver sus grupos y docentes.</p>
+            </div>
+
+            <Card className="mb-6">
                 <CardHeader>
-                    <CardTitle>Desempeño de Asistencia por Grupo</CardTitle>
-                    <CardDescription>Comparativa de asistencia y faltas en los últimos 30 días.</CardDescription>
+                    <CardTitle>Filtro por Carrera</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={attendanceData}>
-                            <XAxis dataKey="name" />
-                            <YAxis />
-                            <Tooltip />
-                            <Legend />
-                            <Bar dataKey="asistencia" stackId="a" fill="hsl(var(--primary))" name="Asistencia (%)" />
-                            <Bar dataKey="faltas" stackId="a" fill="hsl(var(--destructive))" name="Faltas (%)" />
-                        </BarChart>
-                    </ResponsiveContainer>
+                    <div className="max-w-sm">
+                        <Label htmlFor="career-select">Selecciona un área o carrera</Label>
+                        <Select value={selectedCarrera} onValueChange={setSelectedCarrera}>
+                            <SelectTrigger id="career-select">
+                                <SelectValue placeholder="Selecciona una carrera..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {carreras.map(c => (
+                                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </CardContent>
             </Card>
+
+            {selectedCarrera && (
+                 <div className="grid gap-6 md:grid-cols-2">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2"><GraduationCap /> Grupos de la Carrera</CardTitle>
+                            <CardDescription>Total de grupos: {filteredData.groups.length}</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            {filteredData.groups.length > 0 ? (
+                                <ul className="space-y-2">
+                                    {filteredData.groups.map(group => (
+                                        <li key={group.id} className="p-2 border rounded-md text-sm">{group.name}</li>
+                                    ))}
+                                </ul>
+                            ): (
+                                <p className="text-sm text-muted-foreground">No hay grupos para esta carrera.</p>
+                            )}
+                        </CardContent>
+                    </Card>
+                     <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2"><Briefcase /> Docentes de la Carrera</CardTitle>
+                            <CardDescription>Total de docentes: {filteredData.teachers.length}</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                             {filteredData.teachers.length > 0 ? (
+                                <ul className="space-y-2">
+                                    {filteredData.teachers.map(teacher => (
+                                        <li key={teacher.id} className="p-2 border rounded-md text-sm">{teacher.name}</li>
+                                    ))}
+                                </ul>
+                            ): (
+                                <p className="text-sm text-muted-foreground">No hay docentes asignados a esta carrera.</p>
+                            )}
+                        </CardContent>
+                    </Card>
+                 </div>
+            )}
         </div>
-    </div>
-);
+    );
+};
 
 
 export default function AdminDashboardPage() {
