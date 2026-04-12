@@ -184,18 +184,20 @@ export default function TeacherAttendancePage() {
 
             const MODEL_URL = '/models';
             try {
-                await faceapi.tf.setBackend('webgl');
-                await faceapi.tf.ready();
-                
+                console.log("Cargando modelos desde:", MODEL_URL);
+
                 await Promise.all([
                     faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
                     faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
                     faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
                 ]);
+
+                console.log("Modelos cargados correctamente ✅");
                 setModelsLoaded(true);
+
             } catch (error) {
-                console.error("Error detallado al cargar los modelos de face-api:", error);
-                const userFriendlyMessage = "No se pudieron cargar los modelos de IA. Esto suele ocurrir si los archivos en la carpeta `public/models` no son accesibles o están corruptos. Por favor, verifica la consola del navegador para ver el error específico.";
+                console.error("ERROR REAL DE MODELOS:", error);
+                const userFriendlyMessage = "Error cargando modelos. Revisa la carpeta /public/models y la consola.";
                 setModelError(userFriendlyMessage);
                 toast({
                     variant: 'destructive',
