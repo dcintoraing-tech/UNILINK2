@@ -353,25 +353,29 @@ export default function TeacherAttendancePage() {
                     setIsDetecting(true);
                     const video = videoRef.current;
                     const canvas = canvasRef.current;
-                    const displaySize = { width: video.videoWidth, height: video.videoHeight };
+                    const displaySize = { width: video.clientWidth, height: video.clientHeight };
                     faceapi.matchDimensions(canvas, displaySize);
 
-                    const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptors();
-                    const resizedDetections = faceapi.resizeResults(detections, displaySize);
-                    
-                    const ctx = canvas.getContext('2d');
-                    if (ctx) {
-                        ctx.clearRect(0, 0, canvas.width, canvas.height);
-                        faceapi.draw.drawDetections(canvas, resizedDetections);
-                    }
+                    try {
+                        const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptors();
+                        const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                        
+                        const ctx = canvas.getContext('2d');
+                        if (ctx) {
+                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                            faceapi.draw.drawDetections(canvas, resizedDetections);
+                        }
 
-                    if (detections.length > 0) {
-                        for (const detection of detections) {
-                            const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
-                            if (bestMatch.label !== 'unknown') {
-                                markAttendance(bestMatch.label);
+                        if (detections.length > 0 && faceMatcher) {
+                            for (const detection of detections) {
+                                const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+                                if (bestMatch.label !== 'unknown') {
+                                    markAttendance(bestMatch.label);
+                                }
                             }
                         }
+                    } catch (err) {
+                        console.error("Error en detección:", err);
                     }
                     setIsDetecting(false);
                 }
