@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { User as UserIcon, Camera, Users, FilePlus, Group } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -70,16 +69,6 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
 
     return [storedValue, setValue] as const;
 };
-
-// --- UTILITY FUNCTIONS ---
-function cosineSimilarity(vecA: number[], vecB: number[]): number {
-    if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
-    const dotProduct = vecA.map((val, i) => val * vecB[i]).reduce((acc, val) => acc + val, 0);
-    const normA = Math.sqrt(vecA.reduce((acc, val) => acc + val * val, 0));
-    const normB = Math.sqrt(vecB.reduce((acc, val) => acc + val * val, 0));
-    if (normA === 0 || normB === 0) return 0;
-    return dotProduct / (normA * normB);
-}
 
 // --- INTERFACES ---
 interface Student {
@@ -162,16 +151,12 @@ export default function TeacherAttendancePage() {
     
     const [isTakingAttendance, setIsTakingAttendance] = useState(false);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
-    const [scanProgress, setScanProgress] = useState(0);
-    const [detectionStatus, setDetectionStatus] = useState<'SEARCHING' | 'DETECTED'>('SEARCHING');
-    const [isRecognized, setIsRecognized] = useState(false);
-
+    
     const [isJustifyOpen, setIsJustifyOpen] = useState(false);
     const [justifyingStudent, setJustifyingStudent] = useState<DisplayStudent | null>(null);
     const [justificationReason, setJustificationReason] = useState('');
 
     const videoRef = useRef<HTMLVideoElement>(null);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
 
     useEffect(() => {
@@ -196,57 +181,25 @@ export default function TeacherAttendancePage() {
             videoRef.current.srcObject = null;
         }
     }, []);
-
-    const handleRecognition = useCallback(() => {
-        if (!videoRef.current || !selectedGroup || groupStudentList.length === 0) return;
     
-        const markedStudentIds = new Set(groupStudentList.filter(s => s.status !== 'Pendiente').map(s => s.id));
-        const unmarkedStudents = groupStudentList.filter(s => s.embedding && !markedStudentIds.has(s.id));
-    
-        if (unmarkedStudents.length === 0) {
-            if (isTakingAttendance) {
-                setIsTakingAttendance(false);
-                toast({ title: "Pase de lista completo", description: "Todos los estudiantes del grupo han sido procesados." });
-            }
+    const handleManualAttendance = (studentId: string) => {
+        const studentToMark = groupStudentList.find(s => s.id === studentId);
+        if (!studentToMark || studentToMark.status !== 'Pendiente') {
+            toast({
+                variant: 'destructive',
+                title: 'Error',
+                description: 'Este estudiante ya ha sido marcado.',
+            });
             return;
         }
-    
-        let studentToRecognize: DisplayStudent | undefined;
-        const groupInfo = grupos.find(g => g.id === selectedGroup);
-    
-        if (groupInfo?.name === '8 SIS') {
-            const priorityNames = ['Alan Daniel', 'Carlos David', 'Emiliano Nolasco'];
-            for (const name of priorityNames) {
-                const student = unmarkedStudents.find(s => `${s.firstName} ${s.lastName}` === name);
-                if (student) {
-                    studentToRecognize = student;
-                    break;
-                }
-            }
-            if (!studentToRecognize) {
-                const remainingStudents = unmarkedStudents.filter(s => !priorityNames.includes(`${s.firstName} ${s.lastName}`));
-                if (remainingStudents.length > 0) {
-                    studentToRecognize = remainingStudents[0];
-                }
-            }
-        } else {
-            if (unmarkedStudents.length > 0) {
-                studentToRecognize = unmarkedStudents[0];
-            }
-        }
-    
-        if (!studentToRecognize) return;
-    
-        setIsRecognized(true);
-    
+
         const now = new Date();
         const dateString = now.toISOString().split('T')[0];
-    
         let subjectName = 'Clase de Prueba';
         let materiaId = 'default-materia';
         let status: AttendanceStatus = 'Presente';
-    
-        const studentSchedule = horarios.find(h => h.grupoId === studentToRecognize!.assignedGroupId);
+
+        const studentSchedule = horarios.find(h => h.grupoId === studentToMark.assignedGroupId);
         if (studentSchedule) {
             const dayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1;
             const todaySchedule = studentSchedule.schedule?.[dayIndex];
@@ -269,36 +222,35 @@ export default function TeacherAttendancePage() {
                 }
             }
         }
-    
+
         const arrivalTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    
+
         setGroupStudentList(prevList =>
             prevList.map(s =>
-                s.id === studentToRecognize!.id
+                s.id === studentId
                     ? { ...s, status, arrivalTime, subjectName }
                     : s
             )
         );
-    
-        const recordId = `att-${studentToRecognize.id}-${dateString}-${materiaId}`;
+
+        const recordId = `att-${studentId}-${dateString}-${materiaId}`;
         setAttendance(prevAtt => {
             if (prevAtt.some(a => a.id === recordId)) return prevAtt;
             return [...prevAtt, {
                 id: recordId,
-                studentId: studentToRecognize!.id,
+                studentId: studentId,
                 date: dateString,
                 materiaAsignacionId: materiaId,
                 status: status,
                 arrivalTime: arrivalTime
             }];
         });
-    
+
         toast({
             title: `Asistencia Registrada (${status})`,
-            description: `${studentToRecognize.firstName} ${studentToRecognize.lastName} para ${subjectName}.`,
+            description: `${studentToMark.firstName} ${studentToMark.lastName} para ${subjectName}.`,
         });
-    
-    }, [groupStudentList, selectedGroup, horarios, config, setAttendance, toast, materias, isTakingAttendance, grupos]);
+    };
     
     // Camera start/stop effect
     useEffect(() => {
@@ -338,79 +290,6 @@ export default function TeacherAttendancePage() {
         return () => { isCancelled = true; stopCamera(); };
     }, [isTakingAttendance, stopCamera, toast]);
     
-    // Recognition and progress interval effect
-    useEffect(() => {
-        if (!isTakingAttendance || hasCameraPermission !== true) {
-            setDetectionStatus('SEARCHING');
-            setIsRecognized(false);
-            return;
-        };
-
-        let statusToggleTimeout: NodeJS.Timeout;
-        const recognitionInterval = setInterval(() => {
-            setDetectionStatus('DETECTED');
-            handleRecognition();
-            
-            statusToggleTimeout = setTimeout(() => {
-                setDetectionStatus('SEARCHING');
-                setIsRecognized(false);
-            }, 1500);
-
-        }, 3000);
-
-        const progressInterval = setInterval(() => {
-            setScanProgress(prev => (prev >= 100 ? 0 : prev + 1.67));
-        }, 50);
-
-        return () => {
-            clearInterval(recognitionInterval);
-            clearInterval(progressInterval);
-            clearTimeout(statusToggleTimeout);
-            setScanProgress(0);
-        };
-    }, [isTakingAttendance, hasCameraPermission, handleRecognition]);
-    
-    // Face detection overlay drawing effect
-    useEffect(() => {
-        if (!isTakingAttendance || !hasCameraPermission || !canvasRef.current || !videoRef.current) return;
-
-        const canvas = canvasRef.current;
-        const video = videoRef.current;
-        const context = canvas.getContext('2d');
-        let animationFrameId: number;
-
-        const drawOverlay = () => {
-            if (!context || !video.videoWidth) {
-                animationFrameId = requestAnimationFrame(drawOverlay);
-                return;
-            }
-            
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            context.clearRect(0, 0, canvas.width, canvas.height);
-            
-            if (detectionStatus === 'DETECTED') {
-                context.strokeStyle = isRecognized ? 'hsl(142.1 76.2% 36.3%)' : 'hsl(var(--primary))';
-                context.lineWidth = 4;
-                context.beginPath();
-                context.ellipse(canvas.width / 2, canvas.height / 2, canvas.width * 0.25, canvas.height * 0.35, 0, 0, 2 * Math.PI);
-                context.stroke();
-            }
-            
-            animationFrameId = requestAnimationFrame(drawOverlay);
-        };
-
-        drawOverlay();
-
-        return () => {
-            cancelAnimationFrame(animationFrameId);
-            if (context && canvas) {
-                context.clearRect(0, 0, canvas.width, canvas.height);
-            }
-        };
-    }, [isTakingAttendance, hasCameraPermission, detectionStatus, isRecognized]);
-
-
     const handleToggleAttendance = () => {
         if (!isTakingAttendance) {
             setIsTakingAttendance(true);
@@ -524,7 +403,7 @@ export default function TeacherAttendancePage() {
                 <Card>
                     <CardHeader>
                         <CardTitle>Pase de Lista por Grupo</CardTitle>
-                        <CardDescription>Selecciona un grupo para comenzar a pasar lista con reconocimiento facial.</CardDescription>
+                        <CardDescription>Selecciona un grupo para comenzar a pasar lista.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="grid gap-4 sm:grid-cols-3">
@@ -548,35 +427,22 @@ export default function TeacherAttendancePage() {
                         <Card>
                             <CardHeader className="flex flex-row items-center justify-between">
                                 <div>
-                                    <CardTitle>Reconocimiento Facial</CardTitle>
-                                    <CardDescription>La cámara escaneará a los estudiantes del grupo seleccionado.</CardDescription>
+                                    <CardTitle>Cámara en Vivo</CardTitle>
+                                    <CardDescription>Confirma manualmente la asistencia de los estudiantes.</CardDescription>
                                 </div>
                                 <Button onClick={handleToggleAttendance} size="lg" disabled={groupStudentList.length === 0}>
                                     {isTakingAttendance ? 'Detener Pase de Lista' : 'Iniciar Pase de Lista'}
                                 </Button>
                             </CardHeader>
                             <CardContent>
-                                <div className={cn(
-                                    "relative w-full aspect-video rounded-md overflow-hidden bg-muted border-2 flex items-center justify-center transition-all duration-300",
-                                    isRecognized ? 'border-green-500 shadow-lg shadow-green-500/20' : 'border-border'
-                                )}>
+                                <div className="relative w-full aspect-video rounded-md overflow-hidden bg-muted border flex items-center justify-center">
                                     <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
-                                    <canvas ref={canvasRef} className={cn("absolute inset-0 w-full h-full", !isTakingAttendance && "hidden")} />
                                     
                                     {!isTakingAttendance && (
                                          <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-black/50 text-white">
                                             <Camera className="w-16 h-16 mb-4" />
                                             <p className="text-lg font-medium">La cámara está desactivada</p>
                                             <p className="text-sm">Haz clic en "Iniciar" para comenzar.</p>
-                                        </div>
-                                    )}
-
-                                    {isTakingAttendance && hasCameraPermission && (
-                                        <div className="absolute bottom-4 left-4 right-4">
-                                            <Progress value={scanProgress} />
-                                            <p className="text-center text-sm text-white font-medium mt-2" style={{textShadow: '0 0 5px black'}}>
-                                                 {detectionStatus === 'SEARCHING' ? 'Buscando rostro...' : (isRecognized ? '¡Alumno Reconocido!' : 'Rostro detectado, procesando...')}
-                                            </p>
                                         </div>
                                     )}
                                 </div>
@@ -586,7 +452,7 @@ export default function TeacherAttendancePage() {
                         <Card>
                              <CardHeader>
                                 <CardTitle>Registros de Asistencia para {grupos.find(g => g.id === selectedGroup)?.name}</CardTitle>
-                                <CardDescription>El estado se actualizará en tiempo real a medida que los estudiantes sean reconocidos.</CardDescription>
+                                <CardDescription>El estado se actualizará en tiempo real a medida que marques a los estudiantes.</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <Table>
@@ -617,8 +483,11 @@ export default function TeacherAttendancePage() {
                                                     <TableCell>
                                                         <Badge variant={getStatusVariant(student.status)}>{student.status}</Badge>
                                                     </TableCell>
-                                                    <TableCell className="text-right">
-                                                        <Button variant="outline" size="sm" onClick={() => handleOpenJustifyDialog(student)} disabled={student.status === 'Presente'}>
+                                                    <TableCell className="text-right space-x-2">
+                                                        <Button variant="outline" size="sm" onClick={() => handleManualAttendance(student.id)} disabled={student.status !== 'Pendiente' || !isTakingAttendance}>
+                                                            Marcar Asistencia
+                                                        </Button>
+                                                        <Button variant="secondary" size="sm" onClick={() => handleOpenJustifyDialog(student)} disabled={student.status === 'Presente'}>
                                                             <FilePlus className="mr-2 h-3 w-3" />
                                                             Justificar
                                                         </Button>
