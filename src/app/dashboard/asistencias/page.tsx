@@ -186,18 +186,21 @@ export default function TeacherAttendancePage() {
             try {
                 console.log("Cargando modelos desde:", MODEL_URL);
 
-                await Promise.all([
-                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-                ]);
+                await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+                console.log("tiny ok");
 
+                await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+                console.log("landmark ok");
+
+                await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+                console.log("recognition ok");
+                
                 console.log("Modelos cargados correctamente ✅");
                 setModelsLoaded(true);
 
             } catch (error) {
                 console.error("ERROR REAL DE MODELOS:", error);
-                const userFriendlyMessage = "Error cargando modelos. Revisa la carpeta /public/models y la consola.";
+                const userFriendlyMessage = "No se pudieron cargar los modelos de IA. Revisa la carpeta /public/models y la consola para más detalles.";
                 setModelError(userFriendlyMessage);
                 toast({
                     variant: 'destructive',
@@ -626,7 +629,7 @@ export default function TeacherAttendancePage() {
                                                                 <AvatarImage src={student.facialImage || undefined} alt={`${student.firstName} ${student.lastName}`} />
                                                                 <AvatarFallback><UserIcon /></AvatarFallback>
                                                             </Avatar>
-                                                            <span className="font-medium">{student.firstName} {student.lastName}</span>
+                                                            <span className="font-medium">{student.firstName} ${student.lastName}</span>
                                                         </div>
                                                     </TableCell>
                                                     <TableCell>{student.subjectName || 'N/A'}</TableCell>
