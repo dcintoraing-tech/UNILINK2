@@ -70,17 +70,17 @@ interface Student {
     embedding: number[] | null;
 }
 
-function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished: () => void, carreras: CatalogItem[], grupos: CatalogItem[] }) {
+function StudentRegistrationForm({ onFinished, carreras, grupos, initialData }: { onFinished: () => void, carreras: CatalogItem[], grupos: CatalogItem[], initialData: Student | null }) {
     const { toast } = useToast();
     const [, setStudents] = useLocalStorage<Student[]>('unilink-students', []);
 
-    const [firstName, setFirstName] = useState('');
-    const [lastName, setLastName] = useState('');
-    const [controlNumber, setControlNumber] = useState('');
-    const [academicProgram, setAcademicProgram] = useState('');
-    const [assignedGroup, setAssignedGroup] = useState('');
+    const [firstName, setFirstName] = useState(initialData?.firstName || '');
+    const [lastName, setLastName] = useState(initialData?.lastName || '');
+    const [controlNumber, setControlNumber] = useState(initialData?.controlNumber || '');
+    const [academicProgram, setAcademicProgram] = useState(initialData?.academicProgramId || '');
+    const [assignedGroup, setAssignedGroup] = useState(initialData?.assignedGroupId || '');
 
-    const [capturedImage, setCapturedImage] = useState<string | null>(null);
+    const [capturedImage, setCapturedImage] = useState<string | null>(initialData?.facialImage || null);
     const [isCapturing, setIsCapturing] = useState(false);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -102,15 +102,24 @@ function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished:
             }
             try {
                 const MODEL_URL = window.location.origin + '/models';
-                await Promise.all([
-                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-                ]);
+                console.log("URL de modelos construida:", MODEL_URL);
+                
+                await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+                console.log("tinyFaceDetector cargado correctamente.");
+
+                await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+                console.log("faceLandmark68Net cargado correctamente.");
+
+                await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+                console.log("faceRecognitionNet cargado correctamente.");
+                
+                console.log("¡Todos los modelos de IA se cargaron exitosamente! ✅");
                 setModelsLoaded(true);
+                setModelError(null);
             } catch (error) {
-                console.error("ERROR REAL DE MODELOS:", error);
-                setModelError("Error cargando modelos de IA. Revisa la carpeta /public/models y la consola.");
+                console.error("ERROR REAL AL CARGAR MODELOS:", error);
+                const userFriendlyMessage = "No se pudieron cargar los modelos de IA. Esto suele ocurrir si los archivos en la carpeta /public/models no son accesibles o están corruptos. Verifica la consola del navegador para ver el error específico.";
+                setModelError(userFriendlyMessage);
             }
         };
         loadModels();
@@ -128,7 +137,6 @@ function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished:
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(track => track.stop());
         }
-        setCapturedImage(null);
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -165,7 +173,7 @@ function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished:
         stopCapture();
     };
 
-    const handleRegisterStudent = async (e: React.FormEvent) => {
+    const handleSaveStudent = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!firstName || !lastName || !controlNumber || !academicProgram || !assignedGroup) {
             toast({
@@ -186,58 +194,87 @@ function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished:
 
         setIsProcessing(true);
 
-        let embedding: number[] | null = null;
-        try {
-            const img = document.createElement('img');
-            img.src = capturedImage;
-            await new Promise(resolve => { img.onload = resolve; });
+        let embedding: number[] | null = initialData?.embedding || null;
+        
+        if (capturedImage && capturedImage !== initialData?.facialImage) {
+            try {
+                const img = document.createElement('img');
+                img.src = capturedImage;
+                await new Promise(resolve => { img.onload = resolve; });
 
-            const detection = await faceapi
-                .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
-                .withFaceLandmarks()
-                .withFaceDescriptor();
-            
-            if (!detection) {
+                const detection = await faceapi
+                    .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks()
+                    .withFaceDescriptor();
+                
+                if (!detection) {
+                    toast({
+                        variant: 'destructive',
+                        title: 'Rostro no detectado',
+                        description: 'No se pudo encontrar un rostro en la imagen. Por favor, intenta de nuevo con buena iluminación y el rostro centrado.',
+                    });
+                    setIsProcessing(false);
+                    return;
+                }
+
+                embedding = Array.from(detection.descriptor);
+
+            } catch (error) {
+                console.error("Error generating embedding:", error);
                 toast({
                     variant: 'destructive',
-                    title: 'Rostro no detectado',
-                    description: 'No se pudo encontrar un rostro en la imagen. Por favor, intenta de nuevo con buena iluminación y el rostro centrado.',
+                    title: 'Error de Procesamiento',
+                    description: 'No se pudo procesar la imagen facial.',
                 });
                 setIsProcessing(false);
                 return;
             }
-
-            embedding = Array.from(detection.descriptor);
-
-        } catch (error) {
-            console.error("Error generating embedding:", error);
+        }
+        
+        if (!embedding) {
             toast({
                 variant: 'destructive',
-                title: 'Error de Procesamiento',
-                description: 'No se pudo procesar la imagen facial.',
+                title: 'Huella Facial Requerida',
+                description: 'No se pudo generar una huella facial. Asegúrate de capturar una nueva imagen si es un nuevo estudiante.',
             });
             setIsProcessing(false);
             return;
         }
-
-        const newStudent: Student = {
-            id: new Date().toISOString(),
-            firstName,
-            lastName,
-            controlNumber,
-            academicProgramId: academicProgram,
-            assignedGroupId: assignedGroup,
-            facialImage: capturedImage,
-            embedding: embedding,
-        };
-
-        setStudents(prev => [...prev, newStudent]);
-
-        toast({
-            title: 'Estudiante Registrado',
-            description: `El estudiante ${firstName} ${lastName} ha sido guardado con su huella facial.`,
-        });
         
+        if (initialData) {
+            const updatedStudent: Student = {
+                ...initialData,
+                firstName,
+                lastName,
+                controlNumber,
+                academicProgramId: academicProgram,
+                assignedGroupId: assignedGroup,
+                facialImage: capturedImage,
+                embedding: embedding,
+            };
+            setStudents(prev => prev.map(s => s.id === initialData.id ? updatedStudent : s));
+            toast({
+                title: 'Estudiante Actualizado',
+                description: `Los datos de ${firstName} ${lastName} han sido actualizados.`,
+            });
+        } else {
+             const newStudent: Student = {
+                id: new Date().toISOString(),
+                firstName,
+                lastName,
+                controlNumber,
+                academicProgramId: academicProgram,
+                assignedGroupId: assignedGroup,
+                facialImage: capturedImage,
+                embedding: embedding,
+            };
+            setStudents(prev => [...prev, newStudent]);
+            toast({
+                title: 'Estudiante Registrado',
+                description: `El estudiante ${firstName} ${lastName} ha sido guardado con su huella facial.`,
+            });
+        }
+
         setIsProcessing(false);
         onFinished();
     };
@@ -251,7 +288,7 @@ function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished:
     }, []);
 
     return (
-        <form onSubmit={handleRegisterStudent} className="space-y-6">
+        <form onSubmit={handleSaveStudent} className="space-y-6">
              <ScrollArea className="max-h-[65vh] pr-4">
                 <div className="grid md:grid-cols-3 gap-6">
                     <Card className="md:col-span-2 border-0 shadow-none">
@@ -327,7 +364,7 @@ function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished:
                             {!isCapturing ? (
                                 <Button type="button" onClick={startCapture} className="w-full">
                                     <Camera className="mr-2 h-4 w-4" />
-                                    Iniciar Captura
+                                    {capturedImage ? 'Capturar de Nuevo' : 'Iniciar Captura'}
                                 </Button>
                             ) : (
                                 <div className="w-full grid grid-cols-2 gap-2">
@@ -357,7 +394,7 @@ function StudentRegistrationForm({ onFinished, carreras, grupos }: { onFinished:
                 <Button type="button" variant="ghost" onClick={onFinished}>Cancelar</Button>
                 <Button type="submit" disabled={!modelsLoaded || isProcessing}>
                     {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {isProcessing ? 'Procesando...' : 'Registrar Estudiante'}
+                    {isProcessing ? 'Procesando...' : (initialData ? 'Guardar Cambios' : 'Registrar Estudiante')}
                 </Button>
             </DialogFooter>
 
@@ -373,6 +410,7 @@ export default function StudentsPage() {
     const { toast } = useToast();
     
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [editingStudent, setEditingStudent] = useState<Student | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
 
     const filteredStudents = useMemo(() => {
@@ -393,6 +431,16 @@ export default function StudentsPage() {
             title: "Estudiante eliminado",
             description: "El estudiante ha sido eliminado del sistema."
         });
+    };
+    
+    const handleOpenDialog = (student: Student | null) => {
+        setEditingStudent(student);
+        setIsDialogOpen(true);
+    };
+
+    const handleCloseDialog = () => {
+        setEditingStudent(null);
+        setIsDialogOpen(false);
     };
 
     return (
@@ -415,7 +463,7 @@ export default function StudentsPage() {
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
                             </div>
-                            <Button size="sm" onClick={() => setIsDialogOpen(true)} className="w-full sm:w-auto">
+                            <Button size="sm" onClick={() => handleOpenDialog(null)} className="w-full sm:w-auto">
                                 <PlusCircle className="h-3.5 w-3.5 mr-1" />
                                 <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Registrar Estudiante</span>
                             </Button>
@@ -454,7 +502,7 @@ export default function StudentsPage() {
                                             <DropdownMenuTrigger asChild><Button aria-haspopup="true" size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /><span className="sr-only">Menú</span></Button></DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
                                                 <DropdownMenuLabel>Acciones</DropdownMenuLabel>
-                                                <DropdownMenuItem disabled>Editar</DropdownMenuItem>
+                                                <DropdownMenuItem onSelect={() => handleOpenDialog(student)}>Editar</DropdownMenuItem>
                                                 <AlertDialog>
                                                     <AlertDialogTrigger asChild>
                                                     <DropdownMenuItem onSelect={(event) => event.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem>
@@ -491,16 +539,25 @@ export default function StudentsPage() {
                 </CardFooter>
             </Card>
 
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <Dialog open={isDialogOpen} onOpenChange={(isOpen) => {
+                if (!isOpen) {
+                    handleCloseDialog();
+                } else {
+                    setIsDialogOpen(true);
+                }
+            }}>
                 <DialogContent className="sm:max-w-4xl">
                     <DialogHeader>
-                        <DialogTitle>Registro de Estudiantes</DialogTitle>
-                        <DialogDescription>Captura la información personal, académica y biométrica del estudiante.</DialogDescription>
+                        <DialogTitle>{editingStudent ? 'Editar Estudiante' : 'Registro de Estudiantes'}</DialogTitle>
+                        <DialogDescription>
+                            {editingStudent ? 'Actualiza la información del estudiante.' : 'Captura la información personal, académica y biométrica del estudiante.'}
+                        </DialogDescription>
                     </DialogHeader>
                     <StudentRegistrationForm 
-                        onFinished={() => setIsDialogOpen(false)}
+                        onFinished={handleCloseDialog}
                         carreras={carreras}
                         grupos={grupos}
+                        initialData={editingStudent}
                     />
                 </DialogContent>
             </Dialog>
