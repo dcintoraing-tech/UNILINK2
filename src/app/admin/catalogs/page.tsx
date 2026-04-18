@@ -107,7 +107,7 @@ interface Horario {
 }
 
 
-// --- GENERIC CATALOG COMPONENT ---
+// --- GENERIC  COMPONENT ---
 function CatalogContent({ title, items, setItems, onAdd, onEdit, onDelete }: { title: string, items: CatalogItem[], setItems: (value: CatalogItem[] | ((val: CatalogItem[]) => CatalogItem[])) => void, onAdd?: (name: string) => void, onEdit?: (id: string, name: string) => void, onDelete?: (id: string) => void }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<CatalogItem | null>(null);

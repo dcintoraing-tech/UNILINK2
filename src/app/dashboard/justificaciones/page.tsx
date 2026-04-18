@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
     const [storedValue, setStoredValue] = useState<T>(initialValue);
@@ -29,27 +31,15 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
 
 interface Justificacion { id: string; studentId: string; date: string; reason: string; status: 'Pendiente' | 'Aprobado' | 'Rechazado'; attendanceRecordId: string; }
 interface Student { id: string; firstName: string; lastName: string; }
-interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: 'Presente' | 'Retardo' | 'Falta' | 'Falta Justificada'; }
-interface User { id: string; name: string; role: string; }
-
-interface HorarioBlock {
-    materiaId: string;
-    docenteId: string;
-    duracion: 1 | 2;
-}
-type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
-type ScheduleData = { [dayIndex: number]: DaySchedule };
-interface Horario {
-    id: string;
-    grupoId: string;
-    schedule: ScheduleData;
-}
-
+type AttendanceStatus = 'Presente' | 'Retardo' | 'Falta' | 'Falta Justificada';
+interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: AttendanceStatus; }
 
 export default function TeacherJustificacionesPage() {
-    const [justificaciones] = useLocalStorage<Justificacion[]>('unilink-justificaciones', []);
+    const { toast } = useToast();
+    const [justificaciones, setJustificaciones] = useLocalStorage<Justificacion[]>('unilink-justificaciones', []);
     const [students] = useLocalStorage<Student[]>('unilink-students', []);
-    const [user, setUser] = useState<User | null>(null);
+    const [attendance, setAttendance] = useLocalStorage<AttendanceRecord[]>('unilink-attendance', []);
+    const [user, setUser] = useState<{role: string} | null>(null);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -58,10 +48,9 @@ export default function TeacherJustificacionesPage() {
         }
     }, []);
 
-    const teacherJustificaciones = useMemo(() => {
-        if (!user || user.role !== 'Docente') return [];
-        // For testing, the "Docente" role has access to all justificaciones.
-        return justificaciones;
+    const pendingJustificaciones = useMemo(() => {
+        if (user?.role !== 'Docente' && user?.role !== 'Jefe de carrera' && user?.role !== 'Admin') return [];
+        return justificaciones.filter(j => j.status === 'Pendiente');
     }, [user, justificaciones]);
 
     const getStudentName = (studentId: string) => {
@@ -69,21 +58,40 @@ export default function TeacherJustificacionesPage() {
         return student ? `${student.firstName} ${student.lastName}` : 'Desconocido';
     };
     
-    const getStatusVariant = (status: string) => {
-        switch (status) {
-            case 'Aprobado': return 'default';
-            case 'Pendiente': return 'secondary';
-            case 'Rechazado': return 'destructive';
-            default: return 'outline';
-        }
+    const handleStatusChange = (justificacionId: string, newStatus: 'Aprobado' | 'Rechazado') => {
+        let attendanceUpdated = false;
+        const updatedJustificaciones = justificaciones.map(j => {
+            if (j.id === justificacionId) {
+                if (newStatus === 'Aprobado') {
+                    const updatedAttendance = attendance.map(a => {
+                        if (a.id === j.attendanceRecordId && a.status === 'Falta') {
+                            attendanceUpdated = true;
+                            return { ...a, status: 'Falta Justificada' as AttendanceStatus };
+                        }
+                        return a;
+                    });
+                    if (attendanceUpdated) {
+                        setAttendance(updatedAttendance);
+                    }
+                }
+                return { ...j, status: newStatus };
+            }
+            return j;
+        });
+
+        setJustificaciones(updatedJustificaciones);
+        toast({
+            title: `Justificación ${newStatus === 'Aprobado' ? 'Aprobada' : 'Rechazada'}`,
+            description: `El estado de la justificación ha sido actualizado.`,
+        });
     };
 
     return (
         <div className="grid gap-6">
             <Card>
                 <CardHeader>
-                    <CardTitle>Mis Justificaciones Enviadas</CardTitle>
-                    <CardDescription>Aquí puedes ver el estado de las justificaciones que has registrado para tus estudiantes.</CardDescription>
+                    <CardTitle>Panel de Justificaciones</CardTitle>
+                    <CardDescription>Revisa y gestiona las solicitudes de justificación de faltas de los alumnos.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <Table>
@@ -92,22 +100,23 @@ export default function TeacherJustificacionesPage() {
                                 <TableHead>Estudiante</TableHead>
                                 <TableHead>Fecha</TableHead>
                                 <TableHead>Motivo</TableHead>
-                                <TableHead>Estado</TableHead>
+                                <TableHead className="text-right">Acciones</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {teacherJustificaciones.length > 0 ? teacherJustificaciones.map(item => (
+                            {pendingJustificaciones.length > 0 ? pendingJustificaciones.map(item => (
                                 <TableRow key={item.id}>
                                     <TableCell className="font-medium">{getStudentName(item.studentId)}</TableCell>
                                     <TableCell>{item.date}</TableCell>
                                     <TableCell>{item.reason}</TableCell>
-                                    <TableCell>
-                                        <Badge variant={getStatusVariant(item.status)}>{item.status}</Badge>
+                                    <TableCell className="text-right space-x-2">
+                                        <Button size="sm" variant="outline" onClick={() => handleStatusChange(item.id, 'Aprobado')}>Aprobar</Button>
+                                        <Button size="sm" variant="destructive" onClick={() => handleStatusChange(item.id, 'Rechazado')}>Rechazar</Button>
                                     </TableCell>
                                 </TableRow>
                             )) : (
                                 <TableRow>
-                                    <TableCell colSpan={4} className="h-24 text-center">No has enviado ninguna justificación.</TableCell>
+                                    <TableCell colSpan={4} className="h-24 text-center">No hay justificaciones pendientes.</TableCell>
                                 </TableRow>
                             )}
                         </TableBody>

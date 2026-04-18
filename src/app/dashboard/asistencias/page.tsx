@@ -92,7 +92,7 @@ interface HorarioBlock {
     duracion: 1 | 2;
 }
 type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
-type ScheduleData = { [dayIndex: number]: DaySchedule };
+type ScheduleData = { [day: number]: DaySchedule };
 interface Horario {
     id: string; // Same as grupoId
     grupoId: string;
@@ -173,21 +173,14 @@ export default function TeacherAttendancePage() {
             if (window.location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
                 const errorMsg = 'El acceso a la cámara y los modelos de IA no están disponibles en un entorno no seguro. Por favor, usa una conexión HTTPS.';
                 setModelError(errorMsg);
-                toast({
-                    variant: 'destructive',
-                    title: 'Entorno no seguro',
-                    description: errorMsg,
-                    duration: 10000,
-                });
                 return;
             }
-
+            
             const MODEL_URL = window.location.origin + '/models';
-            console.log("URL de modelos construida:", MODEL_URL);
-
+            
             try {
-                console.log("Cargando modelos desde:", MODEL_URL);
-                
+                console.log("URL de modelos construida:", MODEL_URL);
+
                 await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
                 console.log("tinyFaceDetector cargado correctamente.");
 
@@ -203,18 +196,12 @@ export default function TeacherAttendancePage() {
 
             } catch (error) {
                 console.error("ERROR REAL AL CARGAR MODELOS:", error);
-                const userFriendlyMessage = "No se pudieron cargar los modelos de IA. Esto suele ocurrir si la ruta es incorrecta o los archivos están corruptos. Verifica la consola para el error específico.";
+                const userFriendlyMessage = "No se pudieron cargar los modelos de IA. Esto suele ocurrir si los archivos en la carpeta /public/models no son accesibles o están corruptos. Verifica la consola del navegador para ver el error específico.";
                 setModelError(userFriendlyMessage);
-                toast({
-                    variant: 'destructive',
-                    title: 'Error de Carga de Modelos de IA',
-                    description: userFriendlyMessage,
-                    duration: 10000,
-                });
             }
         };
         loadModels();
-    }, [toast]);
+    }, []);
 
     // Create FaceMatcher when group changes
     const faceMatcher = useMemo(() => {
@@ -237,7 +224,7 @@ export default function TeacherAttendancePage() {
 
             if (labeledFaceDescriptors.length === 0) return null;
 
-            return new faceapi.FaceMatcher(labeledFaceDescriptors, 0.6); // Threshold set to 0.6
+            return new faceapi.FaceMatcher(labeledFaceDescriptors, 0.6);
         } catch (error) {
             console.error("Error creating FaceMatcher:", error);
             toast({
@@ -275,7 +262,10 @@ export default function TeacherAttendancePage() {
             videoRef.current.srcObject = null;
         }
         if (canvasRef.current) {
-            canvasRef.current.getContext('2d')?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+            const context = canvasRef.current.getContext('2d');
+            if (context) {
+                context.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+            }
         }
     }, []);
 
@@ -347,12 +337,13 @@ export default function TeacherAttendancePage() {
 
     // Recognition loop
     useEffect(() => {
-        if (isTakingAttendance && modelsLoaded && faceMatcher) {
+        if (isTakingAttendance && modelsLoaded && faceMatcher && videoRef.current) {
             recognitionIntervalRef.current = setInterval(async () => {
                 if (videoRef.current && canvasRef.current && !videoRef.current.paused && videoRef.current.readyState >= 3) {
                     setIsDetecting(true);
                     const video = videoRef.current;
                     const canvas = canvasRef.current;
+                    
                     const displaySize = { width: video.clientWidth, height: video.clientHeight };
                     faceapi.matchDimensions(canvas, displaySize);
 
@@ -379,7 +370,7 @@ export default function TeacherAttendancePage() {
                     }
                     setIsDetecting(false);
                 }
-            }, 1000); // Run detection every second
+            }, 1000); 
         } else {
              if (recognitionIntervalRef.current) {
                 clearInterval(recognitionIntervalRef.current);
@@ -412,7 +403,7 @@ export default function TeacherAttendancePage() {
                 streamRef.current = stream;
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
-                    videoRef.current.play();
+                    await videoRef.current.play();
                 }
                 setHasCameraPermission(true);
             } catch (error) {
@@ -488,6 +479,11 @@ export default function TeacherAttendancePage() {
                     title: "Pase de lista detenido",
                     description: `${absencesCount} estudiante(s) fueron marcados como 'Falta'.`
                 });
+            } else {
+                 toast({
+                    title: "Pase de lista detenido",
+                    description: "Todos los estudiantes fueron registrados."
+                });
             }
         }
     };
@@ -498,14 +494,18 @@ export default function TeacherAttendancePage() {
     };
 
     const handleJustifySubmit = () => {
+        if (!justifyingStudent || !justificationReason) {
+             toast({ variant: "destructive", title: "Error", description: "Falta el motivo de la justificación." });
+            return;
+        }
+        
         const attendanceToJustify = attendance.find(a =>
             a.studentId === justifyingStudent?.id &&
-            a.date === new Date().toISOString().split('T')[0] &&
-            (a.status === 'Falta' || a.status === 'Retardo')
+            a.status === 'Falta'
         );
 
-        if (!justifyingStudent || !justificationReason || !attendanceToJustify) {
-             toast({ variant: "destructive", title: "Error", description: "No se encontró un registro de falta o retardo para justificar hoy, o falta el motivo." });
+        if (!attendanceToJustify) {
+             toast({ variant: "destructive", title: "Error", description: "No se encontró un registro de falta para justificar." });
             return;
         }
 
@@ -580,7 +580,7 @@ export default function TeacherAttendancePage() {
                             </CardHeader>
                             <CardContent>
                                 <div className="relative w-full aspect-video rounded-md overflow-hidden bg-muted border flex items-center justify-center">
-                                    <video ref={videoRef} className="w-full h-full" autoPlay muted playsInline />
+                                    <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
                                     <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
 
                                     {!isTakingAttendance && (
@@ -645,7 +645,7 @@ export default function TeacherAttendancePage() {
                                                         <Badge variant={getStatusVariant(student.status)}>{student.status}</Badge>
                                                     </TableCell>
                                                     <TableCell className="text-right space-x-2">
-                                                        <Button variant="secondary" size="sm" onClick={() => handleOpenJustifyDialog(student)} disabled={student.status === 'Presente'}>
+                                                        <Button variant="secondary" size="sm" onClick={() => handleOpenJustifyDialog(student)} disabled={student.status !== 'Falta'}>
                                                             <FilePlus className="mr-2 h-3 w-3" />
                                                             Justificar
                                                         </Button>
@@ -677,9 +677,9 @@ export default function TeacherAttendancePage() {
             <Dialog open={isJustifyOpen} onOpenChange={setIsJustifyOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Justificar Asistencia</DialogTitle>
+                        <DialogTitle>Justificar Falta del Docente</DialogTitle>
                         <DialogDescription>
-                            Enviar una justificación para {justifyingStudent?.firstName} para la fecha de hoy.
+                            Enviar una justificación para {justifyingStudent?.firstName} por su falta.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
@@ -689,7 +689,7 @@ export default function TeacherAttendancePage() {
                                 id="reason"
                                 value={justificationReason}
                                 onChange={(e) => setJustificationReason(e.target.value)}
-                                placeholder="Ej. Cita médica, problema familiar, etc."
+                                placeholder="Ej. El alumno notificó una cita médica, etc."
                             />
                         </div>
                     </div>
