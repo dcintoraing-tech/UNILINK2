@@ -54,7 +54,7 @@ const chartConfig = {
 
 export default function ReportsPage() {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
-    const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: sub(new Date(), { days: 30 }), to: new Date() });
+    const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
     
     const [filters, setFilters] = useState({
         carreraId: 'all',
@@ -65,11 +65,114 @@ export default function ReportsPage() {
     });
 
     const [carreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
-    const [grupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
-    const [users] = useLocalStorage<User[]>('unilink-users', []);
-    const [modalidades] = useLocalStorage<CatalogItem[]>('unilink-modalidades', []);
-    const [students] = useLocalStorage<Student[]>('unilink-students', []);
-    const [attendance] = useLocalStorage<AttendanceRecord[]>('unilink-attendance', []);
+    const [grupos, setGrupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
+    const [users, setUsers] = useLocalStorage<User[]>('unilink-users', []);
+    const [modalidades, setModalidades] = useLocalStorage<CatalogItem[]>('unilink-modalidades', []);
+    const [students, setStudents] = useLocalStorage<Student[]>('unilink-students', []);
+    const [attendance, setAttendance] = useLocalStorage<AttendanceRecord[]>('unilink-attendance', []);
+    const [mockDataGenerated, setMockDataGenerated] = useLocalStorage<boolean>('unilink-mock-admin-data-generated', false);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        // Set initial date range on client to avoid hydration mismatch
+        setDateRange({ from: sub(new Date(), { days: 30 }), to: new Date() });
+    }, []);
+
+    const handleGenerateMockData = () => {
+        if (mockDataGenerated) {
+            toast({ title: 'Datos ya generados', description: 'Los datos de prueba ya han sido generados previamente.' });
+            return;
+        }
+
+        const newSedes: CatalogItem[] = [
+            { id: 'sede-central', name: 'Campus Central' },
+            { id: 'sede-norte', name: 'Campus Norte' },
+            { id: 'sede-sur', name: 'Campus Sur' },
+        ];
+        const newModalidades: CatalogItem[] = [
+            { id: 'mod-presencial', name: 'Presencial' },
+            { id: 'mod-online', name: 'En Línea' },
+        ];
+        
+        const newUsers: User[] = [];
+        carreras.forEach(carrera => {
+            for (let i = 1; i <= 2; i++) {
+                const docenteName = `Docente ${carrera.name.substring(0,3)}${i}`;
+                newUsers.push({
+                    id: `docente-${carrera.id}-${i}`,
+                    name: docenteName,
+                    email: `${docenteName.replace(/\s/g, '.').toLowerCase()}@unilink.edu`,
+                    role: 'Docente',
+                    carreraId: carrera.id,
+                });
+            }
+        });
+
+        const newGrupos: Grupo[] = [];
+        const newStudents: Student[] = [];
+        const newAttendance: AttendanceRecord[] = [];
+        const periodos = ['2', '5', '8'];
+
+        carreras.forEach(carrera => {
+            if (carrera.name === 'Odontología') return;
+
+            periodos.forEach(periodo => {
+                for (let i = 1; i <= 10; i++) {
+                    const grupoName = `${carrera.name.substring(0,3).toUpperCase()}${periodo}0${i}`;
+                    const grupoId = `grupo-${carrera.id}-${periodo}-${i}`;
+                    newGrupos.push({
+                        id: grupoId,
+                        name: grupoName,
+                        carreraId: carrera.id,
+                        cuatrimestre: periodo,
+                        modalidadId: i % 2 === 0 ? 'mod-online' : 'mod-presencial'
+                    });
+
+                    for (let j = 1; j <= 10; j++) {
+                        const studentId = `student-${grupoId}-${j}`;
+                        newStudents.push({
+                            id: studentId,
+                            assignedGroupId: grupoId,
+                        });
+                        
+                        const startDate = sub(new Date(), { months: 4 });
+                        const endDate = new Date();
+                        const dateInterval = eachDayOfInterval({ start: startDate, end: endDate });
+                        
+                        let faltasCount = Math.floor(Math.random() * 5) + 3; // 3 a 7 faltas
+
+                        for (const date of dateInterval) {
+                           if (Math.random() > 0.7) { // 30% chance of having a record for any given day
+                                const status = faltasCount > 0 && Math.random() > 0.8 ? 'Falta' : 'Presente';
+                                if (status === 'Falta') faltasCount--;
+                                
+                                newAttendance.push({
+                                    id: `att-${studentId}-${format(date, 'yyyy-MM-dd')}`,
+                                    studentId: studentId,
+                                    date: format(date, 'yyyy-MM-dd'),
+                                    status: status,
+                                    docenteId: `docente-${carrera.id}-${(i%2)+1}`
+                                });
+                           }
+                        }
+                    }
+                }
+            });
+        });
+        
+        // This is not ideal as useLocalStorage hook is component-scoped
+        // A better approach would be a global state management or context API
+        // For now, we'll just set it to local storage directly.
+        localStorage.setItem('unilink-sedes', JSON.stringify(newSedes));
+        localStorage.setItem('unilink-modalidades', JSON.stringify(newModalidades));
+        localStorage.setItem('unilink-users', JSON.stringify([...users, ...newUsers]));
+        localStorage.setItem('unilink-grupos', JSON.stringify([...grupos, ...newGrupos]));
+        localStorage.setItem('unilink-students', JSON.stringify([...students, ...newStudents]));
+        localStorage.setItem('unilink-attendance', JSON.stringify([...attendance, ...newAttendance]));
+        
+        setMockDataGenerated(true);
+        toast({ title: 'Datos de prueba generados', description: 'El sistema ha sido poblado con datos realistas. Refresca la página para ver los cambios.' });
+    };
 
     useEffect(() => {
         const storedUser = sessionStorage.getItem('unilink-user');
@@ -187,9 +290,12 @@ export default function ReportsPage() {
     return (
         <div className="grid gap-6">
             <Card>
-                <CardHeader>
-                    <CardTitle>Dashboard de Reportes</CardTitle>
-                    <CardDescription>Filtra y visualiza los datos de asistencia de la institución.</CardDescription>
+                <CardHeader className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <CardTitle>Dashboard de Reportes</CardTitle>
+                        <CardDescription>Filtra y visualiza los datos de asistencia de la institución.</CardDescription>
+                    </div>
+                     <Button onClick={handleGenerateMockData} disabled={mockDataGenerated}>Generar Datos de Prueba</Button>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     <div className="grid gap-2">
