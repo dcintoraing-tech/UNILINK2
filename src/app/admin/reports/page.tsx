@@ -13,6 +13,7 @@ import { es } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { TrendingDown, Users, PieChart as PieChartIcon } from 'lucide-react';
+import { Label } from '@/components/ui/label';
 
 
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
