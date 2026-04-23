@@ -41,9 +41,19 @@ type AttendanceStatus = 'Presente' | 'Retardo' | 'Falta' | 'Falta Justificada';
 interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: AttendanceStatus; docenteId?: string;}
 interface AsignacionMateria { id: string; materia: string; }
 interface Justificacion { id: string; studentId: string; date: string; status: 'Pendiente' | 'Aprobado' | 'Rechazado'; attendanceRecordId: string; docenteId: string; materiaId: string; }
-interface HorarioBlock { materiaId: string; docenteId: string; }
+
+interface HorarioBlock {
+    materiaId: string;
+    docenteId: string;
+    duracion: 1 | 2;
+}
 type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
-interface Horario { id: string; grupoId: string; schedule: DaySchedule; }
+type ScheduleData = { [day: number]: DaySchedule };
+interface Horario {
+    id: string; // Same as grupoId
+    grupoId: string;
+    schedule: ScheduleData;
+}
 
 
 // --- MAIN COMPONENT ---
@@ -261,3 +271,5 @@ export default function StudentDashboardPage() {
         </div>
     );
 }
+
+    
