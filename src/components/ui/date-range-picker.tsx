@@ -38,19 +38,21 @@ export function DateRangePicker({
             )}
           >
             <CalendarIcon className="mr-2 h-4 w-4" />
-            <div className="truncate">
-              {date?.from ? (
-                date.to ? (
-                  <>
-                    {format(date.from, "LLL dd, y", { locale: es })} -{" "}
-                    {format(date.to, "LLL dd, y", { locale: es })}
-                  </>
+            <div className="flex-1 min-w-0">
+                <div className="truncate">
+                {date?.from ? (
+                    date.to ? (
+                    <>
+                        {format(date.from, "LLL dd, y", { locale: es })} -{" "}
+                        {format(date.to, "LLL dd, y", { locale: es })}
+                    </>
+                    ) : (
+                    format(date.from, "LLL dd, y", { locale: es })
+                    )
                 ) : (
-                  format(date.from, "LLL dd, y", { locale: es })
-                )
-              ) : (
-                <span>Selecciona un rango</span>
-              )}
+                    <span>Selecciona un rango</span>
+                )}
+                </div>
             </div>
           </Button>
         </PopoverTrigger>
