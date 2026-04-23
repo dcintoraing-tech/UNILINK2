@@ -14,6 +14,7 @@ import { DateRange } from 'react-day-picker';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { TrendingDown, Users, PieChart as PieChartIcon } from 'lucide-react';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 
 
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
@@ -101,10 +102,9 @@ export default function ReportsPage() {
                 newUsers.push({
                     id: `docente-${carrera.id}-${i}`,
                     name: docenteName,
-                    email: `${docenteName.replace(/\s/g, '.').toLowerCase()}@unilink.edu`,
                     role: 'Docente',
                     carreraId: carrera.id,
-                });
+                } as User);
             }
         });
 
@@ -133,7 +133,7 @@ export default function ReportsPage() {
                         newStudents.push({
                             id: studentId,
                             assignedGroupId: grupoId,
-                        });
+                        } as Student);
                         
                         const startDate = sub(new Date(), { months: 4 });
                         const endDate = new Date();
