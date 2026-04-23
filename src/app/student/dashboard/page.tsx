@@ -106,38 +106,39 @@ export default function StudentDashboardPage() {
 
                 for (const date of dateInterval) {
                     const dayIndex = date.getDay() === 0 ? 6 : date.getDay() -1;
-                    let recordAddedForDate = false;
-
+                    
                     for(const horario of studentHorarios){
-                        if(recordAddedForDate) break;
-                        const daySchedule = horario.schedule[dayIndex];
-                        if(daySchedule){
-                           const blockEntries = Object.values(daySchedule).filter(Boolean) as HorarioBlock[];
-                           if(blockEntries.length > 0){
-                                const randomBlock = blockEntries[Math.floor(Math.random() * blockEntries.length)];
-                                const dateString = format(startOfDay(date), 'yyyy-MM-dd');
-                                
+                         const daySchedule = horario.schedule[dayIndex];
+                         if (daySchedule) {
+                            const blockEntries = Object.values(daySchedule).filter(Boolean) as HorarioBlock[];
+                            if (blockEntries.length > 0) {
+                                // Determine status once for the day
                                 let status: AttendanceStatus | null = null;
-                                if (absences > 0 && Math.random() > 0.85) { 
+                                if (absences > 0 && Math.random() > 0.85) {
                                     status = 'Falta';
                                     absences--;
                                 } else if (lates > 0 && Math.random() > 0.9) {
                                     status = 'Retardo';
                                     lates--;
                                 }
-
+        
                                 if (status) {
-                                    newAttendance.push({
-                                        id: `att-${s.id}-${dateString}-${randomBlock.materiaId}`,
-                                        studentId: s.id,
-                                        date: dateString,
-                                        materiaAsignacionId: randomBlock.materiaId,
-                                        docenteId: randomBlock.docenteId,
-                                        status: status
-                                    });
-                                    recordAddedForDate = true;
+                                    // Create a record for each class on that day with that status
+                                    for (const block of blockEntries) {
+                                        if (block && block.docenteId) { // Ensure block and docenteId exist
+                                            const dateString = format(startOfDay(date), 'yyyy-MM-dd');
+                                            newAttendance.push({
+                                                id: `att-${s.id}-${dateString}-${block.materiaId}`,
+                                                studentId: s.id,
+                                                date: dateString,
+                                                materiaAsignacionId: block.materiaId,
+                                                docenteId: block.docenteId,
+                                                status: status,
+                                            });
+                                        }
+                                    }
                                 }
-                           }
+                            }
                         }
                     }
                 }
@@ -239,6 +240,15 @@ export default function StudentDashboardPage() {
                         const { variant, icon, text } = getStatusInfo(record.status);
                         const hasPendingJustification = allJustificaciones.some(j => j.attendanceRecordId === record.id && j.status === 'Pendiente');
                         const canJustify = record.status === 'Falta' && !hasPendingJustification && !!record.docenteId;
+                        
+                        let disabledTitle = '';
+                        if (record.status !== 'Falta') {
+                            disabledTitle = 'Solo se pueden justificar las faltas.';
+                        } else if (hasPendingJustification) {
+                            disabledTitle = 'Ya hay una justificación pendiente para esta falta.';
+                        } else if (!record.docenteId) {
+                            disabledTitle = 'Esta falta no tiene un docente asignado y no se puede justificar.';
+                        }
 
                         return (
                             <div key={record.id} className="flex items-center justify-between gap-4 p-3 border rounded-lg">
@@ -260,7 +270,7 @@ export default function StudentDashboardPage() {
                                     ) : hasPendingJustification ? (
                                         <Badge variant="secondary">Justificación Pendiente</Badge>
                                     ) : (
-                                        record.status === 'Falta' && <Button size="sm" variant="outline" disabled title="No se puede justificar este registro.">Justificar</Button>
+                                        record.status === 'Falta' && <Button size="sm" variant="outline" disabled title={disabledTitle}>Justificar</Button>
                                     )}
                                 </div>
                             </div>
@@ -271,5 +281,3 @@ export default function StudentDashboardPage() {
         </div>
     );
 }
-
-    
