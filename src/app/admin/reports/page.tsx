@@ -209,7 +209,8 @@ export default function ReportsPage() {
         const fDocentes = users.filter(u => u.role === 'Docente' && u.carreraId === filters.carreraId);
         const fCuatrimestres = [...new Set(fGrupos.map(g => g.cuatrimestre))].filter(q => q !== 'NONE');
 
-        return { filteredGrupos: fGrupos, filteredDocentes, filteredCuatrimestres };
+        return { filteredGrupos: fGrupos, filteredDocentes: fDocentes, filteredCuatrimestres: fCuatrimestres };
+
     }, [filters.carreraId, grupos, users]);
 
     const reportData = useMemo(() => {
