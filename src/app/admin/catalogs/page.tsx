@@ -88,7 +88,7 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
 
 // --- INTERFACES ---
 interface CatalogItem { id: string; name: string; }
-interface Grupo extends CatalogItem { carreraId: string; cuatrimestre: string; semestre: string; turno: string; }
+interface Grupo extends CatalogItem { carreraId: string; cuatrimestre: string; semestre: string; turno: string; modalidadId?: string; sedeId?: string; }
 interface AsignacionMateria { id: string; materia: string; carreraId: string; cuatrimestre: string; semestre: string; }
 interface User { id: string; name: string; role: string; }
 
@@ -197,7 +197,7 @@ function CatalogContent({ title, items, setItems, onAdd, onEdit, onDelete }: { t
 }
 
 // --- GRUPOS COMPONENT ---
-function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGrupos: (value: Grupo[] | ((val: Grupo[]) => Grupo[])) => void, carreras: CatalogItem[] }) {
+function GruposContent({ grupos, setGrupos, carreras, modalidades, sedes }: { grupos: Grupo[], setGrupos: (value: Grupo[] | ((val: Grupo[]) => Grupo[])) => void, carreras: CatalogItem[], modalidades: CatalogItem[], sedes: CatalogItem[] }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<Grupo | null>(null);
     const { toast } = useToast();
@@ -214,6 +214,8 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
         const cuatrimestre = formData.get('cuatrimestre') as string;
         const semestre = formData.get('semestre') as string;
         const turno = formData.get('turno') as string;
+        const modalidadId = formData.get('modalidadId') as string;
+        const sedeId = formData.get('sedeId') as string;
 
         if (!name || !carreraId || !turno) return;
         
@@ -222,11 +224,13 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
              return;
         }
 
+        const groupData = { name, carreraId, cuatrimestre, semestre, turno, modalidadId, sedeId };
+
         if (currentItem) {
-            setGrupos(prev => prev.map(item => item.id === currentItem.id ? { ...item, name, carreraId, cuatrimestre, semestre, turno } : item));
+            setGrupos(prev => prev.map(item => item.id === currentItem.id ? { ...item, ...groupData } : item));
             toast({ title: "Grupo actualizado" });
         } else {
-            setGrupos(prev => [...prev, { id: new Date().toISOString(), name, carreraId, cuatrimestre, semestre, turno }]);
+            setGrupos(prev => [...prev, { id: new Date().toISOString(), ...groupData }]);
             toast({ title: "Grupo agregado" });
         }
         setIsDialogOpen(false);
@@ -243,8 +247,9 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
         toast({ title: "Grupo eliminado" });
     };
     
-    const getCarreraName = (carreraId: string) => {
-        return carreras.find(c => c.id === carreraId)?.name || 'N/A';
+    const getRelationName = (id: string | undefined, items: CatalogItem[]) => {
+        if (!id) return 'N/A';
+        return items.find(c => c.id === id)?.name || 'N/A';
     };
 
     return (
@@ -263,7 +268,7 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
                             <CardHeader className="flex flex-row items-start justify-between pb-2">
                                 <div>
                                     <CardTitle className="text-base font-semibold">{item.name}</CardTitle>
-                                    <CardDescription>{getCarreraName(item.carreraId)}</CardDescription>
+                                    <CardDescription>{getRelationName(item.carreraId, carreras)}</CardDescription>
                                 </div>
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="h-8 w-8 -mt-2 -mr-2"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
@@ -283,10 +288,12 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
                                 <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                                     <dt className="text-muted-foreground">Cuatrimestre</dt>
                                     <dd>{item.cuatrimestre === "NONE" ? "N/A" : item.cuatrimestre}</dd>
-                                    <dt className="text-muted-foreground">Semestre</dt>
-                                    <dd>{item.semestre === "NONE" ? "N/A" : item.semestre}</dd>
                                     <dt className="text-muted-foreground">Turno</dt>
                                     <dd>{item.turno}</dd>
+                                    <dt className="text-muted-foreground">Modalidad</dt>
+                                    <dd>{getRelationName(item.modalidadId, modalidades)}</dd>
+                                    <dt className="text-muted-foreground">Sede</dt>
+                                    <dd>{getRelationName(item.sedeId, sedes)}</dd>
                                 </dl>
                             </CardContent>
                         </Card>
@@ -295,15 +302,16 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
 
                 {/* Desktop View */}
                 <Table className="hidden md:table">
-                    <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Carrera</TableHead><TableHead>Cuatrimestre</TableHead><TableHead>Semestre</TableHead><TableHead>Turno</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Carrera</TableHead><TableHead>Periodo</TableHead><TableHead>Turno</TableHead><TableHead>Modalidad</TableHead><TableHead>Sede</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
                     <TableBody>
                         {grupos.map((item) => (
                             <TableRow key={item.id}>
                                 <TableCell className="font-medium">{item.name}</TableCell>
-                                <TableCell>{getCarreraName(item.carreraId)}</TableCell>
-                                <TableCell>{item.cuatrimestre === "NONE" ? "N/A" : item.cuatrimestre}</TableCell>
-                                <TableCell>{item.semestre === "NONE" ? "N/A" : item.semestre}</TableCell>
+                                <TableCell>{getRelationName(item.carreraId, carreras)}</TableCell>
+                                <TableCell>{item.cuatrimestre !== "NONE" ? `${item.cuatrimestre}º Cuatri.` : `${item.semestre}º Sem.`}</TableCell>
                                 <TableCell>{item.turno}</TableCell>
+                                <TableCell>{getRelationName(item.modalidadId, modalidades)}</TableCell>
+                                <TableCell>{getRelationName(item.sedeId, sedes)}</TableCell>
                                 <TableCell className="text-right">
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
@@ -329,7 +337,7 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
                 <DialogContent>
                     <DialogHeader><DialogTitle>{currentItem ? 'Editar' : 'Agregar'} Grupo</DialogTitle></DialogHeader>
                     <form onSubmit={handleFormSubmit}>
-                        <ScrollArea className="max-h-96 pr-4">
+                        <ScrollArea className="max-h-[70vh] pr-4">
                             <div className="grid gap-4 py-4">
                                 <div className="grid gap-2"><Label htmlFor="name">Nombre</Label><Input id="name" name="name" defaultValue={currentItem?.name} required /></div>
                                 <div className="grid gap-2">
@@ -364,6 +372,20 @@ function GruposContent({ grupos, setGrupos, carreras }: { grupos: Grupo[], setGr
                                     <Select name="turno" defaultValue={currentItem?.turno} required>
                                         <SelectTrigger id="turno"><SelectValue placeholder="Selecciona un turno" /></SelectTrigger>
                                         <SelectContent>{turnos.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="modalidadId">Modalidad</Label>
+                                    <Select name="modalidadId" defaultValue={currentItem?.modalidadId}>
+                                        <SelectTrigger id="modalidadId"><SelectValue placeholder="Selecciona una modalidad" /></SelectTrigger>
+                                        <SelectContent>{modalidades.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="sedeId">Sede</Label>
+                                    <Select name="sedeId" defaultValue={currentItem?.sedeId}>
+                                        <SelectTrigger id="sedeId"><SelectValue placeholder="Selecciona una sede" /></SelectTrigger>
+                                        <SelectContent>{sedes.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                                     </Select>
                                 </div>
                             </div>
@@ -1085,6 +1107,8 @@ function HorariosContent({
 
 export default function CatalogsPage() {
     const [carreras, setCarreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
+    const [modalidades, setModalidades] = useLocalStorage<CatalogItem[]>('unilink-modalidades', []);
+    const [sedes, setSedes] = useLocalStorage<CatalogItem[]>('unilink-sedes', []);
     const [grupos, setGrupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
     const [materiaAsignaciones, setMateriaAsignaciones] = useLocalStorage<AsignacionMateria[]>('unilink-materia-asignaciones', []);
     const [horarios, setHorarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
@@ -1092,14 +1116,18 @@ export default function CatalogsPage() {
 
     return (
         <Tabs defaultValue="carreras" className="w-full">
-            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-4 h-auto md:h-10">
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-6 h-auto">
                 <TabsTrigger value="carreras">Carreras</TabsTrigger>
+                <TabsTrigger value="modalidades">Modalidades</TabsTrigger>
+                <TabsTrigger value="sedes">Sedes</TabsTrigger>
                 <TabsTrigger value="grupos">Grupos</TabsTrigger>
                 <TabsTrigger value="materias">Materias</TabsTrigger>
                 <TabsTrigger value="horarios">Horarios</TabsTrigger>
             </TabsList>
             <TabsContent value="carreras"><CatalogContent title="Carreras" items={carreras} setItems={setCarreras} /></TabsContent>
-            <TabsContent value="grupos"><GruposContent grupos={grupos} setGrupos={setGrupos} carreras={carreras} /></TabsContent>
+            <TabsContent value="modalidades"><CatalogContent title="Modalidades" items={modalidades} setItems={setModalidades} /></TabsContent>
+            <TabsContent value="sedes"><CatalogContent title="Sedes" items={sedes} setItems={setSedes} /></TabsContent>
+            <TabsContent value="grupos"><GruposContent grupos={grupos} setGrupos={setGrupos} carreras={carreras} modalidades={modalidades} sedes={sedes} /></TabsContent>
             <TabsContent value="materias"><MateriasContent asignaciones={materiaAsignaciones} setAsignaciones={setMateriaAsignaciones} carreras={carreras} /></TabsContent>
             <TabsContent value="horarios"><HorariosContent horarios={horarios} setHorarios={setHorarios} grupos={grupos} materias={materiaAsignaciones} users={users} /></TabsContent>
         </Tabs>
