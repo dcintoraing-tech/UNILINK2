@@ -9,7 +9,7 @@ export default function Home() {
     <main className="flex min-h-screen w-full flex-col items-center justify-center p-4 bg-muted/40">
       <div className="w-full max-w-md">
         <div className="mb-8 flex justify-center">
-            <Logo className="h-40 w-40" />
+            <Logo className="h-48 w-48" />
         </div>
         <Card className="w-full shadow-lg">
           <CardHeader className="text-center">
