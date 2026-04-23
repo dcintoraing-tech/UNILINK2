@@ -181,16 +181,13 @@ export default function TeacherAttendancePage() {
                 }
 
                 const MODEL_URL = window.location.origin + '/models';
-                console.log("Cargando modelos desde:", MODEL_URL);
+                console.log("Cargando modelos de IA desde:", MODEL_URL);
 
-                await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-                console.log("tiny ok");
-
-                await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-                console.log("landmark ok");
-
-                await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-                console.log("recognition ok");
+                await Promise.all([
+                    faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+                ]);
                 
                 console.log("¡Todos los modelos de IA se cargaron exitosamente! ✅");
                 setModelsLoaded(true);
@@ -353,7 +350,7 @@ export default function TeacherAttendancePage() {
                     faceapi.matchDimensions(canvas, displaySize);
 
                     try {
-                        const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptors();
+                        const detections = await faceapi.detectAllFaces(video, new faceapi.SsdMobilenetv1Options()).withFaceLandmarks().withFaceDescriptors();
                         const resizedDetections = faceapi.resizeResults(detections, displaySize);
 
                         const ctx = canvas.getContext('2d');

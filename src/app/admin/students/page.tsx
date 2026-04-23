@@ -102,16 +102,13 @@ function StudentRegistrationForm({ onFinished, carreras, grupos, initialData }: 
             }
             try {
                 const MODEL_URL = window.location.origin + '/models';
-                console.log("URL de modelos construida:", MODEL_URL);
+                console.log("Cargando modelos de IA desde:", MODEL_URL);
                 
-                await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-                console.log("tinyFaceDetector cargado correctamente.");
-
-                await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-                console.log("faceLandmark68Net cargado correctamente.");
-
-                await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-                console.log("faceRecognitionNet cargado correctamente.");
+                await Promise.all([
+                    faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+                ]);
                 
                 console.log("¡Todos los modelos de IA se cargaron exitosamente! ✅");
                 setModelsLoaded(true);
@@ -203,7 +200,7 @@ function StudentRegistrationForm({ onFinished, carreras, grupos, initialData }: 
                 await new Promise(resolve => { img.onload = resolve; });
 
                 const detection = await faceapi
-                    .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+                    .detectSingleFace(img, new faceapi.SsdMobilenetv1Options())
                     .withFaceLandmarks()
                     .withFaceDescriptor();
                 
