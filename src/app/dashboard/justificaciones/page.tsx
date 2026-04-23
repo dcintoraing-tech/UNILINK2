@@ -29,17 +29,29 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
     return [storedValue, setValue];
 };
 
-interface Justificacion { id: string; studentId: string; date: string; reason: string; status: 'Pendiente' | 'Aprobado' | 'Rechazado'; attendanceRecordId: string; }
+interface Justificacion { 
+    id: string; 
+    studentId: string; 
+    date: string; 
+    reason: string; 
+    status: 'Pendiente' | 'Aprobado' | 'Rechazado'; 
+    attendanceRecordId: string;
+    docenteId: string;
+    materiaId: string;
+}
 interface Student { id: string; firstName: string; lastName: string; }
 type AttendanceStatus = 'Presente' | 'Retardo' | 'Falta' | 'Falta Justificada';
-interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: AttendanceStatus; }
+interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: AttendanceStatus; docenteId?: string; }
+interface AsignacionMateria { id: string; materia: string; }
+interface User { id: string; role: string; }
 
 export default function TeacherJustificacionesPage() {
     const { toast } = useToast();
     const [justificaciones, setJustificaciones] = useLocalStorage<Justificacion[]>('unilink-justificaciones', []);
     const [students] = useLocalStorage<Student[]>('unilink-students', []);
+    const [materias] = useLocalStorage<AsignacionMateria[]>('unilink-materia-asignaciones', []);
     const [attendance, setAttendance] = useLocalStorage<AttendanceRecord[]>('unilink-attendance', []);
-    const [user, setUser] = useState<{role: string} | null>(null);
+    const [user, setUser] = useState<User | null>(null);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -49,8 +61,17 @@ export default function TeacherJustificacionesPage() {
     }, []);
 
     const pendingJustificaciones = useMemo(() => {
-        if (user?.role !== 'Docente' && user?.role !== 'Jefe de carrera' && user?.role !== 'Admin') return [];
-        return justificaciones.filter(j => j.status === 'Pendiente');
+        if (!user) return [];
+    
+        if (user.role === 'Admin' || user.role === 'Jefe de carrera') {
+            return justificaciones.filter(j => j.status === 'Pendiente');
+        }
+    
+        if (user.role === 'Docente') {
+            return justificaciones.filter(j => j.status === 'Pendiente' && j.docenteId === user.id);
+        }
+        
+        return [];
     }, [user, justificaciones]);
 
     const getStudentName = (studentId: string) => {
@@ -58,6 +79,11 @@ export default function TeacherJustificacionesPage() {
         return student ? `${student.firstName} ${student.lastName}` : 'Desconocido';
     };
     
+    const getMateriaName = (materiaId: string) => {
+        const materia = materias.find(m => m.id === materiaId);
+        return materia ? materia.materia : 'Desconocida';
+    };
+
     const handleStatusChange = (justificacionId: string, newStatus: 'Aprobado' | 'Rechazado') => {
         let attendanceUpdated = false;
         const updatedJustificaciones = justificaciones.map(j => {
@@ -99,6 +125,7 @@ export default function TeacherJustificacionesPage() {
                             <TableRow>
                                 <TableHead>Estudiante</TableHead>
                                 <TableHead>Fecha</TableHead>
+                                <TableHead>Materia</TableHead>
                                 <TableHead>Motivo</TableHead>
                                 <TableHead className="text-right">Acciones</TableHead>
                             </TableRow>
@@ -108,6 +135,7 @@ export default function TeacherJustificacionesPage() {
                                 <TableRow key={item.id}>
                                     <TableCell className="font-medium">{getStudentName(item.studentId)}</TableCell>
                                     <TableCell>{item.date}</TableCell>
+                                    <TableCell>{getMateriaName(item.materiaId)}</TableCell>
                                     <TableCell>{item.reason}</TableCell>
                                     <TableCell className="text-right space-x-2">
                                         <Button size="sm" variant="outline" onClick={() => handleStatusChange(item.id, 'Aprobado')}>Aprobar</Button>
@@ -116,7 +144,7 @@ export default function TeacherJustificacionesPage() {
                                 </TableRow>
                             )) : (
                                 <TableRow>
-                                    <TableCell colSpan={4} className="h-24 text-center">No hay justificaciones pendientes.</TableCell>
+                                    <TableCell colSpan={5} className="h-24 text-center">No hay justificaciones pendientes.</TableCell>
                                 </TableRow>
                             )}
                         </TableBody>

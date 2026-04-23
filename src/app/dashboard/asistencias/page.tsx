@@ -113,6 +113,7 @@ interface AttendanceRecord {
     date: string;
     materiaAsignacionId: string;
     status: AttendanceStatus;
+    docenteId?: string;
     arrivalTime?: string;
 }
 
@@ -129,6 +130,8 @@ interface Justificacion {
     reason: string;
     status: 'Pendiente' | 'Aprobado' | 'Rechazado';
     attendanceRecordId: string;
+    docenteId: string;
+    materiaId: string;
 }
 
 // --- MAIN COMPONENT ---
@@ -168,28 +171,27 @@ export default function TeacherAttendancePage() {
     // Load face-api.js models
     useEffect(() => {
         const loadModels = async () => {
-            if (typeof window === 'undefined') return;
-
-            if (window.location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
-                const errorMsg = 'El acceso a la cámara y los modelos de IA no están disponibles en un entorno no seguro. Por favor, usa una conexión HTTPS.';
-                setModelError(errorMsg);
-                return;
-            }
-            
-            const MODEL_URL = window.location.origin + '/models';
-            
             try {
-                console.log("URL de modelos construida:", MODEL_URL);
+                if (typeof window === 'undefined') return;
+
+                if (window.location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+                    const errorMsg = 'El acceso a la cámara y los modelos de IA no están disponibles en un entorno no seguro. Por favor, usa una conexión HTTPS.';
+                    setModelError(errorMsg);
+                    return;
+                }
+
+                const MODEL_URL = window.location.origin + '/models';
+                console.log("Cargando modelos desde:", MODEL_URL);
 
                 await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-                console.log("tinyFaceDetector cargado correctamente.");
+                console.log("tiny ok");
 
                 await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-                console.log("faceLandmark68Net cargado correctamente.");
+                console.log("landmark ok");
 
                 await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-                console.log("faceRecognitionNet cargado correctamente.");
-
+                console.log("recognition ok");
+                
                 console.log("¡Todos los modelos de IA se cargaron exitosamente! ✅");
                 setModelsLoaded(true);
                 setModelError(null);
@@ -280,6 +282,7 @@ export default function TeacherAttendancePage() {
         const dateString = now.toISOString().split('T')[0];
         let subjectName = 'Clase de Prueba';
         let materiaId = 'default-materia';
+        let docenteId = 'default-docente';
         let status: AttendanceStatus = 'Presente';
 
         const studentSchedule = horarios.find(h => h.grupoId === studentToMark.assignedGroupId);
@@ -293,6 +296,7 @@ export default function TeacherAttendancePage() {
                     const horaInicioStr = ["07:00", "08:00", "09:00", "10:00"][firstBlockKey];
                     if (block && horaInicioStr) {
                         materiaId = block.materiaId;
+                        docenteId = block.docenteId;
                         subjectName = materias.find(m => m.id === block.materiaId)?.materia || 'Materia Desconocida';
 
                         const [hours, minutes] = horaInicioStr.split(':').map(Number);
@@ -324,6 +328,7 @@ export default function TeacherAttendancePage() {
                 studentId: studentId,
                 date: dateString,
                 materiaAsignacionId: materiaId,
+                docenteId: docenteId,
                 status: status,
                 arrivalTime: arrivalTime
             }];
@@ -354,7 +359,12 @@ export default function TeacherAttendancePage() {
                         const ctx = canvas.getContext('2d');
                         if (ctx) {
                             ctx.clearRect(0, 0, canvas.width, canvas.height);
-                            faceapi.draw.drawDetections(canvas, resizedDetections);
+                            // faceapi.draw.drawDetections(canvas, resizedDetections);
+                            resizedDetections.forEach(detection => {
+                                const box = detection.detection.box
+                                const drawBox = new faceapi.draw.DrawBox(box, { label: 'Rostro' })
+                                drawBox.draw(canvas)
+                            })
                         }
 
                         if (detections.length > 0 && faceMatcher) {
@@ -458,6 +468,7 @@ export default function TeacherAttendancePage() {
                                     studentId: student.id,
                                     date: dateString,
                                     materiaAsignacionId: block.materiaId,
+                                    docenteId: block.docenteId,
                                     status: 'Falta',
                                 });
                              }
@@ -504,8 +515,8 @@ export default function TeacherAttendancePage() {
             a.status === 'Falta'
         );
 
-        if (!attendanceToJustify) {
-             toast({ variant: "destructive", title: "Error", description: "No se encontró un registro de falta para justificar." });
+        if (!attendanceToJustify || !attendanceToJustify.docenteId) {
+             toast({ variant: "destructive", title: "Error", description: "No se encontró un registro de falta válido para justificar." });
             return;
         }
 
@@ -516,6 +527,8 @@ export default function TeacherAttendancePage() {
             reason: justificationReason,
             status: 'Pendiente',
             attendanceRecordId: attendanceToJustify.id,
+            docenteId: attendanceToJustify.docenteId,
+            materiaId: attendanceToJustify.materiaAsignacionId,
         };
 
         setJustificaciones(prev => [...prev, newJustificacion]);
@@ -580,7 +593,7 @@ export default function TeacherAttendancePage() {
                             </CardHeader>
                             <CardContent>
                                 <div className="relative w-full aspect-video rounded-md overflow-hidden bg-muted border flex items-center justify-center">
-                                    <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+                                    <video ref={videoRef} className="w-full h-full" autoPlay muted playsInline />
                                     <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
 
                                     {!isTakingAttendance && (

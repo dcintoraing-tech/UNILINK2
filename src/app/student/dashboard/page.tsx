@@ -38,9 +38,9 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((va
 
 interface Student { id: string; firstName: string; lastName: string; controlNumber: string; }
 type AttendanceStatus = 'Presente' | 'Retardo' | 'Falta' | 'Falta Justificada';
-interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: AttendanceStatus; }
+interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: AttendanceStatus; docenteId?: string;}
 interface AsignacionMateria { id: string; materia: string; }
-interface Justificacion { id: string; studentId: string; date: string; status: 'Pendiente' | 'Aprobado' | 'Rechazado'; attendanceRecordId: string; }
+interface Justificacion { id: string; studentId: string; date: string; status: 'Pendiente' | 'Aprobado' | 'Rechazado'; attendanceRecordId: string; docenteId: string; materiaId: string; }
 interface HorarioBlock { materiaId: string; docenteId: string; }
 type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
 interface Horario { id: string; grupoId: string; schedule: DaySchedule; }
@@ -102,9 +102,9 @@ export default function StudentDashboardPage() {
                         if(recordAddedForDate) break;
                         const daySchedule = horario.schedule[dayIndex];
                         if(daySchedule){
-                           const materiaIds = Object.values(daySchedule).filter(Boolean).map(b => b!.materiaId);
-                           if(materiaIds.length > 0){
-                                const materiaId = materiaIds[Math.floor(Math.random() * materiaIds.length)];
+                           const blockEntries = Object.values(daySchedule).filter(Boolean) as HorarioBlock[];
+                           if(blockEntries.length > 0){
+                                const randomBlock = blockEntries[Math.floor(Math.random() * blockEntries.length)];
                                 const dateString = format(startOfDay(date), 'yyyy-MM-dd');
                                 
                                 let status: AttendanceStatus | null = null;
@@ -118,10 +118,11 @@ export default function StudentDashboardPage() {
 
                                 if (status) {
                                     newAttendance.push({
-                                        id: `att-${s.id}-${dateString}-${materiaId}`,
+                                        id: `att-${s.id}-${dateString}-${randomBlock.materiaId}`,
                                         studentId: s.id,
                                         date: dateString,
-                                        materiaAsignacionId: materiaId,
+                                        materiaAsignacionId: randomBlock.materiaId,
+                                        docenteId: randomBlock.docenteId,
                                         status: status
                                     });
                                     recordAddedForDate = true;
@@ -227,7 +228,7 @@ export default function StudentDashboardPage() {
                     {studentAttendance.map(record => {
                         const { variant, icon, text } = getStatusInfo(record.status);
                         const hasPendingJustification = allJustificaciones.some(j => j.attendanceRecordId === record.id && j.status === 'Pendiente');
-                        const canJustify = record.status === 'Falta' && !hasPendingJustification;
+                        const canJustify = record.status === 'Falta' && !hasPendingJustification && !!record.docenteId;
 
                         return (
                             <div key={record.id} className="flex items-center justify-between gap-4 p-3 border rounded-lg">
@@ -242,13 +243,14 @@ export default function StudentDashboardPage() {
                                         {icon}
                                         <span>{text}</span>
                                     </Badge>
-                                    {canJustify && (
+                                    {canJustify ? (
                                         <Button asChild size="sm" variant="outline">
                                             <Link href={`/student/justificaciones?recordId=${record.id}`}>Justificar</Link>
                                         </Button>
-                                    )}
-                                     {hasPendingJustification && (
+                                    ) : hasPendingJustification ? (
                                         <Badge variant="secondary">Justificación Pendiente</Badge>
+                                    ) : (
+                                        record.status === 'Falta' && <Button size="sm" variant="outline" disabled title="No se puede justificar este registro.">Justificar</Button>
                                     )}
                                 </div>
                             </div>

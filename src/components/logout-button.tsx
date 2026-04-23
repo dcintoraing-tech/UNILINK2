@@ -12,6 +12,7 @@ export function LogoutButton() {
     
     sessionStorage.removeItem('unilink-user');
     sessionStorage.removeItem('unilink-active-role');
+    sessionStorage.removeItem('unilink-student-id');
     // Redirect to login page
     router.push("/login");
   };

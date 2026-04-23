@@ -36,10 +36,12 @@ interface Justificacion {
     reason: string; 
     status: 'Pendiente' | 'Aprobado' | 'Rechazado'; 
     attendanceRecordId: string;
+    docenteId: string;
+    materiaId: string;
 }
 interface Student { id: string; firstName: string; lastName: string; }
 type AttendanceStatus = 'Presente' | 'Retardo' | 'Falta' | 'Falta Justificada';
-interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: AttendanceStatus; }
+interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: AttendanceStatus; docenteId?: string; }
 
 export default function JustificacionesPage() {
     const { toast } = useToast();

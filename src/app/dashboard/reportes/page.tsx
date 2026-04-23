@@ -35,7 +35,7 @@ interface User { id: string; name: string; role: string }
 interface Grupo { id: string; name: string; }
 interface Student { id: string; firstName: string; lastName: string; assignedGroupId: string; }
 type AttendanceStatus = 'Presente' | 'Retardo' | 'Falta' | 'Falta Justificada';
-interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: AttendanceStatus; }
+interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: AttendanceStatus; docenteId?: string; }
 
 export default function TeacherReportsPage() {
     const [user, setUser] = useState<User | null>(null);
