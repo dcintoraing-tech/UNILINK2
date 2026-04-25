@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from 'react';
@@ -9,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Camera, User as UserIcon, PlusCircle, MoreHorizontal, Search, Loader2 } from 'lucide-react';
+import { Camera, User as UserIcon, PlusCircle, MoreHorizontal, Search, Loader2, Upload, Download } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -19,8 +18,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import * as faceapi from 'face-api.js';
+import * as XLSX from 'xlsx';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, addDoc, updateDoc, deleteDoc, query, where, getDocs, writeBatch } from 'firebase/firestore';
 
 // --- INTERFACES ---
 interface CatalogItem {
@@ -393,6 +393,8 @@ export default function StudentsPage() {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingStudent, setEditingStudent] = useState<Student | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
 
     const filteredStudents = useMemo(() => {
         if (!searchQuery) return students;
@@ -448,6 +450,110 @@ export default function StudentsPage() {
         setIsDialogOpen(false);
     };
 
+    const handleDownloadTemplate = () => {
+        const headers = [['firstName', 'lastName', 'controlNumber', 'academicProgramId', 'assignedGroupId']];
+        const ws = XLSX.utils.aoa_to_sheet(headers);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Plantilla Estudiantes");
+        XLSX.writeFile(wb, "plantilla_estudiantes.xlsx");
+        toast({ title: "Plantilla descargada", description: "El archivo de plantilla de Excel está listo." });
+    };
+
+    const handleExport = () => {
+        if (filteredStudents.length === 0) {
+            toast({ variant: 'destructive', title: 'No hay datos', description: 'No hay estudiantes para exportar.' });
+            return;
+        }
+        const studentsToExport = filteredStudents.map(s => ({
+            'Nombre(s)': s.firstName,
+            'Apellido(s)': s.lastName,
+            'Numero de Control': s.controlNumber,
+            'Programa Academico': getProgramName(s.academicProgramId),
+            'Grupo': getGroupName(s.assignedGroupId),
+            'Imagen Facial Registrada': s.facialImage ? 'Sí' : 'No',
+        }));
+        const ws = XLSX.utils.json_to_sheet(studentsToExport);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Estudiantes");
+        XLSX.writeFile(wb, "estudiantes.xlsx");
+        toast({ title: "Exportación exitosa", description: "La lista de estudiantes ha sido descargada." });
+    };
+
+    const handleImportClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const data = event.target?.result;
+                const workbook = XLSX.read(data, { type: 'binary' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const json = XLSX.utils.sheet_to_json<any>(worksheet);
+
+                const batch = writeBatch(firestore);
+                let updatedCount = 0;
+                let createdCount = 0;
+                let skippedCount = 0;
+
+                for (const item of json) {
+                    const controlNumber = item.controlNumber ? String(item.controlNumber).trim() : '';
+                    if (!controlNumber || !item.firstName || !item.lastName || !item.academicProgramId || !item.assignedGroupId) {
+                        skippedCount++;
+                        continue;
+                    }
+
+                    const q = query(collection(firestore, 'students'), where('controlNumber', '==', controlNumber));
+                    const querySnapshot = await getDocs(q);
+                    
+                    const studentData = {
+                        firstName: item.firstName,
+                        lastName: item.lastName,
+                        controlNumber: controlNumber,
+                        academicProgramId: item.academicProgramId,
+                        assignedGroupId: item.assignedGroupId,
+                    };
+
+                    if (!querySnapshot.empty) {
+                        const studentDoc = querySnapshot.docs[0];
+                        batch.update(studentDoc.ref, studentData);
+                        updatedCount++;
+                    } else {
+                        const newStudentData = {
+                            ...studentData,
+                            facialImage: null,
+                            embedding: null,
+                        };
+                        const newStudentRef = doc(collection(firestore, 'students'));
+                        batch.set(newStudentRef, newStudentData);
+                        createdCount++;
+                    }
+                }
+
+                await batch.commit();
+                toast({ title: "Importación Finalizada", description: `${createdCount} estudiante(s) creado(s), ${updatedCount} actualizado(s), ${skippedCount} omitido(s).` });
+                window.location.reload();
+
+            } catch (error: any) {
+                console.error("Error al importar el archivo:", error);
+                toast({
+                    variant: "destructive",
+                    title: "Error de importación",
+                    description: "No se pudo procesar el archivo. Revisa que el formato sea correcto.",
+                });
+            } finally {
+                if (e.target) e.target.value = '';
+            }
+        };
+        reader.readAsBinaryString(file);
+    };
+
+
     return (
         <>
             <Card>
@@ -455,27 +561,56 @@ export default function StudentsPage() {
                     <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <CardTitle>Gestión de Estudiantes</CardTitle>
-                            <CardDescription>Consulta, busca y registra nuevos estudiantes.</CardDescription>
+                            <CardDescription>Consulta, busca, importa, exporta y registra nuevos estudiantes.</CardDescription>
                         </div>
-                         <div className="flex w-full flex-col items-start gap-2 sm:w-auto sm:flex-row sm:items-center">
-                            <div className="relative w-full sm:w-auto flex-1 md:grow-0">
+                        <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
+                             <div className="relative w-full flex-1 sm:w-auto md:grow-0">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     type="search"
-                                    placeholder="Buscar por nombre o control..."
-                                    className="w-full rounded-lg bg-background pl-8 md:w-[200px] lg:w-[320px]"
+                                    placeholder="Buscar..."
+                                    className="w-full rounded-lg bg-background pl-8 md:w-[200px] lg:w-[250px]"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
                             </div>
-                            <Button size="sm" onClick={() => handleOpenDialog(null)} className="w-full sm:w-auto">
-                                <PlusCircle className="h-3.5 w-3.5 mr-1" />
-                                <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Registrar Estudiante</span>
+                            <Button size="sm" onClick={() => handleOpenDialog(null)}>
+                                <PlusCircle className="mr-2 h-4 w-4" />
+                                Registrar
                             </Button>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button size="sm" variant="outline">
+                                        <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+                                    <DropdownMenuItem onSelect={handleImportClick}>
+                                        <Upload className="mr-2 h-4 w-4" />
+                                        Importar desde archivo
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={handleExport} disabled={filteredStudents.length === 0}>
+                                        <Download className="mr-2 h-4 w-4" />
+                                        Exportar a Excel
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={handleDownloadTemplate}>
+                                        <Download className="mr-2 h-4 w-4" />
+                                        Descargar plantilla
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </div>
                     </div>
                 </CardHeader>
                 <CardContent>
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileImport}
+                        accept=".xlsx, .xls"
+                        className="hidden"
+                    />
                     {/* Mobile View */}
                     <div className="grid gap-4 md:hidden">
                         {filteredStudents.map((student) => (
