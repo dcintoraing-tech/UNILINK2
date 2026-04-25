@@ -8,6 +8,7 @@ import { Lock, Eye, EyeOff, User as UserIcon } from "lucide-react";
 import { useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
+import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -159,6 +160,14 @@ export default function LoginPage() {
             </Button>
           </form>
         </Form>
+        <p className="mt-6 text-center text-sm text-muted-foreground">
+          ¿No tienes una cuenta?{" "}
+          <Link href="/signup" passHref>
+            <Button variant="link" className="h-auto p-0">
+              Crear cuenta
+            </Button>
+          </Link>
+        </p>
       </CardContent>
     </Card>
   );
