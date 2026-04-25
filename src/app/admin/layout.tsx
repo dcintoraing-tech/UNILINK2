@@ -143,7 +143,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode; }
         } else {
             router.push('/admin/reports'); 
         }
-        router.refresh();
     } else {
         setPasswordError("Contraseña incorrecta. Inténtalo de nuevo.");
     }

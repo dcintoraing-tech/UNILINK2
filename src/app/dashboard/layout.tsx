@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -72,7 +73,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             if (activeRoleForCheck === 'Alumno') {
                 router.replace('/student/dashboard');
             } else {
-                router.replace('/admin/dashboard');
+                router.replace('/admin/reports');
             }
             return;
         }
@@ -90,7 +91,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [router]);
 
   const handleSwitchRole = () => {
-    if (password === '1234') {
+    if (password === 'Prueb@01#7') {
         setActiveRole(targetRole);
         sessionStorage.setItem('unilink-active-role', targetRole);
         toast({
@@ -106,9 +107,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         } else if (targetRole === 'Alumno') {
             router.push('/student/dashboard');
         } else {
-            router.push('/admin/dashboard');
+            router.push('/admin/reports');
         }
-        router.refresh();
     } else {
         setPasswordError("Contraseña incorrecta. Inténtalo de nuevo.");
     }
