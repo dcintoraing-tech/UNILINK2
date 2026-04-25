@@ -6,67 +6,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { User as UserIcon, Camera, Users, ArrowLeft } from 'lucide-react';
+import { User as UserIcon, Camera, Users, ArrowLeft, Loader2 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { useFirestore, useCollection, useDoc, useMemoFirebase } from '@/firebase';
+import { collection, doc, setDoc, addDoc } from 'firebase/firestore';
 
-// --- DATA PERSISTENCE & TYPES ---
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
-    const [storedValue, setStoredValue] = useState<T>(initialValue);
-    const [isInitialized, setIsInitialized] = useState(false);
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const item = window.localStorage.getItem(key);
-                if (item) {
-                    setStoredValue(JSON.parse(item));
-                }
-            } catch (error) {
-                console.log(error);
-            }
-            setIsInitialized(true); 
-        }
-    }, [key]);
-
-    const setValue = (value: T | ((val: T) => T)) => {
-        if (!isInitialized) return;
-        try {
-            setStoredValue(currentStoredValue => {
-                const valueToStore = value instanceof Function ? value(currentStoredValue) : value;
-                if (typeof window !== 'undefined') {
-                    window.localStorage.setItem(key, JSON.stringify(valueToStore));
-                    window.dispatchEvent(new StorageEvent('storage', { key, newValue: JSON.stringify(valueToStore) }));
-                }
-                return valueToStore;
-            });
-        } catch (error) {
-            console.log(error);
-        }
-    };
-    
-    useEffect(() => {
-        const handleStorageChange = (e: StorageEvent) => {
-            if (e.key === key && e.newValue) {
-                 try {
-                    setStoredValue(JSON.parse(e.newValue));
-                } catch (error) {
-                    console.log(error);
-                }
-            }
-        };
-
-        window.addEventListener('storage', handleStorageChange);
-        return () => {
-            window.removeEventListener('storage', handleStorageChange);
-        };
-    }, [key]);
-
-
-    return [storedValue, setValue] as const;
-};
 
 interface Student {
     id: string;
@@ -80,17 +27,16 @@ interface Student {
 }
 
 interface HorarioBlock {
+    materiaId: string;
     docenteId: string;
-    materiaAsignacionId: string;
-    horaInicio: string;
-    duracion: string; // "1" or "2"
+    duracion: 1 | 2;
 }
-
+type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
+type ScheduleData = { [day: number]: DaySchedule };
 interface Horario {
-    id: string;
+    id: string; // Same as grupoId
     grupoId: string;
-    dia: string;
-    blocks: (HorarioBlock | undefined)[];
+    schedule: ScheduleData;
 }
 
 interface AttendanceConfig {
@@ -104,6 +50,9 @@ interface AttendanceRecord {
     facialImage: string | null;
     arrivalTime: string;
     status: 'Presente' | 'Retardo';
+    materiaId: string;
+    docenteId: string;
+    date: string;
 }
 
 // --- UTILITY FUNCTIONS ---
@@ -121,12 +70,13 @@ const DIAS_SEMANA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Vier
 // --- MAIN COMPONENT ---
 export default function AttendancePage() {
     const { toast } = useToast();
-    const [allStudents] = useLocalStorage<Student[]>('unilink-students', []);
-    const [horarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
-    const [config] = useLocalStorage<AttendanceConfig>('unilink-attendance-config', {
-        toleranceMinutes: 10,
-        absenceLimitMinutes: 30,
-    });
+    const firestore = useFirestore();
+
+    const { data: allStudents } = useCollection<Student>(useMemoFirebase(() => collection(firestore, 'students'), [firestore]));
+    const { data: horarios } = useCollection<Horario>(useMemoFirebase(() => collection(firestore, 'horarios'), [firestore]));
+    const { data: configData } = useDoc<AttendanceConfig>(useMemoFirebase(() => doc(firestore, 'config', 'attendance'), [firestore]));
+    
+    const config = configData || { toleranceMinutes: 10, absenceLimitMinutes: 30 };
     
     const [isTakingAttendance, setIsTakingAttendance] = useState(false);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
@@ -147,13 +97,12 @@ export default function AttendancePage() {
         }
     }, []);
     
-    const handleRecognition = useCallback(() => {
-        if (!videoRef.current || allStudents.length === 0 || horarios.length === 0) return;
+    const handleRecognition = useCallback(async () => {
+        if (!videoRef.current || !allStudents || allStudents.length === 0 || !horarios || horarios.length === 0) return;
 
         const studentsWithEmbeddings = allStudents.filter(s => s.embedding);
         if (studentsWithEmbeddings.length === 0) return;
         
-        // Simulate scanning a live face from the stream by picking a random registered student
         const randomIndex = Math.floor(Math.random() * studentsWithEmbeddings.length);
         const simulatedLiveEmbedding = studentsWithEmbeddings[randomIndex].embedding;
         if (!simulatedLiveEmbedding) return;
@@ -174,22 +123,21 @@ export default function AttendancePage() {
             const student = bestMatch.student;
             const now = new Date();
 
-            if (attendanceRecords.some(r => r.studentId === student.id)) {
-                return; // Student already marked
-            }
+            if (attendanceRecords.some(r => r.studentId === student.id)) return;
 
-            const studentSchedule = horarios.find(h => h.grupoId === student.assignedGroupId && h.dia === DIAS_SEMANA[now.getDay()]);
+            const studentSchedule = horarios.find(h => h.grupoId === student.assignedGroupId && DIAS_SEMANA[now.getDay()] && h.schedule[now.getDay() - 1]);
+            if (!studentSchedule) return;
 
-            if (!studentSchedule) {
-                // No schedule for today, maybe show a toast in a real scenario
-                return;
-            }
+            const daySchedule = studentSchedule.schedule[now.getDay() - 1];
+            if (!daySchedule) return;
 
-            let checkedIn = false;
-            for (const block of studentSchedule.blocks) {
+            for (const block of Object.values(daySchedule)) {
                 if (!block) continue;
+                
+                const horaInicioStr = ["07:00", "08:00", "09:00", "10:00"][Object.keys(daySchedule).findIndex(k => daySchedule[parseInt(k)] === block)];
+                if(!horaInicioStr) continue;
 
-                const [hours, minutes] = block.horaInicio.split(':').map(Number);
+                const [hours, minutes] = horaInicioStr.split(':').map(Number);
                 const startTime = new Date(now);
                 startTime.setHours(hours, minutes, 0, 0);
 
@@ -199,28 +147,48 @@ export default function AttendancePage() {
                 const absenceLimitTime = new Date(startTime);
                 absenceLimitTime.setMinutes(startTime.getMinutes() + config.absenceLimitMinutes);
                 
-                // Check if current time is within a valid check-in window for any block
                 if (now >= startTime && now <= absenceLimitTime) {
                     const status = now <= toleranceTime ? 'Presente' : 'Retardo';
+                    const dateString = now.toISOString().split('T')[0];
+                    const recordId = `att-${student.id}-${dateString}-${block.materiaId}`;
+
                     const newRecord: AttendanceRecord = {
                         studentId: student.id,
                         studentName: `${student.firstName} ${student.lastName}`,
                         facialImage: student.facialImage,
                         arrivalTime: now.toLocaleTimeString(),
-                        status: status
+                        status: status,
+                        materiaId: block.materiaId,
+                        docenteId: block.docenteId,
+                        date: dateString,
                     };
 
                     setAttendanceRecords(prev => [...prev, newRecord]);
-                    toast({
-                        title: `Asistencia Registrada (${status})`,
-                        description: `${newRecord.studentName} ha sido marcado a las ${newRecord.arrivalTime}.`,
-                    });
-                    checkedIn = true;
-                    break; // Stop after first valid check-in
+                    
+                    try {
+                        await setDoc(doc(firestore, 'attendance', recordId), {
+                            studentId: newRecord.studentId,
+                            date: newRecord.date,
+                            materiaAsignacionId: newRecord.materiaId,
+                            docenteId: newRecord.docenteId,
+                            status: newRecord.status,
+                            arrivalTime: newRecord.arrivalTime,
+                        });
+
+                        toast({
+                            title: `Asistencia Registrada (${status})`,
+                            description: `${newRecord.studentName} ha sido marcado a las ${newRecord.arrivalTime}.`,
+                        });
+                    } catch (error) {
+                        console.error("Error saving attendance:", error);
+                        toast({ variant: 'destructive', title: 'Error', description: 'No se pudo guardar la asistencia en la base de datos.'});
+                    }
+
+                    break;
                 }
             }
         }
-    }, [allStudents, horarios, config, attendanceRecords, toast]);
+    }, [allStudents, horarios, config, attendanceRecords, toast, firestore]);
 
     useEffect(() => {
         let isCancelled = false;
@@ -290,7 +258,7 @@ export default function AttendancePage() {
     };
 
     const renderCameraState = () => {
-        if (allStudents.length === 0) {
+        if (!allStudents || allStudents.length === 0) {
              return (
                 <div className="flex flex-col items-center gap-4 text-muted-foreground">
                     <Users className="w-16 h-16" />
@@ -307,7 +275,7 @@ export default function AttendancePage() {
                 </div>
             );
         }
-        if (hasCameraPermission === null) return <p>Solicitando permiso de la cámara...</p>;
+        if (hasCameraPermission === null) return <div className='flex items-center gap-2'><Loader2 className='animate-spin'/> Solicitando permiso de la cámara...</div>;
         if (hasCameraPermission === false) {
              return (
                 <Alert variant="destructive" className="max-w-md">
@@ -330,7 +298,7 @@ export default function AttendancePage() {
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                              <Link href="/admin/dashboard" passHref><Button variant="outline" size="lg"><ArrowLeft className="mr-2 h-4 w-4" />Regresar</Button></Link>
-                            <Button onClick={handleToggleAttendance} size="lg" disabled={allStudents.length === 0}>
+                            <Button onClick={handleToggleAttendance} size="lg" disabled={!allStudents || allStudents.length === 0}>
                                 {isTakingAttendance ? 'Detener Pase de Lista' : 'Iniciar Pase de Lista'}
                             </Button>
                         </div>

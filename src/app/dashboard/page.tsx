@@ -8,29 +8,9 @@ import { Users, Clock } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { User as UserIcon } from 'lucide-react';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection } from 'firebase/firestore';
 
-// --- DATA PERSISTENCE & TYPES ---
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
-    const [storedValue, setStoredValue] = useState<T>(initialValue);
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const item = window.localStorage.getItem(key);
-                if (item) setStoredValue(JSON.parse(item));
-            } catch (error) { console.log(error); }
-        }
-    }, [key]);
-    const setValue = (value: T | ((val: T) => T)) => {
-        if (typeof window !== 'undefined') {
-            try {
-                const valueToStore = value instanceof Function ? value(storedValue) : value;
-                setStoredValue(valueToStore);
-                window.localStorage.setItem(key, JSON.stringify(valueToStore));
-            } catch (error) { console.log(error); }
-        }
-    };
-    return [storedValue, setValue];
-};
 
 interface User {
     id: string;
@@ -74,10 +54,17 @@ const HORAS_BLOQUE_INICIO = ["07:00", "08:00", "09:00", "10:00"];
 
 export default function TeacherDashboardPage() {
   const [user, setUser] = useState<User | null>(null);
-  const [horarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
-  const [grupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
-  const [materias] = useLocalStorage<AsignacionMateria[]>('unilink-materia-asignaciones', []);
-  const [students] = useLocalStorage<Student[]>('unilink-students', []);
+  const firestore = useFirestore();
+
+  const { data: horariosData } = useCollection<Horario>(useMemoFirebase(() => collection(firestore, 'horarios'), [firestore]));
+  const { data: gruposData } = useCollection<Grupo>(useMemoFirebase(() => collection(firestore, 'grupos'), [firestore]));
+  const { data: materiasData } = useCollection<AsignacionMateria>(useMemoFirebase(() => collection(firestore, 'materiaAsignaciones'), [firestore]));
+  const { data: studentsData } = useCollection<Student>(useMemoFirebase(() => collection(firestore, 'students'), [firestore]));
+
+  const horarios = horariosData || [];
+  const grupos = gruposData || [];
+  const materias = materiasData || [];
+  const students = studentsData || [];
   
   const [isStudentListOpen, setIsStudentListOpen] = useState(false);
   const [viewingGroup, setViewingGroup] = useState<Grupo | null>(null);

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
@@ -7,30 +6,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
-import { Badge } from '@/components/ui/badge';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection } from 'firebase/firestore';
 
-
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
-    const [storedValue, setStoredValue] = useState<T>(initialValue);
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const item = window.localStorage.getItem(key);
-                if (item) setStoredValue(JSON.parse(item));
-            } catch (error) { console.log(error); }
-        }
-    }, [key]);
-    const setValue = (value: T | ((val: T) => T)) => {
-         if (typeof window !== 'undefined') {
-            try {
-                const valueToStore = value instanceof Function ? value(storedValue) : value;
-                setStoredValue(valueToStore);
-                window.localStorage.setItem(key, JSON.stringify(valueToStore));
-            } catch (error) { console.log(error); }
-        }
-    };
-    return [storedValue, setValue];
-};
 
 interface User { id: string; name: string; role: string }
 interface Grupo { id: string; name: string; }
@@ -40,9 +18,15 @@ interface AttendanceRecord { id: string; studentId: string; date: string; materi
 
 export default function TeacherReportsPage() {
     const [user, setUser] = useState<User | null>(null);
-    const [grupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
-    const [students] = useLocalStorage<Student[]>('unilink-students', []);
-    const [attendance] = useLocalStorage<AttendanceRecord[]>('unilink-attendance', []);
+    const firestore = useFirestore();
+
+    const { data: gruposData } = useCollection<Grupo>(useMemoFirebase(() => collection(firestore, 'grupos'), [firestore]));
+    const { data: studentsData } = useCollection<Student>(useMemoFirebase(() => collection(firestore, 'students'), [firestore]));
+    const { data: attendanceData } = useCollection<AttendanceRecord>(useMemoFirebase(() => collection(firestore, 'attendance'), [firestore]));
+
+    const grupos = gruposData || [];
+    const students = studentsData || [];
+    const attendance = attendanceData || [];
     
     const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
 
@@ -54,7 +38,6 @@ export default function TeacherReportsPage() {
     }, []);
 
     const teacherGroups = useMemo(() => {
-        // For testing, the "Docente" role has access to all groups.
         if (!user || user.role !== 'Docente') return [];
         return grupos;
     }, [user, grupos]);

@@ -9,37 +9,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, addDoc } from 'firebase/firestore';
 
-// --- DATA PERSISTENCE & TYPES ---
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void, boolean] => {
-    const [storedValue, setStoredValue] = useState<T>(initialValue);
-    const [isInitialized, setIsInitialized] = useState(false);
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const item = window.localStorage.getItem(key);
-                setStoredValue(item ? JSON.parse(item) : initialValue);
-            } catch (error) { 
-                console.error(`Error reading localStorage key “${key}”:`, error);
-                setStoredValue(initialValue);
-            } finally {
-                setIsInitialized(true);
-            }
-        }
-    }, [key, initialValue]);
-
-    const setValue = (value: T | ((val: T) => T)) => {
-        if (typeof window !== 'undefined') {
-            try {
-                const valueToStore = value instanceof Function ? value(storedValue) : value;
-                setStoredValue(valueToStore);
-                window.localStorage.setItem(key, JSON.stringify(valueToStore));
-            } catch (error) { console.error(`Error setting localStorage key “${key}”:`, error); }
-        }
-    };
-    return [storedValue, setValue, isInitialized];
-};
 
 type AttendanceStatus = 'Presente' | 'Retardo' | 'Falta' | 'Falta Justificada';
 interface AttendanceRecord { id: string; studentId: string; date: string; materiaAsignacionId: string; status: AttendanceStatus; docenteId?: string; }
@@ -51,25 +23,25 @@ function JustificationFormComponent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const recordId = searchParams.get('recordId');
+    const firestore = useFirestore();
 
-    const [allAttendance, , attendanceInitialized] = useLocalStorage<AttendanceRecord[]>('unilink-attendance', []);
-    const [allSubjects] = useLocalStorage<AsignacionMateria[]>('unilink-materia-asignaciones', []);
-    const [justificaciones, setJustificaciones] = useLocalStorage<Justificacion[]>('unilink-justificaciones', []);
+    const { data: allAttendance, isLoading: attendanceLoading } = useCollection<AttendanceRecord>(useMemoFirebase(() => collection(firestore, 'attendance'), [firestore]));
+    const { data: allSubjects, isLoading: subjectsLoading } = useCollection<AsignacionMateria>(useMemoFirebase(() => collection(firestore, 'materiaAsignaciones'), [firestore]));
     
     const [reason, setReason] = useState('');
     const [record, setRecord] = useState<AttendanceRecord | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        if (!attendanceInitialized) {
-            return; // Wait for localStorage to be loaded
+        if (attendanceLoading) {
+            return; // Wait for data to be loaded
         }
         if (!recordId) {
             router.push('/student/dashboard');
             return;
         }
 
-        const foundRecord = allAttendance.find(r => r.id === recordId);
+        const foundRecord = (allAttendance || []).find(r => r.id === recordId);
         if (foundRecord && foundRecord.status === 'Falta' && foundRecord.docenteId) {
             setRecord(foundRecord);
         } else {
@@ -77,17 +49,16 @@ function JustificationFormComponent() {
             router.push('/student/dashboard');
         }
         setIsLoading(false);
-    }, [recordId, allAttendance, router, toast, attendanceInitialized]);
+    }, [recordId, allAttendance, router, toast, attendanceLoading]);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!record || !reason || !record.docenteId) {
             toast({ variant: 'destructive', title: 'Datos incompletos', description: 'Por favor, escribe el motivo de la justificación.' });
             return;
         }
 
-        const newJustificacion: Justificacion = {
-            id: `just-${record.studentId}-${new Date().toISOString()}`,
+        const newJustificacion: Omit<Justificacion, 'id'> = {
             studentId: record.studentId,
             date: record.date,
             reason: reason,
@@ -97,26 +68,31 @@ function JustificationFormComponent() {
             materiaId: record.materiaAsignacionId,
         };
 
-        setJustificaciones(prev => [...prev, newJustificacion]);
+        try {
+            await addDoc(collection(firestore, 'justificaciones'), newJustificacion);
 
-        toast({
-            title: 'Justificante Enviado',
-            description: 'Tu justificante ha sido enviado para revisión por un docente.',
-        });
-        
-        router.push('/student/dashboard');
+            toast({
+                title: 'Justificante Enviado',
+                description: 'Tu justificante ha sido enviado para revisión.',
+            });
+            
+            router.push('/student/dashboard');
+
+        } catch (error) {
+            console.error("Error creating justification:", error);
+            toast({ variant: 'destructive', title: 'Error', description: 'No se pudo enviar el justificante.' });
+        }
     };
 
-    if (isLoading) {
+    if (isLoading || attendanceLoading || subjectsLoading) {
         return <p>Cargando información de la falta...</p>;
     }
 
     if (!record) {
-        // This state will be brief as the useEffect will redirect.
         return <p>Verificando registro...</p>;
     }
 
-    const subjectName = allSubjects.find(s => s.id === record.materiaAsignacionId)?.materia || 'Materia Desconocida';
+    const subjectName = (allSubjects || []).find(s => s.id === record.materiaAsignacionId)?.materia || 'Materia Desconocida';
 
     return (
         <Card>

@@ -1,33 +1,14 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, doc, updateDoc } from 'firebase/firestore';
 
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
-    const [storedValue, setStoredValue] = useState<T>(initialValue);
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const item = window.localStorage.getItem(key);
-                if (item) setStoredValue(JSON.parse(item));
-            } catch (error) { console.log(error); }
-        }
-    }, [key]);
-    const setValue = (value: T | ((val: T) => T)) => {
-        if (typeof window !== 'undefined') {
-            try {
-                const valueToStore = value instanceof Function ? value(storedValue) : value;
-                setStoredValue(valueToStore);
-                window.localStorage.setItem(key, JSON.stringify(valueToStore));
-            } catch (error) { console.log(error); }
-        }
-    };
-    return [storedValue, setValue];
-};
 
 interface Justificacion { 
     id: string; 
@@ -45,42 +26,42 @@ interface AttendanceRecord { id: string; studentId: string; date: string; materi
 
 export default function JustificacionesPage() {
     const { toast } = useToast();
-    const [justificaciones, setJustificaciones] = useLocalStorage<Justificacion[]>('unilink-justificaciones', []);
-    const [students] = useLocalStorage<Student[]>('unilink-students', []);
-    const [attendance, setAttendance] = useLocalStorage<AttendanceRecord[]>('unilink-attendance', []);
+    const firestore = useFirestore();
+
+    const { data: justificaciones } = useCollection<Justificacion>(useMemoFirebase(() => collection(firestore, 'justificaciones'), [firestore]));
+    const { data: students } = useCollection<Student>(useMemoFirebase(() => collection(firestore, 'students'), [firestore]));
+
+    const pendingJustificaciones = useMemo(() => {
+        return (justificaciones || []).filter(j => j.status === 'Pendiente');
+    }, [justificaciones]);
 
     const getStudentName = (studentId: string) => {
-        const student = students.find(s => s.id === studentId);
+        const student = (students || []).find(s => s.id === studentId);
         return student ? `${student.firstName} ${student.lastName}` : 'Desconocido';
     };
 
-    const handleStatusChange = (justificacionId: string, newStatus: 'Aprobado' | 'Rechazado') => {
-        let attendanceUpdated = false;
-        const updatedJustificaciones = justificaciones.map(j => {
-            if (j.id === justificacionId) {
-                // If approving, update the corresponding attendance record
-                if (newStatus === 'Aprobado') {
-                    const updatedAttendance = attendance.map(a => {
-                        if (a.id === j.attendanceRecordId) {
-                            attendanceUpdated = true;
-                            return { ...a, status: 'Falta Justificada' as AttendanceStatus };
-                        }
-                        return a;
-                    });
-                    if (attendanceUpdated) {
-                        setAttendance(updatedAttendance);
-                    }
-                }
-                return { ...j, status: newStatus };
-            }
-            return j;
-        });
+    const handleStatusChange = async (justificacionId: string, newStatus: 'Aprobado' | 'Rechazado') => {
+        const justificacion = (justificaciones || []).find(j => j.id === justificacionId);
+        if (!justificacion) return;
 
-        setJustificaciones(updatedJustificaciones);
-        toast({
-            title: `Justificación ${newStatus === 'Aprobado' ? 'Aprobada' : 'Rechazada'}`,
-            description: `El estado de la justificación ha sido actualizado.`,
-        });
+        const justificacionRef = doc(firestore, 'justificaciones', justificacionId);
+        
+        try {
+            if (newStatus === 'Aprobado') {
+                const attendanceRef = doc(firestore, 'attendance', justificacion.attendanceRecordId);
+                await updateDoc(attendanceRef, { status: 'Falta Justificada' });
+            }
+            
+            await updateDoc(justificacionRef, { status: newStatus });
+
+            toast({
+                title: `Justificación ${newStatus === 'Aprobado' ? 'Aprobada' : 'Rechazada'}`,
+                description: `El estado de la justificación ha sido actualizado.`,
+            });
+        } catch (error) {
+            console.error("Error updating status:", error);
+            toast({ variant: 'destructive', title: 'Error', description: 'No se pudo actualizar el estado.'});
+        }
     };
 
     const getStatusVariant = (status: string) => {
@@ -111,7 +92,7 @@ export default function JustificacionesPage() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {justificaciones.map(item => (
+                            {pendingJustificaciones.map(item => (
                                 <TableRow key={item.id}>
                                     <TableCell className="font-medium">{getStudentName(item.studentId)}</TableCell>
                                     <TableCell>{item.date}</TableCell>
@@ -129,7 +110,7 @@ export default function JustificacionesPage() {
                                     </TableCell>
                                 </TableRow>
                             ))}
-                             {justificaciones.length === 0 && (
+                             {pendingJustificaciones.length === 0 && (
                                 <TableRow>
                                     <TableCell colSpan={5} className="h-24 text-center">No hay justificaciones pendientes.</TableCell>
                                 </TableRow>

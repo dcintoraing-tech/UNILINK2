@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -15,64 +14,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import * as faceapi from 'face-api.js';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useFirestore, useCollection, useDoc, useMemoFirebase } from '@/firebase';
 import { doc, setDoc, writeBatch, collection, addDoc } from 'firebase/firestore';
-
-
-// --- DATA PERSISTENCE & TYPES ---
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
-    const [storedValue, setStoredValue] = useState<T>(initialValue);
-    const [isInitialized, setIsInitialized] = useState(false);
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const item = window.localStorage.getItem(key);
-                if (item) {
-                    setStoredValue(JSON.parse(item));
-                }
-            } catch (error) {
-                console.log(error);
-            }
-            setIsInitialized(true);
-        }
-    }, [key]);
-
-    const setValue = (value: T | ((val: T) => T)) => {
-        if (!isInitialized) return;
-        try {
-            setStoredValue(currentStoredValue => {
-                const valueToStore = value instanceof Function ? value(currentStoredValue) : value;
-                if (typeof window !== 'undefined') {
-                    window.localStorage.setItem(key, JSON.stringify(valueToStore));
-                    window.dispatchEvent(new StorageEvent('storage', { key, newValue: JSON.stringify(valueToStore) }));
-                }
-                return valueToStore;
-            });
-        } catch (error) {
-            console.log(error);
-        }
-    };
-
-    useEffect(() => {
-        const handleStorageChange = (e: StorageEvent) => {
-            if (e.key === key && e.newValue) {
-                 try {
-                    setStoredValue(JSON.parse(e.newValue));
-                } catch (error) {
-                    console.log(error);
-                }
-            }
-        };
-
-        window.addEventListener('storage', handleStorageChange);
-        return () => {
-            window.removeEventListener('storage', handleStorageChange);
-        };
-    }, [key]);
-
-    return [storedValue, setValue] as const;
-};
 
 // --- INTERFACES ---
 interface Student {
@@ -127,7 +70,6 @@ interface DisplayStudent extends Student {
 }
 
 interface Justificacion {
-    id: string;
     studentId: string;
     date: string;
     reason: string;
@@ -148,18 +90,14 @@ export default function TeacherAttendancePage() {
     const { data: gruposData } = useCollection<Grupo>(useMemoFirebase(() => collection(firestore, 'grupos'), [firestore]));
     const { data: materiasData } = useCollection<AsignacionMateria>(useMemoFirebase(() => collection(firestore, 'materiaAsignaciones'), [firestore]));
     const { data: attendanceData } = useCollection<AttendanceRecord>(useMemoFirebase(() => collection(firestore, 'attendance'), [firestore]));
-    
-    // --- Local Storage Data ---
-    const [config] = useLocalStorage<AttendanceConfig>('unilink-attendance-config', {
-        toleranceMinutes: 10,
-        absenceLimitMinutes: 30,
-    });
+    const { data: configData } = useDoc<AttendanceConfig>(useMemoFirebase(() => doc(firestore, 'config', 'attendance'), [firestore]));
     
     const allStudents = allStudentsData || [];
     const horarios = horariosData || [];
     const grupos = gruposData || [];
     const materias = materiasData || [];
     const attendance = attendanceData || [];
+    const config = configData || { toleranceMinutes: 10, absenceLimitMinutes: 30 };
 
     // --- Component State ---
     const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -373,7 +311,6 @@ export default function TeacherAttendancePage() {
                         const ctx = canvas.getContext('2d');
                         if (ctx) {
                             ctx.clearRect(0, 0, canvas.width, canvas.height);
-                            // faceapi.draw.drawDetections(canvas, resizedDetections);
                             resizedDetections.forEach(detection => {
                                 const box = detection.detection.box
                                 const drawBox = new faceapi.draw.DrawBox(box, { label: 'Rostro' })
@@ -461,7 +398,6 @@ export default function TeacherAttendancePage() {
             const todaySchedule = studentSchedule?.schedule?.[dayIndex];
 
             const updatedList = [...groupStudentList];
-            const newAbsenceRecords: Omit<AttendanceRecord, 'id'>[] = [];
             let absencesCount = 0;
             const batch = writeBatch(firestore);
 
@@ -519,7 +455,7 @@ export default function TeacherAttendancePage() {
         setIsJustifyOpen(true);
     };
 
-    const handleJustifySubmit = () => {
+    const handleJustifySubmit = async () => {
         if (!justifyingStudent || !justificationReason) {
              toast({ variant: "destructive", title: "Error", description: "Falta el motivo de la justificación." });
             return;
@@ -535,29 +471,29 @@ export default function TeacherAttendancePage() {
             return;
         }
 
-        const newJustificacionData = {
+        const newJustificacionData: Omit<Justificacion, 'id'> = {
             studentId: justifyingStudent.id,
             date: new Date().toISOString().split('T')[0],
             reason: justificationReason,
-            status: 'Pendiente' as 'Pendiente',
+            status: 'Pendiente',
             attendanceRecordId: attendanceToJustify.id,
             docenteId: attendanceToJustify.docenteId,
             materiaId: attendanceToJustify.materiaAsignacionId,
         };
 
-        addDoc(collection(firestore, 'justificaciones'), newJustificacionData).catch(err => {
+        try {
+            await addDoc(collection(firestore, 'justificaciones'), newJustificacionData);
+            toast({
+                title: "Justificación Enviada",
+                description: `Se ha enviado una justificación para ${justifyingStudent.firstName}.`,
+            });
+            setIsJustifyOpen(false);
+            setJustifyingStudent(null);
+            setJustificationReason('');
+        } catch (err) {
             console.error("Error submitting justification:", err);
             toast({ variant: 'destructive', title: 'Error de Red', description: 'No se pudo enviar la justificación.' });
-        });
-
-        toast({
-            title: "Justificación Enviada",
-            description: `Se ha enviado una justificación para ${justifyingStudent.firstName}.`,
-        });
-
-        setIsJustifyOpen(false);
-        setJustifyingStudent(null);
-        setJustificationReason('');
+        }
     };
 
     const getStatusVariant = (status: DisplayStatus): "default" | "secondary" | "destructive" | "outline" => {
@@ -567,6 +503,7 @@ export default function TeacherAttendancePage() {
             case 'Falta': return 'destructive';
             case 'Falta Justificada': return 'outline';
             case 'Pendiente': return 'outline';
+            default: return 'outline';
         }
     };
 
@@ -605,7 +542,7 @@ export default function TeacherAttendancePage() {
                                         {isTakingAttendance ? 'El sistema está detectando rostros...' : 'Inicia el pase de lista para activar la cámara.'}
                                      </CardDescription>
                                 </div>
-                                <Button onClick={handleToggleAttendance} size="lg" disabled={!modelsLoaded || !!modelError || (allStudents ?? []).length === 0 || !faceMatcher}>
+                                <Button onClick={handleToggleAttendance} size="lg" disabled={!modelsLoaded || !!modelError || allStudents.length === 0 || !faceMatcher}>
                                     {isTakingAttendance ? 'Detener Pase de Lista' : 'Iniciar Pase de Lista'}
                                 </Button>
                             </CardHeader>
@@ -659,7 +596,7 @@ export default function TeacherAttendancePage() {
                                                             <AvatarFallback><UserIcon /></AvatarFallback>
                                                         </Avatar>
                                                         <div>
-                                                            <p className="font-medium">{student.firstName} {student.lastName}</p>
+                                                            <p className="font-medium">{student.firstName} ${student.lastName}</p>
                                                             <Badge variant={getStatusVariant(student.status)}>{student.status}</Badge>
                                                         </div>
                                                     </div>
@@ -738,7 +675,7 @@ export default function TeacherAttendancePage() {
             <Dialog open={isJustifyOpen} onOpenChange={setIsJustifyOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Justificar Falta del Docente</DialogTitle>
+                        <DialogTitle>Justificar Falta</DialogTitle>
                         <DialogDescription>
                             Enviar una justificación para {justifyingStudent?.firstName} por su falta.
                         </DialogDescription>

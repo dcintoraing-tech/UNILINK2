@@ -8,46 +8,9 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
+import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 
-
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
-    const [isInitialized, setIsInitialized] = useState(false);
-    const [storedValue, setStoredValue] = useState<T>(initialValue);
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const item = window.localStorage.getItem(key);
-                if (item) {
-                    setStoredValue(JSON.parse(item));
-                }
-            } catch (error) {
-                console.error(`Error reading localStorage key “${key}”:`, error);
-            } finally {
-                setIsInitialized(true);
-            }
-        }
-    }, [key]);
-
-    const setValue = (value: T | ((val: T) => T)) => {
-        if (!isInitialized) return;
-        try {
-            const valueToStore = value instanceof Function ? value(storedValue) : value;
-            setStoredValue(valueToStore);
-            if (typeof window !== 'undefined') {
-                window.localStorage.setItem(key, JSON.stringify(valueToStore));
-            }
-        } catch (error) {
-            console.error(`Error setting localStorage key “${key}”:`, error);
-        }
-    };
-
-    if (!isInitialized) {
-        return [initialValue, () => {}];
-    }
-
-    return [storedValue, setValue];
-};
 
 interface AttendanceConfig {
     toleranceMinutes: number;
@@ -60,30 +23,36 @@ const backups = [
 ]
 
 export default function SettingsPage() {
-    const [config, setConfig] = useLocalStorage<AttendanceConfig>('unilink-attendance-config', {
-        toleranceMinutes: 10,
-        absenceLimitMinutes: 30,
-    });
     const { toast } = useToast();
+    const firestore = useFirestore();
 
-    const [tolerance, setTolerance] = useState(config.toleranceMinutes);
-    const [absenceLimit, setAbsenceLimit] = useState(config.absenceLimitMinutes);
+    const configRef = useMemoFirebase(() => doc(firestore, 'config', 'attendance'), [firestore]);
+    const { data: configData } = useDoc<AttendanceConfig>(configRef);
+
+    const [tolerance, setTolerance] = useState(10);
+    const [absenceLimit, setAbsenceLimit] = useState(30);
 
     useEffect(() => {
-        setTolerance(config.toleranceMinutes);
-        setAbsenceLimit(config.absenceLimitMinutes);
-    }, [config]);
+        if (configData) {
+            setTolerance(configData.toleranceMinutes);
+            setAbsenceLimit(configData.absenceLimitMinutes);
+        }
+    }, [configData]);
 
-    const handleSave = () => {
+    const handleSave = async () => {
         const newConfig = {
             toleranceMinutes: Number(tolerance),
             absenceLimitMinutes: Number(absenceLimit),
         };
-        setConfig(newConfig);
-        toast({
-            title: 'Configuración Guardada',
-            description: 'Las reglas de asistencia han sido actualizadas.',
-        });
+        try {
+            await setDoc(configRef, newConfig, { merge: true });
+            toast({
+                title: 'Configuración Guardada',
+                description: 'Las reglas de asistencia han sido actualizadas.',
+            });
+        } catch (error) {
+            toast({ variant: 'destructive', title: 'Error', description: 'No se pudo guardar la configuración.' });
+        }
     };
 
     return (

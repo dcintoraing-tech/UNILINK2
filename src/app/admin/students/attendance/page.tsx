@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
@@ -12,29 +11,9 @@ import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
 import { sub, format, parseISO, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, doc, writeBatch } from 'firebase/firestore';
 
-// --- DATA PERSISTENCE & TYPES ---
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
-    const [storedValue, setStoredValue] = useState<T>(initialValue);
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const item = window.localStorage.getItem(key);
-                if (item) setStoredValue(JSON.parse(item));
-            } catch (error) { console.log(error); }
-        }
-    }, [key]);
-    const setValue = (value: T | ((val: T) => T)) => {
-        if (typeof window !== 'undefined') {
-            try {
-                const valueToStore = value instanceof Function ? value(storedValue) : value;
-                setStoredValue(valueToStore);
-                window.localStorage.setItem(key, JSON.stringify(valueToStore));
-            } catch (error) { console.log(error); }
-        }
-    };
-    return [storedValue, setValue];
-};
 
 interface User { id: string; name: string; role: 'Docente' | 'Admin' | 'Jefe de carrera'; carreraId?: string; }
 interface Student { id: string; firstName: string; lastName: string; assignedGroupId: string; }
@@ -45,15 +24,21 @@ interface AttendanceRecord { id: string; studentId: string; date: string; materi
 interface AsignacionMateria { id: string; materia: string; }
 
 
-// --- MAIN COMPONENT ---
 export default function AdminAttendancePage() {
     const { toast } = useToast();
-    const [attendance, setAttendance] = useLocalStorage<AttendanceRecord[]>('unilink-attendance', []);
-    const [students] = useLocalStorage<Student[]>('unilink-students', []);
-    const [carreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
-    const [grupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
-    const [materias] = useLocalStorage<AsignacionMateria[]>('unilink-materia-asignaciones', []);
-    const [users] = useLocalStorage<User[]>('unilink-users', []);
+    const firestore = useFirestore();
+
+    const { data: attendanceData } = useCollection<AttendanceRecord>(useMemoFirebase(() => collection(firestore, 'attendance'), [firestore]));
+    const { data: studentsData } = useCollection<Student>(useMemoFirebase(() => collection(firestore, 'students'), [firestore]));
+    const { data: carrerasData } = useCollection<CatalogItem>(useMemoFirebase(() => collection(firestore, 'carreras'), [firestore]));
+    const { data: gruposData } = useCollection<Grupo>(useMemoFirebase(() => collection(firestore, 'grupos'), [firestore]));
+    const { data: materiasData } = useCollection<AsignacionMateria>(useMemoFirebase(() => collection(firestore, 'materiaAsignaciones'), [firestore]));
+    
+    const attendance = attendanceData || [];
+    const students = studentsData || [];
+    const carreras = carrerasData || [];
+    const grupos = gruposData || [];
+    const materias = materiasData || [];
     
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -103,7 +88,13 @@ export default function AdminAttendancePage() {
         const endDate = dateRange?.to ? endOfDay(dateRange.to) : null;
 
         return attendance.filter(record => {
-            const recordDate = parseISO(record.date);
+            let recordDate;
+            try {
+                recordDate = parseISO(record.date);
+            } catch (e) {
+                return false; // Ignore invalid dates
+            }
+
             const isDateMatch = startDate && endDate ? (recordDate >= startDate && recordDate <= endDate) : true;
             if (!isDateMatch) return false;
             
@@ -118,24 +109,36 @@ export default function AdminAttendancePage() {
             const isStudentMatch = filters.studentId === 'all' || record.studentId === filters.studentId;
 
             return isCarreraMatch && isGrupoMatch && isStudentMatch;
-        }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        }).sort((a, b) => {
+            try {
+                return new Date(b.date).getTime() - new Date(a.date).getTime()
+            } catch(e) {
+                return 0;
+            }
+        });
     }, [attendance, students, grupos, dateRange, filters]);
     
     const handleStatusChange = (recordId: string, newStatus: AttendanceStatus) => {
         setEditedRecords(prev => ({ ...prev, [recordId]: newStatus }));
     };
 
-    const handleSaveChanges = () => {
-        setAttendance(prevAttendance => {
-            return prevAttendance.map(record => {
-                if (editedRecords[record.id]) {
-                    return { ...record, status: editedRecords[record.id] };
-                }
-                return record;
-            });
+    const handleSaveChanges = async () => {
+        if (Object.keys(editedRecords).length === 0) return;
+        const batch = writeBatch(firestore);
+
+        Object.entries(editedRecords).forEach(([recordId, newStatus]) => {
+            const recordRef = doc(firestore, 'attendance', recordId);
+            batch.update(recordRef, { status: newStatus });
         });
-        setEditedRecords({});
-        toast({ title: "Asistencias actualizadas", description: "Los cambios han sido guardados." });
+
+        try {
+            await batch.commit();
+            setEditedRecords({});
+            toast({ title: "Asistencias actualizadas", description: "Los cambios han sido guardados." });
+        } catch (error) {
+            console.error("Error updating attendance:", error);
+            toast({ variant: "destructive", title: "Error", description: "No se pudieron guardar los cambios." });
+        }
     };
 
     const getStudentName = (studentId: string) => {
