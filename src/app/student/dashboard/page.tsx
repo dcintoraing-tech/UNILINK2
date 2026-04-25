@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
@@ -7,33 +8,12 @@ import { Badge } from '@/components/ui/badge';
 import { CheckCircle, XCircle, Clock, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { sub, format, eachDayOfInterval, startOfDay } from 'date-fns';
+import { format } from 'date-fns';
 import Link from 'next/link';
 import { es } from 'date-fns/locale';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection } from 'firebase/firestore';
 
-// --- DATA PERSISTENCE & TYPES ---
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
-    const [storedValue, setStoredValue] = useState<T>(initialValue);
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const item = window.localStorage.getItem(key);
-                if (item) setStoredValue(JSON.parse(item));
-            } catch (error) { console.log(error); }
-        }
-    }, [key]);
-
-    const setValue = (value: T | ((val: T) => T)) => {
-        if (typeof window !== 'undefined') {
-            try {
-                const valueToStore = value instanceof Function ? value(storedValue) : value;
-                setStoredValue(valueToStore);
-                window.localStorage.setItem(key, JSON.stringify(valueToStore));
-            } catch (error) { console.log(error); }
-        }
-    };
-    return [storedValue, setValue];
-};
 
 interface Student { id: string; firstName: string; lastName: string; controlNumber: string; }
 type AttendanceStatus = 'Presente' | 'Retardo' | 'Falta' | 'Falta Justificada';
@@ -41,38 +21,29 @@ interface AttendanceRecord { id: string; studentId: string; date: string; materi
 interface AsignacionMateria { id: string; materia: string; }
 interface Justificacion { id: string; studentId: string; date: string; status: 'Pendiente' | 'Aprobado' | 'Rechazado'; attendanceRecordId: string; docenteId: string; materiaId: string; }
 
-interface HorarioBlock {
-    materiaId: string;
-    docenteId: string;
-    duracion: 1 | 2;
-}
-type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
-type ScheduleData = { [day: number]: DaySchedule };
-interface Horario {
-    id: string; // Same as grupoId
-    grupoId: string;
-    schedule: ScheduleData;
-}
-
 
 // --- MAIN COMPONENT ---
 export default function StudentDashboardPage() {
-    const { toast } = useToast();
     const router = useRouter();
 
     const [student, setStudent] = useState<Student | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     
-    // Data from LocalStorage
-    const [allStudents] = useLocalStorage<Student[]>('unilink-students', []);
-    const [allAttendance, setAllAttendance] = useLocalStorage<AttendanceRecord[]>('unilink-attendance', []);
-    const [allSubjects] = useLocalStorage<AsignacionMateria[]>('unilink-materia-asignaciones', []);
-    const [allJustificaciones] = useLocalStorage<Justificacion[]>('unilink-justificaciones', []);
-    const [allHorarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
-    const [mockDataGenerated, setMockDataGenerated] = useLocalStorage('unilink-mock-attendance-generated', false);
+    // Data from Firestore
+    const firestore = useFirestore();
+    const { data: studentsData } = useCollection<Student>(useMemoFirebase(() => collection(firestore, 'students'), [firestore]));
+    const { data: attendanceData } = useCollection<AttendanceRecord>(useMemoFirebase(() => collection(firestore, 'attendance'), [firestore]));
+    const { data: subjectsData } = useCollection<AsignacionMateria>(useMemoFirebase(() => collection(firestore, 'materiaAsignaciones'), [firestore]));
+    const { data: justificacionesData } = useCollection<Justificacion>(useMemoFirebase(() => collection(firestore, 'justificaciones'), [firestore]));
+    
+    const allStudents = studentsData || [];
+    const allAttendance = attendanceData || [];
+    const allSubjects = subjectsData || [];
+    const allJustificaciones = justificacionesData || [];
 
     // Check for logged-in student on mount
     useEffect(() => {
+        if (!studentsData) return; // Wait for student data to be loaded
         let foundStudent: Student | undefined;
         try {
             const storedStudentId = sessionStorage.getItem('unilink-student-id');
@@ -92,79 +63,22 @@ export default function StudentDashboardPage() {
             console.error("Could not access session storage:", e);
             router.push('/student-login');
         } finally {
-            if (foundStudent) {
-                setIsLoading(false);
-            }
+            setIsLoading(false);
         }
-    }, [allStudents, router]);
-
-    // Generate mock data if it hasn't been done before
-    useEffect(() => {
-        if (student && !mockDataGenerated && allStudents.length > 0 && allHorarios.length > 0) {
-            const newAttendance: AttendanceRecord[] = [];
-            const twoMonthsAgo = sub(new Date(), { months: 2 });
-            const today = new Date();
-            const dateInterval = eachDayOfInterval({ start: twoMonthsAgo, end: today });
-
-            allStudents.forEach(s => {
-                const studentHorarios = allHorarios.filter(h => h.grupoId === (s as any).assignedGroupId);
-                if (studentHorarios.length === 0) return;
-                
-                let absences = Math.floor(Math.random() * 6) + 5; // 5 to 10 absences
-                let lates = Math.floor(Math.random() * 4) + 2; // 2 to 5 lates
-
-                for (const date of dateInterval) {
-                    const dayIndex = date.getDay() === 0 ? 6 : date.getDay() -1;
-                    
-                    for(const horario of studentHorarios){
-                         const daySchedule = horario.schedule[dayIndex];
-                         if (daySchedule) {
-                            const blockEntries = Object.values(daySchedule).filter(Boolean) as HorarioBlock[];
-                            if (blockEntries.length > 0) {
-                                // Determine status once for the day
-                                let status: AttendanceStatus | null = null;
-                                if (absences > 0 && Math.random() > 0.85) {
-                                    status = 'Falta';
-                                    absences--;
-                                } else if (lates > 0 && Math.random() > 0.9) {
-                                    status = 'Retardo';
-                                    lates--;
-                                }
-        
-                                if (status) {
-                                    // Create a record for each class on that day with that status
-                                    for (const block of blockEntries) {
-                                        if (block && block.docenteId) { // Ensure block and docenteId exist
-                                            const dateString = format(startOfDay(date), 'yyyy-MM-dd');
-                                            newAttendance.push({
-                                                id: `att-${s.id}-${dateString}-${block.materiaId}`,
-                                                studentId: s.id,
-                                                date: dateString,
-                                                materiaAsignacionId: block.materiaId,
-                                                docenteId: block.docenteId,
-                                                status: status,
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-
-            setAllAttendance(prev => [...prev, ...newAttendance]);
-            setMockDataGenerated(true);
-            toast({ title: "Datos de prueba generados", description: "Se ha creado un historial de asistencia para todos los alumnos." });
-        }
-    }, [student, mockDataGenerated, allStudents, allHorarios, setAllAttendance, setMockDataGenerated, toast]);
+    }, [allStudents, router, studentsData]);
     
     // Memoize student's attendance records
     const studentAttendance = useMemo(() => {
         if (!student) return [];
         return allAttendance
             .filter(record => record.studentId === student.id)
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            .sort((a, b) => {
+                try {
+                    return new Date(b.date).getTime() - new Date(a.date).getTime()
+                } catch(e) {
+                    return 0;
+                }
+            });
     }, [student, allAttendance]);
 
     const getSubjectName = (materiaId: string) => {

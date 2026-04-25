@@ -15,32 +15,9 @@ import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { TrendingDown, Users, PieChart as PieChartIcon } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection } from 'firebase/firestore';
 
-
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
-    const [storedValue, setStoredValue] = useState<T>(initialValue);
-    const [isInitialized, setIsInitialized] = useState(false);
-    
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const item = window.localStorage.getItem(key);
-                if (item) setStoredValue(JSON.parse(item));
-            } catch (error) { console.log(error); }
-            setIsInitialized(true);
-        }
-    }, [key]);
-
-    const setValue = (value: T | ((val: T) => T)) => {
-        if (!isInitialized || typeof window === 'undefined') return;
-        try {
-            const valueToStore = value instanceof Function ? value(storedValue) : value;
-            setStoredValue(valueToStore);
-            window.localStorage.setItem(key, JSON.stringify(valueToStore));
-        } catch (error) { console.log(error); }
-    };
-    return [storedValue, setValue];
-};
 
 interface User { id: string; name: string; role: 'Docente' | 'Admin' | 'Jefe de carrera'; carreraId?: string; }
 interface CatalogItem { id: string; name: string; }
@@ -65,114 +42,26 @@ export default function ReportsPage() {
         modalidadId: 'all',
     });
 
-    const [carreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
-    const [grupos, setGrupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
-    const [users, setUsers] = useLocalStorage<User[]>('unilink-users', []);
-    const [modalidades, setModalidades] = useLocalStorage<CatalogItem[]>('unilink-modalidades', []);
-    const [students, setStudents] = useLocalStorage<Student[]>('unilink-students', []);
-    const [attendance, setAttendance] = useLocalStorage<AttendanceRecord[]>('unilink-attendance', []);
-    const [mockDataGenerated, setMockDataGenerated] = useLocalStorage<boolean>('unilink-mock-admin-data-generated', false);
+    const firestore = useFirestore();
+    const { data: carrerasData } = useCollection<CatalogItem>(useMemoFirebase(() => collection(firestore, 'carreras'), [firestore]));
+    const { data: gruposData } = useCollection<Grupo>(useMemoFirebase(() => collection(firestore, 'grupos'), [firestore]));
+    const { data: usersData } = useCollection<User>(useMemoFirebase(() => collection(firestore, 'userProfiles'), [firestore]));
+    const { data: modalidadesData } = useCollection<CatalogItem>(useMemoFirebase(() => collection(firestore, 'modalidades'), [firestore]));
+    const { data: studentsData } = useCollection<Student>(useMemoFirebase(() => collection(firestore, 'students'), [firestore]));
+    const { data: attendanceData } = useCollection<AttendanceRecord>(useMemoFirebase(() => collection(firestore, 'attendance'), [firestore]));
+
+    const carreras = carrerasData || [];
+    const grupos = gruposData || [];
+    const users = usersData || [];
+    const modalidades = modalidadesData || [];
+    const students = studentsData || [];
+    const attendance = attendanceData || [];
     const { toast } = useToast();
 
     useEffect(() => {
         // Set initial date range on client to avoid hydration mismatch
         setDateRange({ from: sub(new Date(), { days: 30 }), to: new Date() });
     }, []);
-
-    const handleGenerateMockData = () => {
-        if (mockDataGenerated) {
-            toast({ title: 'Datos ya generados', description: 'Los datos de prueba ya han sido generados previamente.' });
-            return;
-        }
-
-        const newSedes: CatalogItem[] = [
-            { id: 'sede-central', name: 'Campus Central' },
-            { id: 'sede-norte', name: 'Campus Norte' },
-            { id: 'sede-sur', name: 'Campus Sur' },
-        ];
-        const newModalidades: CatalogItem[] = [
-            { id: 'mod-presencial', name: 'Presencial' },
-            { id: 'mod-online', name: 'En Línea' },
-        ];
-        
-        const newUsers: User[] = [];
-        carreras.forEach(carrera => {
-            for (let i = 1; i <= 2; i++) {
-                const docenteName = `Docente ${carrera.name.substring(0,3)}${i}`;
-                newUsers.push({
-                    id: `docente-${carrera.id}-${i}`,
-                    name: docenteName,
-                    role: 'Docente',
-                    carreraId: carrera.id,
-                } as User);
-            }
-        });
-
-        const newGrupos: Grupo[] = [];
-        const newStudents: Student[] = [];
-        const newAttendance: AttendanceRecord[] = [];
-        const periodos = ['2', '5', '8'];
-
-        carreras.forEach(carrera => {
-            if (carrera.name === 'Odontología') return;
-
-            periodos.forEach(periodo => {
-                for (let i = 1; i <= 10; i++) {
-                    const grupoName = `${carrera.name.substring(0,3).toUpperCase()}${periodo}0${i}`;
-                    const grupoId = `grupo-${carrera.id}-${periodo}-${i}`;
-                    newGrupos.push({
-                        id: grupoId,
-                        name: grupoName,
-                        carreraId: carrera.id,
-                        cuatrimestre: periodo,
-                        modalidadId: i % 2 === 0 ? 'mod-online' : 'mod-presencial'
-                    });
-
-                    for (let j = 1; j <= 10; j++) {
-                        const studentId = `student-${grupoId}-${j}`;
-                        newStudents.push({
-                            id: studentId,
-                            assignedGroupId: grupoId,
-                        } as Student);
-                        
-                        const startDate = sub(new Date(), { months: 4 });
-                        const endDate = new Date();
-                        const dateInterval = eachDayOfInterval({ start: startDate, end: endDate });
-                        
-                        let faltasCount = Math.floor(Math.random() * 5) + 3; // 3 a 7 faltas
-
-                        for (const date of dateInterval) {
-                           if (Math.random() > 0.7) { // 30% chance of having a record for any given day
-                                const status = faltasCount > 0 && Math.random() > 0.8 ? 'Falta' : 'Presente';
-                                if (status === 'Falta') faltasCount--;
-                                
-                                newAttendance.push({
-                                    id: `att-${studentId}-${format(date, 'yyyy-MM-dd')}`,
-                                    studentId: studentId,
-                                    date: format(date, 'yyyy-MM-dd'),
-                                    status: status,
-                                    docenteId: `docente-${carrera.id}-${(i%2)+1}`
-                                });
-                           }
-                        }
-                    }
-                }
-            });
-        });
-        
-        // This is not ideal as useLocalStorage hook is component-scoped
-        // A better approach would be a global state management or context API
-        // For now, we'll just set it to local storage directly.
-        localStorage.setItem('unilink-sedes', JSON.stringify(newSedes));
-        localStorage.setItem('unilink-modalidades', JSON.stringify(newModalidades));
-        localStorage.setItem('unilink-users', JSON.stringify([...users, ...newUsers]));
-        localStorage.setItem('unilink-grupos', JSON.stringify([...grupos, ...newGrupos]));
-        localStorage.setItem('unilink-students', JSON.stringify([...students, ...newStudents]));
-        localStorage.setItem('unilink-attendance', JSON.stringify([...attendance, ...newAttendance]));
-        
-        setMockDataGenerated(true);
-        toast({ title: 'Datos de prueba generados', description: 'El sistema ha sido poblado con datos realistas. Refresca la página para ver los cambios.' });
-    };
 
     useEffect(() => {
         const storedUser = sessionStorage.getItem('unilink-user');
@@ -202,12 +91,12 @@ export default function ReportsPage() {
             return {
                 filteredGrupos: grupos,
                 filteredDocentes: users.filter(u => u.role === 'Docente'),
-                filteredCuatrimestres: [...new Set(grupos.map(g => g.cuatrimestre))].filter(q => q !== 'NONE'),
+                filteredCuatrimestres: [...new Set(grupos.map(g => g.cuatrimestre))].filter(q => q && q !== 'NONE'),
             };
         }
         const fGrupos = grupos.filter(g => g.carreraId === filters.carreraId);
         const fDocentes = users.filter(u => u.role === 'Docente' && u.carreraId === filters.carreraId);
-        const fCuatrimestres = [...new Set(fGrupos.map(g => g.cuatrimestre))].filter(q => q !== 'NONE');
+        const fCuatrimestres = [...new Set(fGrupos.map(g => g.cuatrimestre))].filter(q => q && q !== 'NONE');
 
         return { filteredGrupos: fGrupos, filteredDocentes: fDocentes, filteredCuatrimestres: fCuatrimestres };
 
@@ -219,8 +108,12 @@ export default function ReportsPage() {
 
         const dateFilteredAttendance = attendance.filter(record => {
             if (!startDate || !endDate) return true;
-            const recordDate = parseISO(record.date);
-            return recordDate >= startDate && recordDate <= endDate;
+            try {
+                const recordDate = parseISO(record.date);
+                return recordDate >= startDate && recordDate <= endDate;
+            } catch(e) {
+                return false;
+            }
         });
 
         const relevantStudentIds = new Set(
@@ -268,8 +161,10 @@ export default function ReportsPage() {
         const faltasPorDia = finalAttendance
             .filter(r => r.status === 'Falta')
             .reduce((acc, record) => {
-                const day = format(parseISO(record.date), 'yyyy-MM-dd');
-                acc[day] = (acc[day] || 0) + 1;
+                try {
+                    const day = format(parseISO(record.date), 'yyyy-MM-dd');
+                    acc[day] = (acc[day] || 0) + 1;
+                } catch(e) {}
                 return acc;
             }, {} as Record<string, number>);
 
@@ -291,12 +186,11 @@ export default function ReportsPage() {
     return (
         <div className="grid gap-6">
             <Card>
-                <CardHeader className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <CardHeader>
                     <div>
                         <CardTitle>Dashboard de Reportes</CardTitle>
                         <CardDescription>Filtra y visualiza los datos de asistencia de la institución.</CardDescription>
                     </div>
-                     <Button onClick={handleGenerateMockData} disabled={mockDataGenerated}>Generar Datos de Prueba</Button>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     <div className="grid gap-2">
@@ -416,7 +310,9 @@ export default function ReportsPage() {
                             <LineChart accessibilityLayer data={reportData.lineChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                                 <XAxis 
                                     dataKey="date" 
-                                    tickFormatter={(val) => format(parseISO(val), 'MMM d')}
+                                    tickFormatter={(val) => {
+                                        try { return format(parseISO(val), 'MMM d')} catch(e) {return ''}
+                                    }}
                                     tickLine={false}
                                     axisLine={false}
                                 />
