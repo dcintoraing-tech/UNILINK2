@@ -61,15 +61,20 @@ export default function ReportsPage() {
     useEffect(() => {
         // Set initial date range on client to avoid hydration mismatch
         setDateRange({ from: sub(new Date(), { days: 30 }), to: new Date() });
-    }, []);
 
-    useEffect(() => {
         const storedUser = sessionStorage.getItem('unilink-user');
+        const activeRole = sessionStorage.getItem('unilink-active-role');
+        
         if (storedUser) {
             const user = JSON.parse(storedUser);
-            setCurrentUser(user);
-            if (user.role === 'Jefe de carrera' && user.carreraId) {
-                setFilters(prev => ({ ...prev, carreraId: user.carreraId }));
+            // The active role takes precedence for role-based logic
+            const effectiveRole = activeRole || user.role;
+            const effectiveUser = { ...user, role: effectiveRole };
+            
+            setCurrentUser(effectiveUser);
+            
+            if (effectiveUser.role === 'Jefe de carrera' && effectiveUser.carreraId) {
+                setFilters(prev => ({ ...prev, carreraId: effectiveUser.carreraId }));
             }
         }
     }, []);
