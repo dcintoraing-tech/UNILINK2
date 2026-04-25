@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
@@ -133,8 +134,8 @@ export default function AdminAttendancePage() {
 
         try {
             await batch.commit();
-            setEditedRecords({});
             toast({ title: "Asistencias actualizadas", description: "Los cambios han sido guardados." });
+            window.location.reload();
         } catch (error) {
             console.error("Error updating attendance:", error);
             toast({ variant: "destructive", title: "Error", description: "No se pudieron guardar los cambios." });

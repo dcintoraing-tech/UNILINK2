@@ -416,6 +416,7 @@ export default function StudentsPage() {
                 await addDoc(collection(firestore, 'students'), studentData);
                 toast({ title: 'Estudiante Registrado', description: `El estudiante ${studentData.firstName} ha sido guardado.` });
             }
+            window.location.reload();
         } catch (error) {
             console.error("Error saving student:", error);
             toast({ variant: 'destructive', title: 'Error al guardar', description: 'No se pudo guardar el estudiante.' });
@@ -430,6 +431,7 @@ export default function StudentsPage() {
                 title: "Estudiante eliminado",
                 description: "El estudiante ha sido eliminado del sistema."
             });
+            window.location.reload();
         } catch (error) {
             console.error("Error deleting student:", error);
             toast({ variant: 'destructive', title: 'Error', description: 'No se pudo eliminar al estudiante.' });
@@ -612,6 +614,3 @@ export default function StudentsPage() {
         </>
     );
 }
-
-
-    

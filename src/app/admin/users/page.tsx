@@ -116,8 +116,7 @@ export default function UsersPage() {
         await updateDoc(userDocRef, updatedData);
 
         toast({ title: "Usuario actualizado", description: `El usuario ${userData.name} ha sido actualizado.` });
-        setIsDialogOpen(false);
-        setEditingUser(null);
+        window.location.reload();
     } catch(error: any) {
         console.error("Error updating user: ", error);
         toast({ variant: "destructive", title: "Error", description: "No se pudo actualizar el usuario." });
@@ -135,6 +134,7 @@ export default function UsersPage() {
     try {
         await deleteDoc(doc(firestore, 'userProfiles', userId));
         toast({ title: "Usuario eliminado", description: "El usuario ha sido eliminado." });
+        window.location.reload();
     } catch(error: any) {
         console.error("Error deleting user: ", error);
         toast({ variant: "destructive", title: "Error", description: "No se pudo eliminar el usuario." });
@@ -212,6 +212,7 @@ export default function UsersPage() {
             if (updatedCount > 0) {
                  await batch.commit();
                  toast({ title: "Importación exitosa", description: `${updatedCount} usuarios actualizados. ${skippedCount} omitidos.` });
+                 window.location.reload();
             } else {
                  toast({ title: "Importación finalizada", description: `No se actualizaron usuarios. ${skippedCount} omitidos.` });
             }
@@ -437,6 +438,3 @@ export default function UsersPage() {
     </>
   );
 }
-
-    
-    

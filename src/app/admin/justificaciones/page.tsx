@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo } from 'react';
@@ -58,6 +59,7 @@ export default function JustificacionesPage() {
                 title: `Justificación ${newStatus === 'Aprobado' ? 'Aprobada' : 'Rechazada'}`,
                 description: `El estado de la justificación ha sido actualizado.`,
             });
+            window.location.reload();
         } catch (error) {
             console.error("Error updating status:", error);
             toast({ variant: 'destructive', title: 'Error', description: 'No se pudo actualizar el estado.'});

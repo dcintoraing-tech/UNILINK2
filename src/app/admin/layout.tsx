@@ -126,23 +126,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode; }
 
   const handleSwitchRole = () => {
     if (password === 'Prueb@01#7') {
-        setActiveRole(targetRole);
         sessionStorage.setItem('unilink-active-role', targetRole);
-        toast({
-            title: "Perfil Cambiado",
-            description: `Ahora estás viendo el panel como ${targetRole}.`
-        });
-        setIsSwitchingRole(false);
-        setPassword('');
-        setPasswordError('');
-
+        
+        let destination = '/admin/reports';
         if (targetRole === 'Docente') {
-            router.push('/dashboard');
+            destination = '/dashboard';
         } else if (targetRole === 'Alumno') {
-            router.push('/student/dashboard');
-        } else {
-            router.push('/admin/reports'); 
+            destination = '/student/dashboard';
         }
+        
+        // Force a full page navigation to clear state and prevent freezing.
+        window.location.href = destination;
+        
     } else {
         setPasswordError("Contraseña incorrecta. Inténtalo de nuevo.");
     }

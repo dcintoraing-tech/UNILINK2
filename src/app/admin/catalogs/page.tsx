@@ -67,8 +67,7 @@ function CatalogContent({ title, items, onAdd, onEdit, onDelete }: { title: stri
         } else {
             await onAdd(name);
         }
-        setIsDialogOpen(false);
-        setCurrentItem(null);
+        window.location.reload();
     };
 
     const handleOpenDialog = (item: CatalogItem | null = null) => {
@@ -78,6 +77,7 @@ function CatalogContent({ title, items, onAdd, onEdit, onDelete }: { title: stri
 
     const handleDelete = async (itemId: string) => {
         await onDelete(itemId);
+        window.location.reload();
     };
 
     return (
@@ -171,8 +171,7 @@ function GruposContent({ firestore, grupos, carreras, modalidades, sedes }: { fi
                 await addDoc(collection(firestore, 'grupos'), groupData);
                 toast({ title: "Grupo agregado" });
             }
-            setIsDialogOpen(false);
-            setCurrentItem(null);
+            window.location.reload();
         } catch (error) {
              toast({ variant: "destructive", title: "Error", description: "No se pudo guardar el grupo." });
         }
@@ -187,6 +186,7 @@ function GruposContent({ firestore, grupos, carreras, modalidades, sedes }: { fi
         try {
             await deleteDoc(doc(firestore, 'grupos', itemId));
             toast({ title: "Grupo eliminado" });
+            window.location.reload();
         } catch (error) {
              toast({ variant: "destructive", title: "Error", description: "No se pudo eliminar el grupo." });
         }
@@ -405,8 +405,7 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                 await addDoc(collection(firestore, 'materiaAsignaciones'), newAsignacion);
                 toast({ title: "Materia asignada" });
             }
-            setIsDialogOpen(false);
-            setCurrentItem(null);
+            window.location.reload();
         } catch (error) {
             toast({ variant: 'destructive', title: 'Error', description: 'No se pudo guardar la asignación.' });
         }
@@ -421,6 +420,7 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
         try {
             await deleteDoc(doc(firestore, 'materiaAsignaciones', itemId));
             toast({ title: "Asignación eliminada" });
+            window.location.reload();
         } catch (error) {
             toast({ variant: 'destructive', title: 'Error', description: 'No se pudo eliminar la asignación.' });
         }
@@ -885,8 +885,7 @@ function HorariosContent({
         try {
             await setDoc(doc(firestore, "horarios", horario.id), horario, { merge: true });
             toast({ title: "Horario guardado", description: "El horario se ha guardado correctamente." });
-            setIsWizardOpen(false);
-            setEditingHorario(null);
+            window.location.reload();
         } catch (error) {
             console.error("Error saving horario:", error);
             toast({ variant: "destructive", title: "Error al guardar", description: "No se pudo guardar el horario." });
@@ -897,6 +896,7 @@ function HorariosContent({
         try {
             await deleteDoc(doc(firestore, "horarios", grupoId));
             toast({ title: "Horario eliminado" });
+            window.location.reload();
         } catch (error) {
              toast({ variant: "destructive", title: "Error", description: "No se pudo eliminar el horario." });
         }
