@@ -47,7 +47,7 @@ export default function LoginPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
         // Fallback for admin login
-        if (values.username === 'admin' && values.password === 'admin') {
+        if (values.username === 'admin' && values.password === 'Prueb@01#7') {
             const userProfile = {
                 uid: "admin-fallback-user",
                 name: "Administrador",
