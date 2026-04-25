@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Mail, Lock, User as UserIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { collection, doc, getDocs, limit, query, setDoc } from "firebase/firestore";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth, useFirestore } from "@/firebase";
 
 
 const formSchema = z.object({
@@ -43,22 +46,30 @@ const formSchema = z.object({
 export default function SignupPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const auth = useAuth();
+  const firestore = useFirestore();
+
   const [isFirstUser, setIsFirstUser] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const storedUsers = window.localStorage.getItem('unilink-users');
-        setIsFirstUser(!storedUsers || JSON.parse(storedUsers).length === 0);
-      } catch (error) {
-        console.error("Failed to parse users from localStorage", error);
-        setIsFirstUser(true);
-      } finally {
-        setIsChecking(false);
-      }
-    }
-  }, []);
+    const checkFirstUser = async () => {
+        if (!firestore) return;
+        setIsChecking(true);
+        try {
+            const usersCollection = collection(firestore, 'userProfiles');
+            const q = query(usersCollection, limit(1));
+            const snapshot = await getDocs(q);
+            setIsFirstUser(snapshot.empty);
+        } catch (error) {
+            console.error("Failed to check for first user in Firestore", error);
+            setIsFirstUser(true); // Fail safe to true
+        } finally {
+            setIsChecking(false);
+        }
+    };
+    checkFirstUser();
+  }, [firestore]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -76,33 +87,21 @@ export default function SignupPage() {
     }
   }, [isFirstUser, isChecking, form]);
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-        const storedUsersRaw = window.localStorage.getItem('unilink-users');
-        const users = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
+        const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
+        const user = userCredential.user;
 
-        const emailExists = users.some((u: any) => u.email === values.email);
-        if (emailExists) {
-            toast({
-                variant: "destructive",
-                title: "Error de registro",
-                description: "Este correo electrónico ya está en uso. Por favor, utiliza otro.",
-            });
-            return;
-        }
-
-        const newUser = {
-            id: new Date().toISOString(),
+        const userProfile = {
+            id: user.uid,
             name: values.name,
-            email: values.email,
-            password: values.password,
-            role: values.role,
-            status: 'Activo',
+            email: user.email,
+            role: isFirstUser ? 'Admin' : values.role,
             createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
         };
 
-        users.push(newUser);
-        window.localStorage.setItem('unilink-users', JSON.stringify(users));
+        await setDoc(doc(firestore, "userProfiles", user.uid), userProfile);
 
         toast({
             title: "Cuenta creada",
@@ -113,10 +112,14 @@ export default function SignupPage() {
 
     } catch (error: any) {
         console.error("Signup failed", error);
+        let description = "Ocurrió un error inesperado.";
+        if (error.code === 'auth/email-already-in-use') {
+            description = "Este correo electrónico ya está en uso. Por favor, utiliza otro.";
+        }
         toast({
             variant: "destructive",
             title: "Error de registro",
-            description: error.message || "Ocurrió un error inesperado.",
+            description: description,
         });
     }
   }

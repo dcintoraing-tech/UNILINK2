@@ -7,6 +7,8 @@ import * as z from "zod";
 import { useRouter } from "next/navigation";
 import { Lock, Eye, EyeOff, User as UserIcon } from "lucide-react";
 import { useState } from "react";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -20,11 +22,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth, useFirestore } from "@/firebase";
 
 
 const formSchema = z.object({
   username: z.string().min(1, {
-    message: "Por favor, introduce tu usuario o correo.",
+    message: "Por favor, introduce tu correo electrónico.",
   }),
   password: z.string().min(1, {
     message: "La contraseña es requerida.",
@@ -34,6 +37,8 @@ const formSchema = z.object({
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const auth = useAuth();
+  const firestore = useFirestore();
   const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -46,90 +51,51 @@ export default function LoginPage() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-        // Fallback for admin login
-        if (values.username === 'admin' && values.password === 'Prueb@01#7') {
-            const userProfile = {
-                uid: "admin-fallback-user",
-                name: "Administrador",
-                role: "Admin",
-            };
-            if (typeof window !== 'undefined') {
-                sessionStorage.setItem("unilink-user", JSON.stringify(userProfile));
-            }
-            toast({
-                title: "Inicio de sesión exitoso",
-                description: "Redirigiendo al dashboard de administrador...",
-            });
-            router.push("/admin/dashboard");
-            return;
+        const userCredential = await signInWithEmailAndPassword(auth, values.username, values.password);
+        const user = userCredential.user;
+
+        const userDocRef = doc(firestore, 'userProfiles', user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+
+        if (!userDocSnap.exists()) {
+            throw new Error("No se encontró el perfil de usuario. Contacta a soporte.");
         }
+        
+        const userProfile = userDocSnap.data();
 
-        // Fallback for student login
-        if (values.username === 'alumno' && values.password === 'alumno') {
-            const userProfile = {
-                uid: "student-fallback-user",
-                name: "Estudiante de Prueba",
-                role: "Alumno",
-            };
-            if (typeof window !== 'undefined') {
-                sessionStorage.setItem("unilink-user", JSON.stringify(userProfile));
-            }
-            toast({
-                title: "Inicio de sesión exitoso",
-                description: "Redirigiendo a tu panel de estudiante...",
-            });
-            router.push("/student/dashboard");
-            return;
-        }
-
-
-        // Logic for all other users (Admin, Docente, Jefe de carrera) from localStorage
         if (typeof window !== 'undefined') {
-            const storedUsersRaw = window.localStorage.getItem('unilink-users');
-            const users = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
-            
-            const foundUser = users.find((u: any) => (u.email === values.username || u.name === values.username));
-
-            if (foundUser && foundUser.password === values.password) {
-                const userProfile: any = {
-                    uid: foundUser.id,
-                    name: foundUser.name,
-                    email: foundUser.email,
-                    role: foundUser.role,
-                };
-
-                if (foundUser.role === 'Jefe de carrera' && foundUser.carreraId) {
-                    userProfile.carreraId = foundUser.carreraId;
-                }
-
-                sessionStorage.setItem('unilink-user', JSON.stringify(userProfile));
-                toast({
-                    title: "Inicio de sesión exitoso",
-                    description: "Redirigiendo a tu panel de control...",
-                });
-
-                if (foundUser.role === 'Admin' || foundUser.role === 'Jefe de carrera') {
-                    router.push("/admin/dashboard");
-                } else if (foundUser.role === 'Docente') {
-                    router.push("/dashboard");
-                } else if (foundUser.role === 'Alumno') {
-                    router.push("/student/dashboard");
-                } else {
-                    router.push("/dashboard");
-                }
-                return;
-            }
+            sessionStorage.setItem("unilink-user", JSON.stringify(userProfile));
         }
-      
-        // If no user was found after all checks
-        throw new Error("Credenciales incorrectas. Por favor, verifica tu usuario y contraseña.");
+
+        toast({
+            title: "Inicio de sesión exitoso",
+            description: "Redirigiendo a tu panel de control...",
+        });
+
+        if (userProfile.role === 'Admin' || userProfile.role === 'Jefe de carrera') {
+            router.push("/admin/dashboard");
+        } else if (userProfile.role === 'Docente') {
+            router.push("/dashboard");
+        } else if (userProfile.role === 'Alumno') {
+            const studentId = userProfile.studentId || null;
+            if (studentId) {
+                sessionStorage.setItem('unilink-student-id', studentId);
+            }
+            router.push("/student/dashboard");
+        } else {
+            router.push("/dashboard");
+        }
 
     } catch (error: any) {
       console.error("Login failed", error);
+      let description = "Credenciales incorrectas. Por favor, verifica tu usuario y contraseña.";
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+           description = "Credenciales incorrectas. Por favor, verifica tu usuario y contraseña.";
+      }
       toast({
           variant: "destructive",
           title: "Error de inicio de sesión",
-          description: error.message || "Ocurrió un error inesperado.",
+          description: description,
       });
     }
   }
@@ -152,11 +118,11 @@ export default function LoginPage() {
               name="username"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Usuario o Correo Electrónico</FormLabel>
+                  <FormLabel>Correo Electrónico</FormLabel>
                   <div className="relative">
                     <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <FormControl>
-                      <Input placeholder="tu@ejemplo.com o 'admin'" {...field} className="pl-10"/>
+                      <Input placeholder="tu@ejemplo.com" {...field} className="pl-10"/>
                     </FormControl>
                   </div>
                   <FormMessage />

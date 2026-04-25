@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import Link from "next/link";
 import { Mail, ArrowLeft } from "lucide-react";
+import { sendPasswordResetEmail } from "firebase/auth";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/firebase";
 
 const formSchema = z.object({
   email: z.string().email({
@@ -27,6 +29,7 @@ const formSchema = z.object({
 
 export default function ForgotPasswordPage() {
   const { toast } = useToast();
+  const auth = useAuth();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -35,14 +38,22 @@ export default function ForgotPasswordPage() {
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    // Simulate API call
-    console.log(values);
-    toast({
-      title: "Correo de restablecimiento de contraseña enviado",
-      description: "Revisa tu bandeja de entrada para ver las instrucciones para restablecer tu contraseña.",
-    });
-    form.reset();
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    try {
+      await sendPasswordResetEmail(auth, values.email);
+      toast({
+        title: "Correo de restablecimiento de contraseña enviado",
+        description: "Revisa tu bandeja de entrada para ver las instrucciones para restablecer tu contraseña.",
+      });
+      form.reset();
+    } catch (error: any) {
+      console.error("Forgot password error", error);
+      toast({
+        variant: "destructive",
+        title: "Error al enviar correo",
+        description: "No se pudo enviar el correo de restablecimiento. Verifica que la dirección sea correcta y esté registrada.",
+      });
+    }
   }
 
   return (
