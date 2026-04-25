@@ -14,6 +14,27 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+
+const StudentMenu = () => (
+    <Accordion type="single" collapsible className="w-full">
+      <AccordionItem value="students-menu" className="border-b-0">
+        <AccordionTrigger className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary hover:no-underline [&_svg.lucide-chevron-down]:ml-auto">
+          <GraduationCap className="h-4 w-4" />
+          <span>Estudiantes</span>
+        </AccordionTrigger>
+        <AccordionContent className="pl-10 pt-2 flex flex-col gap-2">
+          <Link href="/admin/students" className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-all hover:text-primary">
+            Registro
+          </Link>
+          <Link href="/admin/students/attendance" className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-all hover:text-primary">
+            Asistencias
+          </Link>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
+);
+
 
 const AdminNavContent = () => (
   <nav className="flex flex-1 flex-col gap-2">
@@ -25,10 +46,7 @@ const AdminNavContent = () => (
       <UserCog className="h-4 w-4" />
       Gestión de Usuarios
     </Link>
-    <Link href="/admin/students" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
-      <GraduationCap className="h-4 w-4" />
-      Registro de Estudiantes
-    </Link>
+    <StudentMenu />
     <Link href="/admin/catalogs" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
       <Book className="h-4 w-4" />
       Catálogos
@@ -50,6 +68,7 @@ const JefeCarreraNavContent = () => (
             <BarChart className="h-4 w-4" />
             Dashboard
         </Link>
+        <StudentMenu />
         <Link href="/admin/reports" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
             <BarChart className="h-4 w-4" />
             Reportes
@@ -114,7 +133,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode; }
   }, [router]);
 
   const handleSwitchRole = () => {
-    if (password === '1234') {
+    if (password === 'Prueb@01#7') {
         setActiveRole(targetRole);
         sessionStorage.setItem('unilink-active-role', targetRole);
         toast({
