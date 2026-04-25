@@ -8,12 +8,38 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the UserProfile entity."
+          "description": "Unique identifier for the UserProfile entity, matching the Firebase Auth UID."
+        },
+        "name": {
+          "type": "string",
+          "description": "The user's full name."
         },
         "email": {
           "type": "string",
           "description": "The user's unique email address, used for login and password recovery.",
           "format": "email"
+        },
+        "role": {
+          "type": "string",
+          "description": "The user's role within the application.",
+          "enum": [
+            "Admin",
+            "Jefe de carrera",
+            "Docente",
+            "Alumno"
+          ]
+        },
+        "carreraId": {
+          "type": "string",
+          "description": "Optional. The ID of the 'carrera' (academic program) the user is associated with. Relevant for 'Jefe de carrera' and 'Docente' roles."
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the user account.",
+          "enum": [
+            "Activo",
+            "Inactivo"
+          ]
         },
         "createdAt": {
           "type": "string",
@@ -28,9 +54,11 @@
       },
       "required": [
         "id",
+        "name",
         "email",
-        "createdAt",
-        "updatedAt"
+        "role",
+        "status",
+        "createdAt"
       ]
     },
     "Session": {
@@ -124,3 +152,4 @@
     "reasoning": "This Firestore structure is designed following the core principles of Authorization Independence, Structural Segregation, and Access Modeling to ensure a secure, scalable, and easily debuggable system for UniLink Access. The design prioritizes robust security rules and efficient data access.\n\n**Authorization Independence:**\n*   **User Profiles (`/userProfiles/{userProfileId}`):** Each user's profile is stored in a top-level collection, with the document ID (`userProfileId`) directly corresponding to the authenticated user's UID (`request.auth.uid`). This direct mapping means that authorization rules for reading or writing a user's profile can directly compare `request.auth.uid` to the `userProfileId` wildcard in the path, eliminating any need for `get()` operations to fetch parent documents or other user data for authorization. This ensures atomic operations and simplifies rule debugging.\n*   **User Sessions (`/userProfiles/{userProfileId}/sessions/{sessionId}`):** Session documents are stored as a subcollection under the respective user's profile. The `userProfileId` wildcard in the path inherently provides the authorization context for these documents. Although the `Session` entity itself contains a `userId` field, the primary authorization check will leverage the `userProfileId` from the path (`request.auth.uid == userProfileId`). This denormalization of the `userId` into the path (and implicitly within the document via its structure) makes session access rules simple and avoids `get()` calls, adhering to the principle of Authorization Independence.\n\n**Querying for Authorization Purposes (QAPs):**\n*   **User Profiles:** Users can `get` their own profile securely by matching `request.auth.uid` to the `userProfileId` in the path. Listing all profiles (`/userProfiles`) would typically be restricted or require specific administrative roles, as this is private data and rules are not filters. However, a user can securely `get` their specific document.\n*   **User Sessions:** Users can securely `list` their own active sessions by querying the `/userProfiles/{userProfileId}/sessions` subcollection. The security rules will ensure that `request.auth.uid` matches the `userProfileId` in the path, preventing users from accessing or listing sessions belonging to other users. This approach enables secure, efficient queries without relying on client-side filtering or inefficient server-side rule filtering.\n\n**Structural Segregation & Access Modeling:**\n*   **Private Data:** Both `UserProfile` and `Session` entities represent private, user-owned data. The chosen hierarchical path structure (`/userProfiles/{userProfileId}` and `/userProfiles/{userProfileId}/sessions/{sessionId}`) directly implements the \"Private Data\" and \"Hierarchical Paths for User-Owned Data\" mandates. All documents within `/userProfiles` share the same owner-only security posture, as do all documents within `/userProfiles/{userProfileId}/sessions` for a given user. This minimizes complexity in security rules and ensures that data with different access requirements are not co-mingled."
   }
 }
+    

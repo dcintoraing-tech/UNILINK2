@@ -3,53 +3,17 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useEffect, useMemo } from "react";
-import { GraduationCap, Briefcase } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
+import { GraduationCap, Briefcase, Users, XCircle } from "lucide-react";
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection } from 'firebase/firestore';
 
 // --- DATA PERSISTENCE & TYPES ---
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
-    const [storedValue, setStoredValue] = useState<T>(initialValue);
-    const [isInitialized, setIsInitialized] = useState(false);
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const item = window.localStorage.getItem(key);
-                if (item) {
-                    setStoredValue(JSON.parse(item));
-                }
-            } catch (error) {
-                console.log(error);
-            }
-            setIsInitialized(true); 
-        }
-    }, [key]);
-
-    const setValue = (value: T | ((val: T) => T)) => {
-        if (!isInitialized) return;
-        try {
-            const valueToStore = value instanceof Function ? value(storedValue) : value;
-            setStoredValue(valueToStore);
-            if (typeof window !== 'undefined') {
-                window.localStorage.setItem(key, JSON.stringify(valueToStore));
-            }
-        } catch (error) {
-            console.log(error);
-        }
-    };
-    
-    return [storedValue, setValue] as const;
-};
-
 interface CatalogItem { id: string; name: string; }
 interface Grupo extends CatalogItem { carreraId: string; }
 interface User { id: string; name: string; role: string; carreraId?: string; }
-interface HorarioBlock { materiaId: string; docenteId: string; duracion: 1 | 2; }
-type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
-type ScheduleData = { [dayIndex: number]: DaySchedule };
-interface Horario { id: string; grupoId: string; schedule: ScheduleData; }
-
+interface Student { id: string; assignedGroupId: string; }
+type AttendanceStatus = 'Presente' | 'Retardo' | 'Falta' | 'Falta Justificada';
+interface AttendanceRecord { id: string; studentId: string; status: AttendanceStatus; }
 
 const AdminDashboard = () => (
     <div>
@@ -69,11 +33,21 @@ const AdminDashboard = () => (
     </div>
 );
 
-
 const JefeCarreraDashboard = () => {
-    const [carreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
-    const [grupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
-    const [users] = useLocalStorage<User[]>('unilink-users', []);
+    const firestore = useFirestore();
+
+    const { data: carrerasData } = useCollection<CatalogItem>(useMemoFirebase(() => collection(firestore, 'carreras'), [firestore]));
+    const { data: gruposData } = useCollection<Grupo>(useMemoFirebase(() => collection(firestore, 'grupos'), [firestore]));
+    const { data: usersData } = useCollection<User>(useMemoFirebase(() => collection(firestore, 'userProfiles'), [firestore]));
+    const { data: studentsData } = useCollection<Student>(useMemoFirebase(() => collection(firestore, 'students'), [firestore]));
+    const { data: attendanceData } = useCollection<AttendanceRecord>(useMemoFirebase(() => collection(firestore, 'attendance'), [firestore]));
+    
+    const carreras = carrerasData || [];
+    const grupos = gruposData || [];
+    const users = usersData || [];
+    const students = studentsData || [];
+    const attendance = attendanceData || [];
+
     const [currentUser, setCurrentUser] = useState<User | null>(null);
 
     useEffect(() => {
@@ -89,14 +63,21 @@ const JefeCarreraDashboard = () => {
     }, [currentUser, carreras]);
 
     const filteredData = useMemo(() => {
-        if (!assignedCarrera) return { groups: [], teachers: [] };
+        if (!assignedCarrera) return { groups: [], teachers: [], students: [], absences: 0 };
 
         const careerGroups = grupos.filter(g => g.carreraId === assignedCarrera.id);
-        const careerTeachers = users.filter(u => u.role === 'Docente' && u.carreraId === assignedCarrera.id);
+        const careerGroupIds = new Set(careerGroups.map(g => g.id));
         
-        return { groups: careerGroups, teachers: careerTeachers };
+        const careerTeachers = users.filter(u => u.role === 'Docente' && u.carreraId === assignedCarrera.id);
 
-    }, [assignedCarrera, grupos, users]);
+        const careerStudents = students.filter(s => careerGroupIds.has(s.assignedGroupId));
+        const careerStudentIds = new Set(careerStudents.map(s => s.id));
+
+        const careerAbsences = attendance.filter(a => a.status === 'Falta' && careerStudentIds.has(a.studentId)).length;
+        
+        return { groups: careerGroups, teachers: careerTeachers, students: careerStudents, absences: careerAbsences };
+
+    }, [assignedCarrera, grupos, users, students, attendance]);
 
     if (!assignedCarrera) {
         return (
@@ -149,6 +130,29 @@ const JefeCarreraDashboard = () => {
                         )}
                     </CardContent>
                 </Card>
+                 <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2"><Users /> Estudiantes</CardTitle>
+                        <CardDescription>Total de estudiantes en la carrera: {filteredData.students.length}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {filteredData.students.length > 0 ? (
+                            <p className="text-sm text-muted-foreground">La lista de estudiantes se puede gestionar en la sección de "Estudiantes".</p>
+                        ): (
+                            <p className="text-sm text-muted-foreground">No hay estudiantes en esta carrera.</p>
+                        )}
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2"><XCircle className="text-destructive"/> Faltas Acumuladas</CardTitle>
+                        <CardDescription>Total de faltas registradas en la carrera.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold">{filteredData.absences}</div>
+                        <p className="text-sm text-muted-foreground">Las faltas se pueden consultar en "Reportes".</p>
+                    </CardContent>
+                </Card>
              </div>
         </div>
     );
@@ -171,3 +175,5 @@ export default function AdminDashboardPage() {
 
     return activeRole === 'Jefe de carrera' ? <JefeCarreraDashboard /> : <AdminDashboard />;
 }
+
+    
