@@ -15,6 +15,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import * as faceapi from 'face-api.js';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { doc, setDoc, writeBatch, collection, addDoc } from 'firebase/firestore';
 
 
 // --- DATA PERSISTENCE & TYPES ---
@@ -138,17 +140,26 @@ interface Justificacion {
 // --- MAIN COMPONENT ---
 export default function TeacherAttendancePage() {
     const { toast } = useToast();
+    const firestore = useFirestore();
+    
+    // --- Data from Firestore ---
+    const { data: allStudentsData } = useCollection<Student>(useMemoFirebase(() => collection(firestore, 'students'), [firestore]));
+    const { data: horariosData } = useCollection<Horario>(useMemoFirebase(() => collection(firestore, 'horarios'), [firestore]));
+    const { data: gruposData } = useCollection<Grupo>(useMemoFirebase(() => collection(firestore, 'grupos'), [firestore]));
+    const { data: materiasData } = useCollection<AsignacionMateria>(useMemoFirebase(() => collection(firestore, 'materiaAsignaciones'), [firestore]));
+    const { data: attendanceData } = useCollection<AttendanceRecord>(useMemoFirebase(() => collection(firestore, 'attendance'), [firestore]));
+    
     // --- Local Storage Data ---
-    const [allStudents] = useLocalStorage<Student[]>('unilink-students', []);
-    const [horarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
-    const [grupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
-    const [materias] = useLocalStorage<AsignacionMateria[]>('unilink-materia-asignaciones', []);
     const [config] = useLocalStorage<AttendanceConfig>('unilink-attendance-config', {
         toleranceMinutes: 10,
         absenceLimitMinutes: 30,
     });
-    const [attendance, setAttendance] = useLocalStorage<AttendanceRecord[]>('unilink-attendance', []);
-    const [justificaciones, setJustificaciones] = useLocalStorage<Justificacion[]>('unilink-justificaciones', []);
+    
+    const allStudents = allStudentsData || [];
+    const horarios = horariosData || [];
+    const grupos = gruposData || [];
+    const materias = materiasData || [];
+    const attendance = attendanceData || [];
 
     // --- Component State ---
     const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -319,24 +330,29 @@ export default function TeacherAttendancePage() {
         );
 
         const recordId = `att-${studentId}-${dateString}-${materiaId}`;
-        setAttendance(prevAtt => {
-            if (prevAtt.some(a => a.id === recordId)) return prevAtt;
-            return [...prevAtt, {
-                id: recordId,
+        const recordExists = attendance.some(a => a.id === recordId);
+
+        if (!recordExists) {
+            const recordRef = doc(firestore, 'attendance', recordId);
+            const newRecordData = {
                 studentId: studentId,
                 date: dateString,
                 materiaAsignacionId: materiaId,
                 docenteId: docenteId,
                 status: status,
                 arrivalTime: arrivalTime
-            }];
-        });
+            };
+            setDoc(recordRef, newRecordData).catch(err => {
+                console.error("Error writing attendance record: ", err);
+                toast({ variant: 'destructive', title: 'Error de Red', description: 'No se pudo guardar la asistencia.' });
+            });
+        }
 
         toast({
             title: `Asistencia Registrada (${status})`,
             description: `${studentToMark.firstName} ${studentToMark.lastName} para ${subjectName}.`,
         });
-    }, [groupStudentList, horarios, materias, config, setAttendance, toast]);
+    }, [groupStudentList, horarios, materias, config, toast, attendance, firestore]);
 
     // Recognition loop
     useEffect(() => {
@@ -445,8 +461,9 @@ export default function TeacherAttendancePage() {
             const todaySchedule = studentSchedule?.schedule?.[dayIndex];
 
             const updatedList = [...groupStudentList];
-            const newAbsenceRecords: AttendanceRecord[] = [];
+            const newAbsenceRecords: Omit<AttendanceRecord, 'id'>[] = [];
             let absencesCount = 0;
+            const batch = writeBatch(firestore);
 
             groupStudentList.forEach(student => {
                 if (student.status === 'Pendiente') {
@@ -461,14 +478,17 @@ export default function TeacherAttendancePage() {
                              const block = todaySchedule[parseInt(blockIndexStr)];
                              if (block) {
                                 const recordId = `att-${student.id}-${dateString}-${block.materiaId}`;
-                                newAbsenceRecords.push({
-                                    id: recordId,
-                                    studentId: student.id,
-                                    date: dateString,
-                                    materiaAsignacionId: block.materiaId,
-                                    docenteId: block.docenteId,
-                                    status: 'Falta',
-                                });
+                                const recordExists = attendance.some(a => a.id === recordId);
+                                if (!recordExists) {
+                                    const recordRef = doc(firestore, 'attendance', recordId);
+                                    batch.set(recordRef, {
+                                        studentId: student.id,
+                                        date: dateString,
+                                        materiaAsignacionId: block.materiaId,
+                                        docenteId: block.docenteId,
+                                        status: 'Falta',
+                                    });
+                                }
                              }
                         }
                     }
@@ -476,14 +496,11 @@ export default function TeacherAttendancePage() {
             });
 
             setGroupStudentList(updatedList);
-            if (newAbsenceRecords.length > 0) {
-                 setAttendance(prev => {
-                    const existingIds = new Set(prev.map(r => r.id));
-                    const recordsToAdd = newAbsenceRecords.filter(r => !existingIds.has(r.id));
-                    return [...prev, ...recordsToAdd];
-                });
-            }
             if (absencesCount > 0) {
+                 batch.commit().catch(err => {
+                    console.error("Error writing absences: ", err);
+                    toast({ variant: 'destructive', title: 'Error de Red', description: 'No se pudieron guardar las faltas.' });
+                 });
                 toast({
                     title: "Pase de lista detenido",
                     description: `${absencesCount} estudiante(s) fueron marcados como 'Falta'.`
@@ -518,18 +535,21 @@ export default function TeacherAttendancePage() {
             return;
         }
 
-        const newJustificacion: Justificacion = {
-            id: `just-${justifyingStudent.id}-${new Date().toISOString()}`,
+        const newJustificacionData = {
             studentId: justifyingStudent.id,
             date: new Date().toISOString().split('T')[0],
             reason: justificationReason,
-            status: 'Pendiente',
+            status: 'Pendiente' as 'Pendiente',
             attendanceRecordId: attendanceToJustify.id,
             docenteId: attendanceToJustify.docenteId,
             materiaId: attendanceToJustify.materiaAsignacionId,
         };
 
-        setJustificaciones(prev => [...prev, newJustificacion]);
+        addDoc(collection(firestore, 'justificaciones'), newJustificacionData).catch(err => {
+            console.error("Error submitting justification:", err);
+            toast({ variant: 'destructive', title: 'Error de Red', description: 'No se pudo enviar la justificación.' });
+        });
+
         toast({
             title: "Justificación Enviada",
             description: `Se ha enviado una justificación para ${justifyingStudent.firstName}.`,
@@ -585,7 +605,7 @@ export default function TeacherAttendancePage() {
                                         {isTakingAttendance ? 'El sistema está detectando rostros...' : 'Inicia el pase de lista para activar la cámara.'}
                                      </CardDescription>
                                 </div>
-                                <Button onClick={handleToggleAttendance} size="lg" disabled={!modelsLoaded || !!modelError || groupStudentList.length === 0 || !faceMatcher}>
+                                <Button onClick={handleToggleAttendance} size="lg" disabled={!modelsLoaded || !!modelError || (allStudents ?? []).length === 0 || !faceMatcher}>
                                     {isTakingAttendance ? 'Detener Pase de Lista' : 'Iniciar Pase de Lista'}
                                 </Button>
                             </CardHeader>
