@@ -49,6 +49,9 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { collection, doc, updateDoc, deleteDoc, writeBatch, query, where, getDocs } from 'firebase/firestore';
+
 
 type UserRole = 'Docente' | 'Admin' | 'Alumno' | 'Jefe de carrera';
 type UserStatus = 'Activo' | 'Inactivo';
@@ -69,170 +72,77 @@ interface CatalogItem {
     name: string;
 }
 
-const useLocalStorage = <T,>(key: string, initialValue: T) => {
-    const [storedValue, setStoredValue] = useState<T>(initialValue);
-    const [isInitialized, setIsInitialized] = useState(false);
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const item = window.localStorage.getItem(key);
-                if (item) {
-                    setStoredValue(JSON.parse(item));
-                }
-            } catch (error) {
-                console.log(error);
-            }
-            setIsInitialized(true); 
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [key]);
-
-    const setValue = (value: T | ((val: T) => T)) => {
-        if (!isInitialized || typeof window === 'undefined') return;
-        try {
-            const valueToStore = value instanceof Function ? value(storedValue) : value;
-            setStoredValue(valueToStore);
-            window.localStorage.setItem(key, JSON.stringify(valueToStore));
-            window.dispatchEvent(new StorageEvent('storage', { key, newValue: JSON.stringify(valueToStore) }));
-        } catch (error) {
-            console.log(error);
-        }
-    };
-    
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-        const handleStorageChange = (e: StorageEvent) => {
-            if (e.key === key && e.newValue) {
-                 try {
-                    setStoredValue(JSON.parse(e.newValue));
-                } catch (error) {
-                    console.log(error);
-                }
-            }
-        };
-
-        window.addEventListener('storage', handleStorageChange);
-        return () => {
-            window.removeEventListener('storage', handleStorageChange);
-        };
-    }, [key]);
-
-
-    return [storedValue, setValue] as const;
-};
-
-
 export default function UsersPage() {
-  const [users, setUsers] = useLocalStorage<User[]>('unilink-users', []);
+  const firestore = useFirestore();
+  const usersCollectionRef = useMemoFirebase(() => collection(firestore, 'userProfiles'), [firestore]);
+  const { data: usersData, isLoading } = useCollection<User>(usersCollectionRef);
+  const users = usersData || [];
+  
+  const carrerasCollectionRef = useMemoFirebase(() => collection(firestore, 'carreras'), [firestore]);
+  const { data: carrerasData } = useCollection<CatalogItem>(carrerasCollectionRef);
+  const carreras = carrerasData || [];
+  
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [carreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
   const [selectedFormRole, setSelectedFormRole] = useState<UserRole | ''>('');
 
 
   const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!editingUser) return;
+
     const formData = new FormData(e.currentTarget);
     const userData = Object.fromEntries(formData.entries()) as any;
     
-    if (userData.password || !editingUser) {
-      if (userData.password !== userData.confirmPassword) {
-        toast({
-          variant: "destructive",
-          title: "Error de contraseña",
-          description: "Las contraseñas no coinciden.",
-        });
-        return;
-      }
-    }
-
     if ((userData.role === 'Jefe de carrera' || userData.role === 'Docente') && !userData.carreraId) {
         toast({ variant: "destructive", title: "Campo requerido", description: "Debe seleccionar una carrera para el Jefe de Carrera o Docente." });
         return;
     }
 
-    const storedUsersRaw = window.localStorage.getItem('unilink-users');
-    const currentUsers: User[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
-    
-    if (editingUser) {
-        const emailExists = currentUsers.some(u => u.email.toLowerCase() === userData.email.toLowerCase() && u.id !== editingUser.id);
-        if (emailExists) {
-            toast({ variant: "destructive", title: "Error", description: "Un usuario con este correo electrónico ya existe." });
-            return;
-        }
+    try {
+        const userDocRef = doc(firestore, 'userProfiles', editingUser.id);
 
-        const updatedUsers = currentUsers.map(u => {
-            if (u.id === editingUser.id) {
-                const updatedUser: User = {
-                    ...u,
-                    name: userData.name,
-                    email: userData.email,
-                    role: userData.role,
-                    carreraId: (userData.role === 'Jefe de carrera' || userData.role === 'Docente') ? userData.carreraId : undefined,
-                    status: userData.status,
-                };
-                if (userData.password) {
-                    updatedUser.password = userData.password;
-                }
-                return updatedUser;
-            }
-            return u;
-        });
-        setUsers(updatedUsers);
-        toast({ title: "Usuario actualizado", description: `El usuario ${userData.name} ha sido actualizado.` });
-    } else {
-        const emailExists = currentUsers.some(u => u.email.toLowerCase() === userData.email.toLowerCase());
-        if (emailExists) {
-            toast({ variant: "destructive", title: "Error", description: "Un usuario con este correo electrónico ya existe." });
-            return;
-        }
-
-        const newUser: User = {
-            id: new Date().toISOString(),
+        const updatedData: Partial<User> = {
             name: userData.name,
             email: userData.email,
-            password: userData.password,
             role: userData.role,
             carreraId: (userData.role === 'Jefe de carrera' || userData.role === 'Docente') ? userData.carreraId : undefined,
-            status: 'Activo',
-            createdAt: new Date().toISOString(),
+            status: userData.status,
         };
-        setUsers([...currentUsers, newUser]);
-        toast({ title: "Usuario creado", description: `El usuario ${userData.name} ha sido creado.` });
+
+        await updateDoc(userDocRef, updatedData);
+
+        toast({ title: "Usuario actualizado", description: `El usuario ${userData.name} ha sido actualizado.` });
+        setIsDialogOpen(false);
+        setEditingUser(null);
+    } catch(error: any) {
+        console.error("Error updating user: ", error);
+        toast({ variant: "destructive", title: "Error", description: "No se pudo actualizar el usuario." });
     }
-    
-    setIsDialogOpen(false);
-    setEditingUser(null);
   };
 
   const openEditDialog = (user: User) => {
     setEditingUser(user);
     setSelectedFormRole(user.role);
     setShowPassword(false);
-    setShowConfirmPassword(false);
-    setIsDialogOpen(true);
-  };
-
-  const openCreateDialog = () => {
-    setEditingUser(null);
-    setSelectedFormRole('');
-    setShowPassword(false);
-    setShowConfirmPassword(false);
     setIsDialogOpen(true);
   };
 
   const handleDeleteUser = async (userId: string) => {
-    setUsers(prev => prev.filter(u => u.id !== userId));
-    toast({ title: "Usuario eliminado", description: "El usuario ha sido eliminado." });
+    try {
+        await deleteDoc(doc(firestore, 'userProfiles', userId));
+        toast({ title: "Usuario eliminado", description: "El usuario ha sido eliminado." });
+    } catch(error: any) {
+        console.error("Error deleting user: ", error);
+        toast({ variant: "destructive", title: "Error", description: "No se pudo eliminar el usuario." });
+    }
   };
   
   const handleDownloadTemplate = () => {
-    const headers = [['name', 'email', 'password', 'role', 'carreraId (solo para Jefe de carrera)']];
+    const headers = [['name', 'email', 'role', 'carreraId (solo para Jefe de carrera o Docente)']];
     const ws = XLSX.utils.aoa_to_sheet(headers);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
@@ -241,7 +151,7 @@ export default function UsersPage() {
   };
 
   const handleExport = () => {
-    const usersToExport = users.map(({ id, password, createdAt, ...rest }) => rest);
+    const usersToExport = users.map(({ id, password, ...rest }) => rest);
     const ws = XLSX.utils.json_to_sheet(usersToExport);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Usuarios");
@@ -258,7 +168,7 @@ export default function UsersPage() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
         try {
             const data = event.target?.result;
             const workbook = XLSX.read(data, { type: 'binary' });
@@ -266,47 +176,44 @@ export default function UsersPage() {
             const worksheet = workbook.Sheets[sheetName];
             const json = XLSX.utils.sheet_to_json<any>(worksheet);
 
-            const storedUsersRaw = window.localStorage.getItem('unilink-users');
-            const currentUsers: User[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
-            const existingEmails = new Set(currentUsers.map(u => u.email.trim().toLowerCase()));
-
-            const newUsers: User[] = [];
+            const batch = writeBatch(firestore);
+            let updatedCount = 0;
             let skippedCount = 0;
-
+            
             for (const item of json) {
                 const email = item.email ? String(item.email).trim().toLowerCase() : '';
+                if (!email || !item.name || !item.role) {
+                     toast({ variant: "destructive", title: "Dato faltante", description: `Registro para '${email || 'desconocido'}' está incompleto. Se omitirá.` });
+                     skippedCount++;
+                     continue;
+                }
                 
-                if (!item.name || !email || !item.password || !item.role) {
-                    toast({ variant: "destructive", title: "Dato faltante", description: `El registro para '${item.email || 'desconocido'}' está incompleto. Se omitirá.` });
-                    continue;
-                }
-                if (existingEmails.has(email)) {
-                    skippedCount++;
-                    continue;
-                }
-                if (!['Docente', 'Admin', 'Alumno', 'Jefe de carrera'].includes(item.role)) {
-                    toast({ variant: "destructive", title: "Rol inválido", description: `El rol '${item.role}' para '${email}' no es válido. Se omitirá.` });
-                    continue;
-                }
+                const q = query(collection(firestore, 'userProfiles'), where('email', '==', email));
+                const querySnapshot = await getDocs(q);
 
-                newUsers.push({
-                    id: new Date().toISOString() + Math.random().toString(36).substr(2, 9),
-                    name: item.name,
-                    email: email,
-                    password: String(item.password),
-                    role: item.role,
-                    carreraId: item.role === 'Jefe de carrera' ? item.carreraId : undefined,
-                    status: 'Activo',
-                    createdAt: new Date().toISOString(),
-                });
-                existingEmails.add(email);
+                if (!querySnapshot.empty) {
+                    const userDoc = querySnapshot.docs[0];
+                    const updatedData: any = {
+                        name: item.name,
+                        role: item.role,
+                        status: 'Activo',
+                    };
+                    if (item.carreraId && (item.role === 'Jefe de carrera' || item.role === 'Docente')) {
+                        updatedData.carreraId = item.carreraId;
+                    }
+                    batch.update(userDoc.ref, updatedData);
+                    updatedCount++;
+                } else {
+                    // Not creating new users via import to avoid auth/profile mismatches
+                    skippedCount++;
+                }
             }
-            
-            if (newUsers.length > 0) {
-                 setUsers([...currentUsers, ...newUsers]);
-                 toast({ title: "Importación exitosa", description: `${newUsers.length} nuevos usuarios agregados. ${skippedCount > 0 ? `${skippedCount} duplicados omitidos.` : ''}` });
+
+            if (updatedCount > 0) {
+                 await batch.commit();
+                 toast({ title: "Importación exitosa", description: `${updatedCount} usuarios actualizados. ${skippedCount} omitidos.` });
             } else {
-                 toast({ title: "Importación finalizada", description: `No se agregaron nuevos usuarios. ${skippedCount > 0 ? `${skippedCount} duplicados omitidos.` : ''}` });
+                 toast({ title: "Importación finalizada", description: `No se actualizaron usuarios. ${skippedCount} omitidos.` });
             }
 
         } catch (error: any) {
@@ -343,7 +250,7 @@ export default function UsersPage() {
                     <Upload className="h-3.5 w-3.5 mr-1" />
                     Importar
                 </Button>
-                <Button size="sm" variant="outline" onClick={handleExport}>
+                <Button size="sm" variant="outline" onClick={handleExport} disabled={users.length === 0}>
                     <Download className="h-3.5 w-3.5 mr-1" />
                     Exportar
                 </Button>
@@ -351,7 +258,7 @@ export default function UsersPage() {
                     <Download className="h-3.5 w-3.5 mr-1" />
                     Plantilla
                 </Button>
-                <Button size="sm" onClick={openCreateDialog}>
+                 <Button size="sm" onClick={() => router.push('/signup')}>
                     <PlusCircle className="h-3.5 w-3.5 mr-1" />
                     <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Crear Usuario</span>
                 </Button>
@@ -424,7 +331,9 @@ export default function UsersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((user) => (
+              {isLoading ? (
+                <TableRow><TableCell colSpan={5} className="h-24 text-center">Cargando usuarios...</TableCell></TableRow>
+              ) : users.map((user) => (
                   <TableRow key={user.id}>
                       <TableCell className="font-medium">
                           <div>{user.name}</div>
@@ -477,8 +386,8 @@ export default function UsersPage() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingUser ? 'Editar Usuario' : 'Crear Usuario'}</DialogTitle>
-            <DialogDescription>{editingUser ? 'Actualiza los detalles del usuario.' : 'Rellena los campos para crear un nuevo usuario.'}</DialogDescription>
+            <DialogTitle>Editar Usuario</DialogTitle>
+            <DialogDescription>Actualiza los detalles del usuario.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleFormSubmit}>
               <ScrollArea className="max-h-[60vh] pr-4">
@@ -487,29 +396,8 @@ export default function UsersPage() {
                     <div className="grid gap-2"><Label htmlFor="email">Correo electrónico</Label><Input id="email" name="email" type="email" defaultValue={editingUser?.email} required /></div>
                     
                     <div className="grid gap-2">
-                      <Label htmlFor="password">{editingUser ? 'Nueva Contraseña (opcional)' : 'Contraseña'}</Label>
-                      <div className="relative">
-                        <Input id="password" name="password" type={showPassword ? "text" : "password"} required={!editingUser} placeholder={editingUser ? "Dejar en blanco para no cambiar" : ""} />
-                        <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground" onClick={() => setShowPassword(!showPassword)}>
-                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          <span className="sr-only">{showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="confirmPassword">{editingUser ? 'Confirmar Nueva Contraseña' : 'Confirmar Contraseña'}</Label>
-                      <div className="relative">
-                        <Input id="confirmPassword" name="confirmPassword" type={showConfirmPassword ? "text" : "password"} required={!editingUser} placeholder={editingUser ? "Dejar en blanco para no cambiar" : ""} />
-                        <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
-                          {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          <span className="sr-only">{showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-2">
                       <Label htmlFor="role">Rol</Label>
-                      <Select name="role" defaultValue={editingUser?.role || 'Docente'} onValueChange={(value) => setSelectedFormRole(value as UserRole)}>
+                      <Select name="role" defaultValue={editingUser?.role} onValueChange={(value) => setSelectedFormRole(value as UserRole)}>
                         <SelectTrigger id="role"><SelectValue placeholder="Selecciona un rol" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="Docente">Docente</SelectItem>
@@ -545,7 +433,7 @@ export default function UsersPage() {
               </ScrollArea>
               <DialogFooter className="pt-4">
                 <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                <Button type="submit">{editingUser ? 'Guardar Cambios' : 'Crear Usuario'}</Button>
+                <Button type="submit">Guardar Cambios</Button>
               </DialogFooter>
           </form>
         </DialogContent>
@@ -553,3 +441,5 @@ export default function UsersPage() {
     </>
   );
 }
+
+    

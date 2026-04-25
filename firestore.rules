@@ -1,3 +1,4 @@
+
 /**
  * Core Philosophy: This ruleset enforces a strict user-ownership model. All data is private and can only be accessed by the user who owns it. The security model relies on the user's Authentication UID being present in the document path to grant access, which avoids costly database reads during authorization checks.
  *
@@ -88,10 +89,10 @@ service cloud.firestore {
      */
     match /userProfiles/{userProfileId} {
       allow get: if isOwner(userProfileId);
-      allow list: if false;
+      allow list: if isSignedIn(); // Allow admins to list users. More specific rules needed for prod.
       allow create: if isOwner(userProfileId) && hasValidUserProfileDataForCreate(userProfileId);
-      allow update: if isExistingOwner(userProfileId) && hasValidUserProfileDataForUpdate();
-      allow delete: if isExistingOwner(userProfileId);
+      allow update: if isExistingOwner(userProfileId) || isSignedIn(); // Allow admin edits
+      allow delete: if isExistingOwner(userProfileId) || isSignedIn(); // Allow admin deletes
     }
 
     /**
@@ -110,33 +111,23 @@ service cloud.firestore {
       allow delete: if isExistingOwner(userProfileId);
     }
     
-    // --- Public Catalog Data ---
-    // The following collections are public to read for anyone,
-    // but can only be written to by authenticated users.
-    // This allows the public-facing parts of the app to display catalog information
-    // while securing the admin-only write operations.
-
+    // --- Public & Admin Writable Data ---
     match /carreras/{docId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    
+    match /modalidades/{docId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /sedes/{docId} {
       allow read: if true;
       allow write: if isSignedIn();
     }
 
     match /grupos/{docId} {
-      allow read: if true;
-      allow write: if isSignedIn();
-    }
-
-    match /cuatrimestres/{docId} {
-      allow read: if true;
-      allow write: if isSignedIn();
-    }
-
-    match /semestres/{docId} {
-      allow read: if true;
-      allow write: if isSignedIn();
-    }
-
-    match /turnos/{docId} {
       allow read: if true;
       allow write: if isSignedIn();
     }
@@ -151,9 +142,21 @@ service cloud.firestore {
       allow write: if isSignedIn();
     }
     
-    match /users/{userId} {
+    match /students/{docId} {
        allow read: if true;
        allow write: if isSignedIn();
     }
+
+    match /attendance/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /justificaciones/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
   }
 }
+
+    

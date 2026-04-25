@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -64,7 +65,7 @@ export default function LoginPage() {
         const userProfile = userDocSnap.data();
 
         if (typeof window !== 'undefined') {
-            sessionStorage.setItem("unilink-user", JSON.stringify(userProfile));
+            sessionStorage.setItem("unilink-user", JSON.stringify({id: user.uid, ...userProfile}));
         }
 
         toast({
@@ -77,6 +78,8 @@ export default function LoginPage() {
         } else if (userProfile.role === 'Docente') {
             router.push("/dashboard");
         } else if (userProfile.role === 'Alumno') {
+            // In a real app, you might get the student profile from a 'students' collection
+            // using the user.uid as a link. For now, we assume the student profile is part of userProfile.
             const studentId = userProfile.studentId || null;
             if (studentId) {
                 sessionStorage.setItem('unilink-student-id', studentId);
@@ -172,3 +175,5 @@ export default function LoginPage() {
     </Card>
   );
 }
+
+    
