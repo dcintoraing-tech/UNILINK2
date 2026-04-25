@@ -26,65 +26,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 import { Progress } from '@/components/ui/progress';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, doc, addDoc, updateDoc, deleteDoc, setDoc, Firestore } from 'firebase/firestore';
 
-// --- DATA PERSISTENCE HOOK ---
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
-    const [isInitialized, setIsInitialized] = useState(false);
-    const [storedValue, setStoredValue] = useState<T>(initialValue);
-
-    useEffect(() => {
-        if (typeof window === 'undefined') {
-            setIsInitialized(false);
-            return;
-        }
-        try {
-            const item = window.localStorage.getItem(key);
-            if (item) {
-                setStoredValue(JSON.parse(item));
-            }
-        } catch (error) {
-            console.error(`Error reading localStorage key “${key}”:`, error);
-        } finally {
-            setIsInitialized(true);
-        }
-    }, [key]);
-
-    const setValue = (value: T | ((val: T) => T)) => {
-        if (typeof window === 'undefined' || !isInitialized) return;
-        
-        try {
-            const valueToStore = value instanceof Function ? value(storedValue) : value;
-            setStoredValue(valueToStore);
-            window.localStorage.setItem(key, JSON.stringify(valueToStore));
-            window.dispatchEvent(new StorageEvent('storage', { key, newValue: JSON.stringify(valueToStore) }));
-        } catch (error) {
-            console.error(`Error setting localStorage key “${key}”:`, error);
-        }
-    };
-
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-
-        const handleStorageChange = (e: StorageEvent) => {
-            if (e.key === key && e.newValue) {
-                try {
-                    setStoredValue(JSON.parse(e.newValue));
-                } catch (error) {
-                    console.error(`Error parsing new value for localStorage key “${key}”:`, error);
-                }
-            }
-        };
-
-        window.addEventListener('storage', handleStorageChange);
-        return () => window.removeEventListener('storage', handleStorageChange);
-    }, [key, isInitialized]);
-
-    if (!isInitialized) {
-        return [initialValue, () => {}];
-    }
-
-    return [storedValue, setValue];
-};
 
 // --- INTERFACES ---
 interface CatalogItem { id: string; name: string; }
@@ -108,25 +52,20 @@ interface Horario {
 
 
 // --- GENERIC  COMPONENT ---
-function CatalogContent({ title, items, setItems, onAdd, onEdit, onDelete }: { title: string, items: CatalogItem[], setItems: (value: CatalogItem[] | ((val: CatalogItem[]) => CatalogItem[])) => void, onAdd?: (name: string) => void, onEdit?: (id: string, name: string) => void, onDelete?: (id: string) => void }) {
+function CatalogContent({ title, items, onAdd, onEdit, onDelete }: { title: string, items: CatalogItem[], onAdd: (name: string) => Promise<void>, onEdit: (id: string, name: string) => Promise<void>, onDelete: (id: string) => Promise<void> }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<CatalogItem | null>(null);
-    const { toast } = useToast();
 
-    const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const name = formData.get('name') as string;
         if (!name) return;
 
         if (currentItem) {
-            if (onEdit) onEdit(currentItem.id, name);
-            else setItems(prev => prev.map(item => item.id === currentItem.id ? { ...item, name } : item));
-            toast({ title: "Elemento actualizado" });
+            await onEdit(currentItem.id, name);
         } else {
-            if (onAdd) onAdd(name);
-            else setItems(prev => [...prev, { id: new Date().toISOString(), name }]);
-            toast({ title: "Elemento agregado" });
+            await onAdd(name);
         }
         setIsDialogOpen(false);
         setCurrentItem(null);
@@ -137,10 +76,8 @@ function CatalogContent({ title, items, setItems, onAdd, onEdit, onDelete }: { t
         setIsDialogOpen(true);
     };
 
-    const handleDelete = (itemId: string) => {
-        if (onDelete) onDelete(itemId);
-        else setItems(prev => prev.filter(item => item.id !== itemId));
-        toast({ title: "Elemento eliminado" });
+    const handleDelete = async (itemId: string) => {
+        await onDelete(itemId);
     };
 
     return (
@@ -197,7 +134,7 @@ function CatalogContent({ title, items, setItems, onAdd, onEdit, onDelete }: { t
 }
 
 // --- GRUPOS COMPONENT ---
-function GruposContent({ grupos, setGrupos, carreras, modalidades, sedes }: { grupos: Grupo[], setGrupos: (value: Grupo[] | ((val: Grupo[]) => Grupo[])) => void, carreras: CatalogItem[], modalidades: CatalogItem[], sedes: CatalogItem[] }) {
+function GruposContent({ firestore, grupos, carreras, modalidades, sedes }: { firestore: Firestore, grupos: Grupo[], setGrupos?: any, carreras: CatalogItem[], modalidades: CatalogItem[], sedes: CatalogItem[] }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<Grupo | null>(null);
     const { toast } = useToast();
@@ -206,7 +143,7 @@ function GruposContent({ grupos, setGrupos, carreras, modalidades, sedes }: { gr
     const semestres = Array.from({ length: 9 }, (_, i) => `${i + 1}`);
     const turnos = ["Matutino", "Vespertino", "Nocturno"];
 
-    const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const name = formData.get('name') as string;
@@ -225,16 +162,20 @@ function GruposContent({ grupos, setGrupos, carreras, modalidades, sedes }: { gr
         }
 
         const groupData = { name, carreraId, cuatrimestre, semestre, turno, modalidadId, sedeId };
-
-        if (currentItem) {
-            setGrupos(prev => prev.map(item => item.id === currentItem.id ? { ...item, ...groupData } : item));
-            toast({ title: "Grupo actualizado" });
-        } else {
-            setGrupos(prev => [...prev, { id: new Date().toISOString(), ...groupData }]);
-            toast({ title: "Grupo agregado" });
+        
+        try {
+            if (currentItem) {
+                await updateDoc(doc(firestore, 'grupos', currentItem.id), groupData);
+                toast({ title: "Grupo actualizado" });
+            } else {
+                await addDoc(collection(firestore, 'grupos'), groupData);
+                toast({ title: "Grupo agregado" });
+            }
+            setIsDialogOpen(false);
+            setCurrentItem(null);
+        } catch (error) {
+             toast({ variant: "destructive", title: "Error", description: "No se pudo guardar el grupo." });
         }
-        setIsDialogOpen(false);
-        setCurrentItem(null);
     };
 
     const handleOpenDialog = (item: Grupo | null = null) => {
@@ -242,9 +183,13 @@ function GruposContent({ grupos, setGrupos, carreras, modalidades, sedes }: { gr
         setIsDialogOpen(true);
     };
 
-    const handleDelete = (itemId: string) => {
-        setGrupos(prev => prev.filter(item => item.id !== itemId));
-        toast({ title: "Grupo eliminado" });
+    const handleDelete = async (itemId: string) => {
+        try {
+            await deleteDoc(doc(firestore, 'grupos', itemId));
+            toast({ title: "Grupo eliminado" });
+        } catch (error) {
+             toast({ variant: "destructive", title: "Error", description: "No se pudo eliminar el grupo." });
+        }
     };
     
     const getRelationName = (id: string | undefined, items: CatalogItem[]) => {
@@ -402,7 +347,7 @@ function GruposContent({ grupos, setGrupos, carreras, modalidades, sedes }: { gr
 }
 
 // --- MATERIAS COMPONENT ---
-function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaciones: AsignacionMateria[], setAsignaciones: (value: AsignacionMateria[] | ((val: AsignacionMateria[]) => AsignacionMateria[])) => void, carreras: CatalogItem[] }) {
+function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Firestore, asignaciones: AsignacionMateria[], carreras: CatalogItem[] }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<AsignacionMateria | null>(null);
     const { toast } = useToast();
@@ -424,7 +369,7 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
         });
     }, [asignaciones, filterCarrera, filterPeriodo]);
 
-    const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const materia = formData.get('materia') as string;
@@ -452,15 +397,19 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
 
         const newAsignacion = { materia, carreraId, cuatrimestre, semestre };
 
-        if (currentItem) {
-            setAsignaciones(prev => prev.map(a => a.id === currentItem.id ? { ...a, ...newAsignacion } : a));
-            toast({ title: "Asignación actualizada" });
-        } else {
-            setAsignaciones(prev => [...prev, { id: new Date().toISOString(), ...newAsignacion }]);
-            toast({ title: "Materia asignada" });
+        try {
+            if (currentItem) {
+                await updateDoc(doc(firestore, 'materiaAsignaciones', currentItem.id), newAsignacion);
+                toast({ title: "Asignación actualizada" });
+            } else {
+                await addDoc(collection(firestore, 'materiaAsignaciones'), newAsignacion);
+                toast({ title: "Materia asignada" });
+            }
+            setIsDialogOpen(false);
+            setCurrentItem(null);
+        } catch (error) {
+            toast({ variant: 'destructive', title: 'Error', description: 'No se pudo guardar la asignación.' });
         }
-        setIsDialogOpen(false);
-        setCurrentItem(null);
     };
 
     const openDialog = (item: AsignacionMateria | null) => {
@@ -468,9 +417,13 @@ function MateriasContent({ asignaciones, setAsignaciones, carreras }: { asignaci
         setIsDialogOpen(true);
     };
 
-    const handleDelete = (itemId: string) => {
-        setAsignaciones(prev => prev.filter(a => a.id !== itemId));
-        toast({ title: "Asignación eliminada" });
+    const handleDelete = async (itemId: string) => {
+        try {
+            await deleteDoc(doc(firestore, 'materiaAsignaciones', itemId));
+            toast({ title: "Asignación eliminada" });
+        } catch (error) {
+            toast({ variant: 'destructive', title: 'Error', description: 'No se pudo eliminar la asignación.' });
+        }
     };
 
     const getCarreraName = (id: string | undefined) => {
@@ -646,7 +599,7 @@ function ScheduleWizard({
     grupos: ComboboxOption[];
     materias: ComboboxOption[];
     docentes: ComboboxOption[];
-    onSave: (horario: Horario) => void;
+    onSave: (horario: Horario) => Promise<void>;
     onCancel: () => void;
     existingHorario: Horario | null;
 }) {
@@ -794,7 +747,7 @@ function ScheduleWizard({
         }
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (isPartiallyFilled) {
             toast({ variant: 'destructive', title: "Campos incompletos", description: "El último bloque está incompleto." });
             return;
@@ -804,7 +757,7 @@ function ScheduleWizard({
             grupoId: selectedGroupId,
             schedule: workingSchedule,
         };
-        onSave(newHorario);
+        await onSave(newHorario);
     };
 
     const isLastStep = currentDay === TOTAL_DAYS - 1 && currentBlock >= TOTAL_BLOCKS_PER_DAY - (workingSchedule[TOTAL_DAYS - 1]?.[TOTAL_BLOCKS_PER_DAY-1]?.duracion || 1)
@@ -912,10 +865,10 @@ function ScheduleWizard({
 }
 
 function HorariosContent({
-    horarios, setHorarios, grupos, materias, users
+    firestore, horarios, grupos, materias, users
 }: {
+    firestore: Firestore,
     horarios: Horario[],
-    setHorarios: (value: Horario[] | ((val: Horario[]) => Horario[])) => void,
     grupos: Grupo[],
     materias: AsignacionMateria[],
     users: User[],
@@ -928,24 +881,25 @@ function HorariosContent({
     const materiaOptions = useMemo(() => materias.map(m => ({ value: m.id, label: m.materia })), [materias]);
     const grupoOptions = useMemo(() => grupos.map(g => ({ value: g.id, label: g.name })), [grupos]);
 
-    const handleSaveHorario = (horario: Horario) => {
-        setHorarios(prev => {
-            const existingIndex = prev.findIndex(h => h.id === horario.id);
-            if (existingIndex > -1) {
-                const newHorarios = [...prev];
-                newHorarios[existingIndex] = horario;
-                return newHorarios;
-            }
-            return [...prev, horario];
-        });
-        toast({ title: "Horario guardado", description: "El horario se ha guardado correctamente." });
-        setIsWizardOpen(false);
-        setEditingHorario(null);
+    const handleSaveHorario = async (horario: Horario) => {
+        try {
+            await setDoc(doc(firestore, "horarios", horario.id), horario, { merge: true });
+            toast({ title: "Horario guardado", description: "El horario se ha guardado correctamente." });
+            setIsWizardOpen(false);
+            setEditingHorario(null);
+        } catch (error) {
+            console.error("Error saving horario:", error);
+            toast({ variant: "destructive", title: "Error al guardar", description: "No se pudo guardar el horario." });
+        }
     };
 
-    const handleDeleteHorario = (grupoId: string) => {
-        setHorarios(prev => prev.filter(h => h.id !== grupoId));
-        toast({ title: "Horario eliminado" });
+    const handleDeleteHorario = async (grupoId: string) => {
+        try {
+            await deleteDoc(doc(firestore, "horarios", grupoId));
+            toast({ title: "Horario eliminado" });
+        } catch (error) {
+             toast({ variant: "destructive", title: "Error", description: "No se pudo eliminar el horario." });
+        }
     }
 
     const openWizard = (horario: Horario | null = null) => {
@@ -1106,13 +1060,55 @@ function HorariosContent({
 }
 
 export default function CatalogsPage() {
-    const [carreras, setCarreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
-    const [modalidades, setModalidades] = useLocalStorage<CatalogItem[]>('unilink-modalidades', []);
-    const [sedes, setSedes] = useLocalStorage<CatalogItem[]>('unilink-sedes', []);
-    const [grupos, setGrupos] = useLocalStorage<Grupo[]>('unilink-grupos', []);
-    const [materiaAsignaciones, setMateriaAsignaciones] = useLocalStorage<AsignacionMateria[]>('unilink-materia-asignaciones', []);
-    const [horarios, setHorarios] = useLocalStorage<Horario[]>('unilink-horarios', []);
-    const [users] = useLocalStorage<User[]>('unilink-users', []);
+    const firestore = useFirestore();
+    const { toast } = useToast();
+
+    const { data: carrerasData } = useCollection<CatalogItem>(useMemoFirebase(() => collection(firestore, 'carreras'), [firestore]));
+    const { data: modalidadesData } = useCollection<CatalogItem>(useMemoFirebase(() => collection(firestore, 'modalidades'), [firestore]));
+    const { data: sedesData } = useCollection<CatalogItem>(useMemoFirebase(() => collection(firestore, 'sedes'), [firestore]));
+    const { data: gruposData } = useCollection<Grupo>(useMemoFirebase(() => collection(firestore, 'grupos'), [firestore]));
+    const { data: materiaAsignacionesData } = useCollection<AsignacionMateria>(useMemoFirebase(() => collection(firestore, 'materiaAsignaciones'), [firestore]));
+    const { data: horariosData } = useCollection<Horario>(useMemoFirebase(() => collection(firestore, 'horarios'), [firestore]));
+    const { data: usersData } = useCollection<User>(useMemoFirebase(() => collection(firestore, 'userProfiles'), [firestore]));
+    
+    const carreras = carrerasData || [];
+    const modalidades = modalidadesData || [];
+    const sedes = sedesData || [];
+    const grupos = gruposData || [];
+    const materiaAsignaciones = materiaAsignacionesData || [];
+    const horarios = horariosData || [];
+    const users = usersData || [];
+
+    const createFirestoreCrudHandlers = (collectionName: string, singularName: string) => ({
+        onAdd: async (name: string) => {
+            try {
+                await addDoc(collection(firestore, collectionName), { name });
+                toast({ title: `${singularName} agregado` });
+            } catch (error) {
+                toast({ variant: 'destructive', title: 'Error', description: `No se pudo agregar el ${singularName.toLowerCase()}.` });
+            }
+        },
+        onEdit: async (id: string, name: string) => {
+            try {
+                await updateDoc(doc(firestore, collectionName, id), { name });
+                toast({ title: `${singularName} actualizado` });
+            } catch (error) {
+                toast({ variant: 'destructive', title: 'Error', description: `No se pudo actualizar el ${singularName.toLowerCase()}.` });
+            }
+        },
+        onDelete: async (id: string) => {
+            try {
+                await deleteDoc(doc(firestore, collectionName, id));
+                toast({ title: `${singularName} eliminado` });
+            } catch (error) {
+                toast({ variant: 'destructive', title: 'Error', description: `No se pudo eliminar el ${singularName.toLowerCase()}.` });
+            }
+        },
+    });
+
+    const carrerasHandlers = createFirestoreCrudHandlers('carreras', 'Carrera');
+    const modalidadesHandlers = createFirestoreCrudHandlers('modalidades', 'Modalidad');
+    const sedesHandlers = createFirestoreCrudHandlers('sedes', 'Sede');
 
     return (
         <Tabs defaultValue="carreras" className="w-full">
@@ -1124,12 +1120,12 @@ export default function CatalogsPage() {
                 <TabsTrigger value="materias">Materias</TabsTrigger>
                 <TabsTrigger value="horarios">Horarios</TabsTrigger>
             </TabsList>
-            <TabsContent value="carreras"><CatalogContent title="Carreras" items={carreras} setItems={setCarreras} /></TabsContent>
-            <TabsContent value="modalidades"><CatalogContent title="Modalidades" items={modalidades} setItems={setModalidades} /></TabsContent>
-            <TabsContent value="sedes"><CatalogContent title="Sedes" items={sedes} setItems={setSedes} /></TabsContent>
-            <TabsContent value="grupos"><GruposContent grupos={grupos} setGrupos={setGrupos} carreras={carreras} modalidades={modalidades} sedes={sedes} /></TabsContent>
-            <TabsContent value="materias"><MateriasContent asignaciones={materiaAsignaciones} setAsignaciones={setMateriaAsignaciones} carreras={carreras} /></TabsContent>
-            <TabsContent value="horarios"><HorariosContent horarios={horarios} setHorarios={setHorarios} grupos={grupos} materias={materiaAsignaciones} users={users} /></TabsContent>
+            <TabsContent value="carreras"><CatalogContent title="Carreras" items={carreras} {...carrerasHandlers} /></TabsContent>
+            <TabsContent value="modalidades"><CatalogContent title="Modalidades" items={modalidades} {...modalidadesHandlers} /></TabsContent>
+            <TabsContent value="sedes"><CatalogContent title="Sedes" items={sedes} {...sedesHandlers} /></TabsContent>
+            <TabsContent value="grupos"><GruposContent firestore={firestore} grupos={grupos} carreras={carreras} modalidades={modalidades} sedes={sedes} /></TabsContent>
+            <TabsContent value="materias"><MateriasContent firestore={firestore} asignaciones={materiaAsignaciones} carreras={carreras} /></TabsContent>
+            <TabsContent value="horarios"><HorariosContent firestore={firestore} horarios={horarios} grupos={grupos} materias={materiaAsignaciones} users={users} /></TabsContent>
         </Tabs>
     );
 }
