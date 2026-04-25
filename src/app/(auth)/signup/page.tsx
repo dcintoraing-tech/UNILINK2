@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Mail, Lock, User as UserIcon } from "lucide-react";
+import { Mail, Lock, User as UserIcon, Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { collection, doc, getDocs, limit, query, setDoc } from "firebase/firestore";
@@ -51,6 +51,8 @@ export default function SignupPage() {
 
   const [isFirstUser, setIsFirstUser] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     const checkFirstUser = async () => {
@@ -178,8 +180,18 @@ export default function SignupPage() {
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} className="pl-10" />
+                      <Input type={showPassword ? 'text' : 'password'} placeholder="••••••••" {...field} className="pl-10" />
                     </FormControl>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      <span className="sr-only">{showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
+                    </Button>
                   </div>
                   <FormMessage />
                 </FormItem>
@@ -194,8 +206,18 @@ export default function SignupPage() {
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} className="pl-10" />
+                      <Input type={showConfirmPassword ? 'text' : 'password'} placeholder="••••••••" {...field} className="pl-10" />
                     </FormControl>
+                     <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground"
+                      onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      <span className="sr-only">{showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
+                    </Button>
                   </div>
                   <FormMessage />
                 </FormItem>
