@@ -1,4 +1,3 @@
-
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -38,7 +37,7 @@ const formSchema = z.object({
     message: "La contraseña debe tener al menos 6 caracteres.",
   }),
   confirmPassword: z.string(),
-  role: z.enum(['Docente', 'Admin', 'Alumno']).optional(),
+  role: z.enum(['Docente', 'Admin', 'Alumno'], { required_error: 'Debes seleccionar un tipo de usuario.' }),
 }).refine(data => data.password === data.confirmPassword, {
   message: "Las contraseñas no coinciden",
   path: ["confirmPassword"],
@@ -84,17 +83,9 @@ export default function SignupPage() {
     },
   });
 
-  useEffect(() => {
-    if (isFirstUser && !isChecking) {
-      form.setValue('role', 'Admin');
-    }
-  }, [isFirstUser, isChecking, form]);
-
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    const finalRole = isFirstUser ? 'Admin' : values.role;
-
-    if (!finalRole) {
-      form.setError("role", { type: "manual", message: "Debes seleccionar un tipo de usuario." });
+    if (isFirstUser && values.role !== 'Admin') {
+      form.setError("role", { type: "manual", message: "El primer usuario debe ser un Administrador." });
       return;
     }
 
@@ -106,7 +97,7 @@ export default function SignupPage() {
             id: user.uid,
             name: values.name,
             email: user.email,
-            role: finalRole,
+            role: values.role,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
         };
@@ -238,7 +229,7 @@ export default function SignupPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Tipo de usuario</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value} disabled={isFirstUser}>
+                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Selecciona un tipo de usuario" />
