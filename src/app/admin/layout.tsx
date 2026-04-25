@@ -38,10 +38,10 @@ const StudentMenu = () => (
 
 const AdminNavContent = () => (
   <nav className="flex flex-1 flex-col gap-2">
-    <Link href="/admin/dashboard" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
-        <BarChart className="h-4 w-4" />
-        Dashboard
-      </Link>
+    <Link href="/admin/reports" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
+      <BarChart className="h-4 w-4" />
+      Reportes
+    </Link>
     <Link href="/admin/users" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
       <UserCog className="h-4 w-4" />
       Gestión de Usuarios
@@ -50,10 +50,6 @@ const AdminNavContent = () => (
     <Link href="/admin/catalogs" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
       <Book className="h-4 w-4" />
       Catálogos
-    </Link>
-    <Link href="/admin/reports" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
-      <BarChart className="h-4 w-4" />
-      Reportes
     </Link>
     <Link href="/admin/settings" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
       <Settings className="h-4 w-4" />
@@ -64,15 +60,11 @@ const AdminNavContent = () => (
 
 const JefeCarreraNavContent = () => (
     <nav className="flex flex-1 flex-col gap-2">
-        <Link href="/admin/dashboard" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
-            <BarChart className="h-4 w-4" />
-            Dashboard
-        </Link>
-        <StudentMenu />
         <Link href="/admin/reports" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
             <BarChart className="h-4 w-4" />
             Reportes
         </Link>
+        <StudentMenu />
         <Link href="/admin/justificaciones" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
             <FileCheck className="h-4 w-4" />
             Justificaciones
@@ -149,7 +141,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode; }
         } else if (targetRole === 'Alumno') {
             router.push('/student/dashboard');
         } else {
-            router.push('/admin/dashboard'); 
+            router.push('/admin/reports'); 
         }
         router.refresh();
     } else {

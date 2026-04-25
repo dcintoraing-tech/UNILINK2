@@ -74,7 +74,7 @@ export default function LoginPage() {
         });
 
         if (userProfile.role === 'Admin' || userProfile.role === 'Jefe de carrera') {
-            router.push("/admin/dashboard");
+            router.push("/admin/reports");
         } else if (userProfile.role === 'Docente') {
             router.push("/dashboard");
         } else if (userProfile.role === 'Alumno') {
