@@ -243,7 +243,7 @@ export default function UsersPage() {
           <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                   <CardTitle>Gestión de Usuarios</CardTitle>
-                  <CardDescription>Crea, edita, importa y exporta usuarios.</CardDescription>
+                  <CardDescription>Edita, importa y exporta usuarios. La creación de usuarios se realiza a través de la importación.</CardDescription>
               </div>
               <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
                 <Button size="sm" variant="outline" onClick={handleImportClick}>
@@ -257,10 +257,6 @@ export default function UsersPage() {
                 <Button size="sm" variant="outline" onClick={handleDownloadTemplate}>
                     <Download className="h-3.5 w-3.5 mr-1" />
                     Plantilla
-                </Button>
-                 <Button size="sm" onClick={() => router.push('/signup')}>
-                    <PlusCircle className="h-3.5 w-3.5 mr-1" />
-                    <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Crear Usuario</span>
                 </Button>
               </div>
           </div>
