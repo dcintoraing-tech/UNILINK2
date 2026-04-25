@@ -1,4 +1,3 @@
-
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -24,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, useFirestore } from "@/firebase";
+import { Separator } from "@/components/ui/separator";
 
 
 const formSchema = z.object({
@@ -78,8 +78,7 @@ export default function LoginPage() {
         } else if (userProfile.role === 'Docente') {
             router.push("/dashboard");
         } else if (userProfile.role === 'Alumno') {
-            // In a real app, you might get the student profile from a 'students' collection
-            // using the user.uid as a link. For now, we assume the student profile is part of userProfile.
+            // This path should ideally not be taken if students log in separately
             const studentId = userProfile.studentId || null;
             if (studentId) {
                 sessionStorage.setItem('unilink-student-id', studentId);
@@ -107,10 +106,10 @@ export default function LoginPage() {
     <Card className="w-full shadow-lg">
       <CardHeader>
         <CardTitle className="text-2xl font-bold tracking-tight text-center">
-          Bienvenido de nuevo
+          Acceso para Personal
         </CardTitle>
         <CardDescription className="text-center">
-          Ingresa tus credenciales para acceder a tu cuenta
+          Ingresa tus credenciales para acceder
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -163,17 +162,16 @@ export default function LoginPage() {
             </Button>
           </form>
         </Form>
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          ¿No tienes una cuenta?{" "}
-          <Link href="/signup" passHref>
-            <Button variant="link" className="h-auto p-0">
-              Crear cuenta
-            </Button>
-          </Link>
-        </p>
+        <Separator className="my-6" />
+        <div className="text-center space-y-2">
+            <p className="text-sm text-muted-foreground">¿Eres alumno?</p>
+            <Link href="/student-login" passHref>
+                <Button variant="outline" className="w-full">
+                    Acceder con Número de Control
+                </Button>
+            </Link>
+        </div>
       </CardContent>
     </Card>
   );
 }
-
-    

@@ -4,7 +4,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Mail, Lock, User as UserIcon, Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
@@ -37,7 +36,7 @@ const formSchema = z.object({
     message: "La contraseña debe tener al menos 6 caracteres.",
   }),
   confirmPassword: z.string(),
-  role: z.enum(['Docente', 'Admin', 'Alumno'], { required_error: 'Debes seleccionar un tipo de usuario.' }),
+  role: z.enum(['Docente', 'Admin', 'Alumno', 'Jefe de carrera'], { required_error: 'Debes seleccionar un tipo de usuario.' }),
 }).refine(data => data.password === data.confirmPassword, {
   message: "Las contraseñas no coinciden",
   path: ["confirmPassword"],
@@ -229,7 +228,7 @@ export default function SignupPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Tipo de usuario</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value} required>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Selecciona un tipo de usuario" />
@@ -239,6 +238,7 @@ export default function SignupPage() {
                         <SelectItem value="Docente">Docente</SelectItem>
                         <SelectItem value="Admin">Admin</SelectItem>
                         <SelectItem value="Alumno">Alumno</SelectItem>
+                        <SelectItem value="Jefe de carrera">Jefe de carrera</SelectItem>
                       </SelectContent>
                     </Select>
                     {isFirstUser && (
@@ -256,14 +256,6 @@ export default function SignupPage() {
             </Button>
           </form>
         </Form>
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          ¿Ya tienes una cuenta?{" "}
-          <Link href="/login" passHref>
-            <Button variant="link" className="h-auto p-0">
-              Iniciar sesión
-            </Button>
-          </Link>
-        </p>
       </CardContent>
     </Card>
   );

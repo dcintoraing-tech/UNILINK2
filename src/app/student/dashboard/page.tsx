@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, XCircle, Clock, FileText, ArrowRight } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { sub, format, eachDayOfInterval, startOfDay } from 'date-fns';
 import Link from 'next/link';
@@ -59,9 +58,9 @@ interface Horario {
 // --- MAIN COMPONENT ---
 export default function StudentDashboardPage() {
     const { toast } = useToast();
-    // Student Access State
+    const router = useRouter();
+
     const [student, setStudent] = useState<Student | null>(null);
-    const [controlNumberInput, setControlNumberInput] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     
     // Data from LocalStorage
@@ -74,20 +73,30 @@ export default function StudentDashboardPage() {
 
     // Check for logged-in student on mount
     useEffect(() => {
+        let foundStudent: Student | undefined;
         try {
             const storedStudentId = sessionStorage.getItem('unilink-student-id');
             if (storedStudentId) {
-                const foundStudent = allStudents.find(s => s.id === storedStudentId);
+                foundStudent = allStudents.find(s => s.id === storedStudentId);
                 if (foundStudent) {
                     setStudent(foundStudent);
+                } else {
+                    // Invalid ID, clear it and redirect
+                    sessionStorage.removeItem('unilink-student-id');
+                    router.push('/student-login');
                 }
+            } else {
+                router.push('/student-login');
             }
         } catch (e) {
             console.error("Could not access session storage:", e);
+            router.push('/student-login');
         } finally {
-            setIsLoading(false);
+            if (foundStudent) {
+                setIsLoading(false);
+            }
         }
-    }, [allStudents]);
+    }, [allStudents, router]);
 
     // Generate mock data if it hasn't been done before
     useEffect(() => {
@@ -149,20 +158,7 @@ export default function StudentDashboardPage() {
             toast({ title: "Datos de prueba generados", description: "Se ha creado un historial de asistencia para todos los alumnos." });
         }
     }, [student, mockDataGenerated, allStudents, allHorarios, setAllAttendance, setMockDataGenerated, toast]);
-
-    // Handle student login via control number
-    const handleAccess = (e: React.FormEvent) => {
-        e.preventDefault();
-        const foundStudent = allStudents.find(s => s.controlNumber === controlNumberInput);
-        if (foundStudent) {
-            sessionStorage.setItem('unilink-student-id', foundStudent.id);
-            setStudent(foundStudent);
-            toast({ title: `¡Bienvenido, ${foundStudent.firstName}!`, description: "Cargando tu información." });
-        } else {
-            toast({ variant: 'destructive', title: 'Número de control no válido', description: 'Por favor, verifica tu número de control e inténtalo de nuevo.' });
-        }
-    };
-
+    
     // Memoize student's attendance records
     const studentAttendance = useMemo(() => {
         if (!student) return [];
@@ -185,39 +181,8 @@ export default function StudentDashboardPage() {
         }
     };
     
-    if (isLoading) {
-        return <div className="flex min-h-screen w-full flex-col items-center justify-center"><p>Cargando...</p></div>;
-    }
-
-    if (!student) {
-        return (
-            <div className="w-full max-w-sm mx-auto flex flex-col justify-center min-h-screen">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Acceso de Alumno</CardTitle>
-                        <CardDescription>Ingresa tu número de control para ver tu dashboard.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <form onSubmit={handleAccess} className="space-y-4">
-                            <div className="grid gap-2">
-                                <Label htmlFor="control-number">Número de Control</Label>
-                                <Input
-                                    id="control-number"
-                                    value={controlNumberInput}
-                                    onChange={(e) => setControlNumberInput(e.target.value)}
-                                    placeholder="Ej. 12345678"
-                                    required
-                                />
-                            </div>
-                            <Button type="submit" className="w-full">
-                                Acceder
-                                <ArrowRight className="ml-2 h-4 w-4" />
-                            </Button>
-                        </form>
-                    </CardContent>
-                </Card>
-            </div>
-        );
+    if (isLoading || !student) {
+        return <div className="flex min-h-screen w-full flex-col items-center justify-center"><p>Cargando información del estudiante...</p></div>;
     }
 
     return (
