@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Bar, BarChart, Line, LineChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig } from '@/components/ui/chart';
 import { useToast } from '@/hooks/use-toast';
-import { sub, format, eachDayOfInterval, startOfDay, endOfDay, parseISO } from 'date-fns';
+import { sub, format, eachDayOfInterval, startOfDay, endOfDay, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
@@ -32,7 +32,12 @@ const chartConfig = {
 
 export default function ReportsPage() {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
+    
+    const [dateFilterMode, setDateFilterMode] = useState<"range" | "month" | "cuatrimestre">("range");
     const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+    const [selectedCuatrimestre, setSelectedCuatrimestre] = useState(1);
     
     const [filters, setFilters] = useState({
         carreraId: 'all',
@@ -58,6 +63,31 @@ export default function ReportsPage() {
     const attendance = attendanceData || [];
     const { toast } = useToast();
 
+    const years = useMemo(() => Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i), []);
+    const months = useMemo(() => Array.from({ length: 12 }, (_, i) => {
+        const monthName = format(new Date(2000, i, 1), 'LLLL', { locale: es });
+        return { value: i, label: monthName.charAt(0).toUpperCase() + monthName.slice(1) };
+    }), []);
+    const cuatrimestresOptions = useMemo(() => [
+        { value: 1, label: "Enero - Abril" },
+        { value: 2, label: "Mayo - Agosto" },
+        { value: 3, label: "Septiembre - Diciembre" }
+    ], []);
+
+    useEffect(() => {
+        if (dateFilterMode === 'month') {
+            const from = startOfMonth(new Date(selectedYear, selectedMonth));
+            const to = endOfMonth(new Date(selectedYear, selectedMonth));
+            setDateRange({ from, to });
+        } else if (dateFilterMode === 'cuatrimestre') {
+            const startMonth = (selectedCuatrimestre - 1) * 4;
+            const endMonth = startMonth + 3;
+            const from = startOfMonth(new Date(selectedYear, startMonth));
+            const to = endOfMonth(new Date(selectedYear, endMonth));
+            setDateRange({ from, to });
+        }
+    }, [dateFilterMode, selectedYear, selectedMonth, selectedCuatrimestre]);
+
     useEffect(() => {
         // Set initial date range on client to avoid hydration mismatch
         setDateRange({ from: sub(new Date(), { days: 30 }), to: new Date() });
@@ -67,7 +97,6 @@ export default function ReportsPage() {
         
         if (storedUser) {
             const user = JSON.parse(storedUser);
-            // The active role takes precedence for role-based logic
             const effectiveRole = activeRole || user.role;
             const effectiveUser = { ...user, role: effectiveRole };
             
@@ -199,9 +228,70 @@ export default function ReportsPage() {
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     <div className="grid gap-2">
-                        <Label>Rango de Fechas</Label>
-                        <DateRangePicker date={dateRange} onDateChange={setDateRange} />
+                        <Label>Tipo de Filtro de Fecha</Label>
+                        <Select value={dateFilterMode} onValueChange={(v) => setDateFilterMode(v as any)}>
+                            <SelectTrigger><SelectValue placeholder="Selecciona un filtro" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="range">Rango de Fechas</SelectItem>
+                                <SelectItem value="month">Por Mes</SelectItem>
+                                <SelectItem value="cuatrimestre">Por Cuatrimestre</SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
+
+                    {dateFilterMode === 'range' && (
+                        <div className="grid gap-2">
+                            <Label>Rango de Fechas</Label>
+                            <DateRangePicker date={dateRange} onDateChange={setDateRange} />
+                        </div>
+                    )}
+
+                    {dateFilterMode === 'month' && (
+                        <>
+                            <div className="grid gap-2">
+                                <Label>Año</Label>
+                                <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(Number(v))}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        {years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Mes</Label>
+                                <Select value={String(selectedMonth)} onValueChange={(v) => setSelectedMonth(Number(v))}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        {months.map(m => <SelectItem key={m.value} value={String(m.value)}>{m.label}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </>
+                    )}
+
+                    {dateFilterMode === 'cuatrimestre' && (
+                        <>
+                            <div className="grid gap-2">
+                                <Label>Año</Label>
+                                <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(Number(v))}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        {years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Cuatrimestre</Label>
+                                <Select value={String(selectedCuatrimestre)} onValueChange={(v) => setSelectedCuatrimestre(Number(v))}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        {cuatrimestresOptions.map(q => <SelectItem key={q.value} value={String(q.value)}>{q.label}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </>
+                    )}
+
                     {!isJefe && (
                         <div className="grid gap-2">
                             <Label>Carrera</Label>
