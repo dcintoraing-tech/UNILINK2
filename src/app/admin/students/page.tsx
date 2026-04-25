@@ -19,45 +19,17 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import * as faceapi from 'face-api.js';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 
-// --- DATA PERSISTENCE HOOK ---
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] => {
-  const [storedValue, setStoredValue] = useState<T>(initialValue);
-  const [isInitialized, setIsInitialized] = useState(false);
-
-  useEffect(() => {
-      if (typeof window !== 'undefined') {
-          try {
-              const item = window.localStorage.getItem(key);
-              if (item) {
-                  setStoredValue(JSON.parse(item));
-              }
-          } catch (error) {
-              console.log(error);
-          }
-          setIsInitialized(true); 
-      }
-  }, [key]);
-
-  const setValue = (value: T | ((val: T) => T)) => {
-      if (!isInitialized) return;
-      try {
-          const valueToStore = value instanceof Function ? value(storedValue) : value;
-          setStoredValue(valueToStore);
-          if (typeof window !== 'undefined') {
-              window.localStorage.setItem(key, JSON.stringify(valueToStore));
-          }
-      } catch (error) {
-          console.log(error);
-      }
-  };
-
-  return [storedValue, setValue];
-};
-
+// --- INTERFACES ---
 interface CatalogItem {
     id: string;
     name: string;
+}
+
+interface Grupo extends CatalogItem {
+    carreraId: string;
 }
 
 interface Student {
@@ -71,9 +43,22 @@ interface Student {
     embedding: number[] | null;
 }
 
-function StudentRegistrationForm({ onFinished, carreras, grupos, initialData }: { onFinished: () => void, carreras: CatalogItem[], grupos: CatalogItem[], initialData: Student | null }) {
+type NewStudentData = Omit<Student, 'id'>;
+
+function StudentRegistrationForm({ 
+    onFinished, 
+    carreras, 
+    grupos, 
+    initialData,
+    onSave
+}: { 
+    onFinished: () => void, 
+    carreras: CatalogItem[], 
+    grupos: Grupo[], 
+    initialData: Student | null,
+    onSave: (studentData: NewStudentData | Student) => Promise<void> 
+}) {
     const { toast } = useToast();
-    const [, setStudents] = useLocalStorage<Student[]>('unilink-students', []);
 
     const [firstName, setFirstName] = useState(initialData?.firstName || '');
     const [lastName, setLastName] = useState(initialData?.lastName || '');
@@ -103,15 +88,11 @@ function StudentRegistrationForm({ onFinished, carreras, grupos, initialData }: 
             }
             try {
                 const MODEL_URL = window.location.origin + '/models';
-                console.log("Cargando modelos de IA desde:", MODEL_URL);
-                
                 await Promise.all([
                     faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
                     faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
                     faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
                 ]);
-                
-                console.log("¡Todos los modelos de IA se cargaron exitosamente! ✅");
                 setModelsLoaded(true);
                 setModelError(null);
             } catch (error) {
@@ -239,42 +220,38 @@ function StudentRegistrationForm({ onFinished, carreras, grupos, initialData }: 
             return;
         }
         
-        if (initialData) {
-            const updatedStudent: Student = {
-                ...initialData,
-                firstName,
-                lastName,
-                controlNumber,
-                academicProgramId: academicProgram,
-                assignedGroupId: assignedGroup,
-                facialImage: capturedImage,
-                embedding: embedding,
-            };
-            setStudents(prev => prev.map(s => s.id === initialData.id ? updatedStudent : s));
-            toast({
-                title: 'Estudiante Actualizado',
-                description: `Los datos de ${firstName} ${lastName} han sido actualizados.`,
-            });
-        } else {
-             const newStudent: Student = {
-                id: new Date().toISOString(),
-                firstName,
-                lastName,
-                controlNumber,
-                academicProgramId: academicProgram,
-                assignedGroupId: assignedGroup,
-                facialImage: capturedImage,
-                embedding: embedding,
-            };
-            setStudents(prev => [...prev, newStudent]);
-            toast({
-                title: 'Estudiante Registrado',
-                description: `El estudiante ${firstName} ${lastName} ha sido guardado con su huella facial.`,
-            });
+        try {
+            if (initialData) {
+                const updatedStudent: Student = {
+                    ...initialData,
+                    firstName,
+                    lastName,
+                    controlNumber,
+                    academicProgramId: academicProgram,
+                    assignedGroupId: assignedGroup,
+                    facialImage: capturedImage,
+                    embedding: embedding,
+                };
+                await onSave(updatedStudent);
+            } else {
+                 const newStudent: NewStudentData = {
+                    firstName,
+                    lastName,
+                    controlNumber,
+                    academicProgramId: academicProgram,
+                    assignedGroupId: assignedGroup,
+                    facialImage: capturedImage,
+                    embedding: embedding,
+                };
+                await onSave(newStudent);
+            }
+            onFinished();
+        } catch (error) {
+            console.error("Error saving student to Firestore:", error);
+            toast({ variant: 'destructive', title: 'Error al Guardar', description: 'No se pudo guardar la información en la base de datos.'});
+        } finally {
+            setIsProcessing(false);
         }
-
-        setIsProcessing(false);
-        onFinished();
     };
     
     useEffect(() => {
@@ -402,10 +379,16 @@ function StudentRegistrationForm({ onFinished, carreras, grupos, initialData }: 
 }
 
 export default function StudentsPage() {
-    const [students, setStudents] = useLocalStorage<Student[]>('unilink-students', []);
-    const [carreras] = useLocalStorage<CatalogItem[]>('unilink-carreras', []);
-    const [grupos] = useLocalStorage<CatalogItem[]>('unilink-grupos', []);
+    const firestore = useFirestore();
     const { toast } = useToast();
+    
+    const { data: studentsData } = useCollection<Student>(useMemoFirebase(() => collection(firestore, 'students'), [firestore]));
+    const { data: carrerasData } = useCollection<CatalogItem>(useMemoFirebase(() => collection(firestore, 'carreras'), [firestore]));
+    const { data: gruposData } = useCollection<Grupo>(useMemoFirebase(() => collection(firestore, 'grupos'), [firestore]));
+    
+    const students = studentsData || [];
+    const carreras = carrerasData || [];
+    const grupos = gruposData || [];
     
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingStudent, setEditingStudent] = useState<Student | null>(null);
@@ -423,12 +406,34 @@ export default function StudentsPage() {
     const getProgramName = (id: string) => carreras.find(c => c.id === id)?.name || 'N/A';
     const getGroupName = (id: string) => grupos.find(g => g.id === id)?.name || 'N/A';
     
-    const handleDeleteStudent = (studentId: string) => {
-        setStudents(prev => prev.filter(s => s.id !== studentId));
-        toast({
-            title: "Estudiante eliminado",
-            description: "El estudiante ha sido eliminado del sistema."
-        });
+    const handleSaveStudent = async (studentData: NewStudentData | Student) => {
+        try {
+            if ('id' in studentData) { // Editing
+                const studentDocRef = doc(firestore, 'students', studentData.id);
+                await updateDoc(studentDocRef, studentData);
+                toast({ title: 'Estudiante Actualizado', description: `Los datos de ${studentData.firstName} han sido actualizados.` });
+            } else { // Creating
+                await addDoc(collection(firestore, 'students'), studentData);
+                toast({ title: 'Estudiante Registrado', description: `El estudiante ${studentData.firstName} ha sido guardado.` });
+            }
+        } catch (error) {
+            console.error("Error saving student:", error);
+            toast({ variant: 'destructive', title: 'Error al guardar', description: 'No se pudo guardar el estudiante.' });
+            throw error; // Re-throw to be caught in the form
+        }
+    };
+    
+    const handleDeleteStudent = async (studentId: string) => {
+        try {
+            await deleteDoc(doc(firestore, 'students', studentId));
+            toast({
+                title: "Estudiante eliminado",
+                description: "El estudiante ha sido eliminado del sistema."
+            });
+        } catch (error) {
+            console.error("Error deleting student:", error);
+            toast({ variant: 'destructive', title: 'Error', description: 'No se pudo eliminar al estudiante.' });
+        }
     };
     
     const handleOpenDialog = (student: Student | null) => {
@@ -492,7 +497,7 @@ export default function StudentsPage() {
                                                 <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
                                                 <AlertDialogContent>
                                                 <AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esta acción no se puede deshacer y eliminará permanentemente al estudiante.</AlertDialogDescription></AlertDialogHeader>
-                                                <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteStudent(student.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction></AlertDialogFooter>
+                                                <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={async () => await handleDeleteStudent(student.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction></AlertDialogFooter>
                                                 </AlertDialogContent>
                                             </AlertDialog>
                                         </DropdownMenuContent>
@@ -556,7 +561,7 @@ export default function StudentsPage() {
                                                     </AlertDialogHeader>
                                                     <AlertDialogFooter>
                                                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                        <AlertDialogAction onClick={() => handleDeleteStudent(student.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction>
+                                                        <AlertDialogAction onClick={async () => await handleDeleteStudent(student.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction>
                                                     </AlertDialogFooter>
                                                     </AlertDialogContent>
                                                 </AlertDialog>
@@ -600,9 +605,13 @@ export default function StudentsPage() {
                         carreras={carreras}
                         grupos={grupos}
                         initialData={editingStudent}
+                        onSave={handleSaveStudent}
                     />
                 </DialogContent>
             </Dialog>
         </>
     );
 }
+
+
+    
