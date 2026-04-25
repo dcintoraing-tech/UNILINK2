@@ -91,7 +91,9 @@ export default function SignupPage() {
   }, [isFirstUser, isChecking, form]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!isFirstUser && !values.role) {
+    const finalRole = isFirstUser ? 'Admin' : values.role;
+
+    if (!finalRole) {
       form.setError("role", { type: "manual", message: "Debes seleccionar un tipo de usuario." });
       return;
     }
@@ -104,7 +106,7 @@ export default function SignupPage() {
             id: user.uid,
             name: values.name,
             email: user.email,
-            role: isFirstUser ? 'Admin' : values.role,
+            role: finalRole,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
         };
@@ -275,5 +277,3 @@ export default function SignupPage() {
     </Card>
   );
 }
-
-    
