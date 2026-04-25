@@ -87,7 +87,7 @@ export default function ReportsPage() {
     };
 
     const { filteredGrupos, filteredDocentes, filteredCuatrimestres } = useMemo(() => {
-        if (filters.carreraId === 'all') {
+        if (filters.carreraId === 'all' && currentUser?.role !== 'Jefe de carrera') {
             return {
                 filteredGrupos: grupos,
                 filteredDocentes: users.filter(u => u.role === 'Docente'),
@@ -100,7 +100,7 @@ export default function ReportsPage() {
 
         return { filteredGrupos: fGrupos, filteredDocentes: fDocentes, filteredCuatrimestres: fCuatrimestres };
 
-    }, [filters.carreraId, grupos, users]);
+    }, [filters.carreraId, grupos, users, currentUser]);
 
     const reportData = useMemo(() => {
         const startDate = dateRange?.from ? startOfDay(dateRange.from) : null;
@@ -197,16 +197,18 @@ export default function ReportsPage() {
                         <Label>Rango de Fechas</Label>
                         <DateRangePicker date={dateRange} onDateChange={setDateRange} />
                     </div>
-                    <div className="grid gap-2">
-                        <Label>Carrera</Label>
-                        <Select onValueChange={(v) => handleFilterChange('carreraId', v)} value={filters.carreraId} disabled={isJefe}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Todas las Carreras</SelectItem>
-                                {carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    {!isJefe && (
+                        <div className="grid gap-2">
+                            <Label>Carrera</Label>
+                            <Select onValueChange={(v) => handleFilterChange('carreraId', v)} value={filters.carreraId}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todas las Carreras</SelectItem>
+                                    {carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
                      <div className="grid gap-2">
                         <Label>Grupo</Label>
                         <Select onValueChange={(v) => handleFilterChange('grupoId', v)} value={filters.grupoId}>
