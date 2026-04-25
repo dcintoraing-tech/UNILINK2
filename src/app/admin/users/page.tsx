@@ -49,8 +49,9 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, doc, updateDoc, deleteDoc, writeBatch, query, where, getDocs } from 'firebase/firestore';
+import { useCollection, useFirestore, useMemoFirebase, useAuth } from '@/firebase';
+import { collection, doc, updateDoc, deleteDoc, writeBatch, query, where, getDocs, setDoc } from 'firebase/firestore';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 
 
 type UserRole = 'Docente' | 'Admin' | 'Alumno' | 'Jefe de carrera';
@@ -74,6 +75,7 @@ interface CatalogItem {
 
 export default function UsersPage() {
   const firestore = useFirestore();
+  const auth = useAuth();
   const usersCollectionRef = useMemoFirebase(() => collection(firestore, 'userProfiles'), [firestore]);
   const { data: usersData, isLoading } = useCollection<User>(usersCollectionRef);
   const users = usersData || [];
@@ -92,8 +94,7 @@ export default function UsersPage() {
 
   const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!editingUser) return;
-
+    
     const formData = new FormData(e.currentTarget);
     const userData = Object.fromEntries(formData.entries()) as any;
     
@@ -102,30 +103,69 @@ export default function UsersPage() {
         return;
     }
 
-    try {
-        const userDocRef = doc(firestore, 'userProfiles', editingUser.id);
+    if (editingUser) { // UPDATE LOGIC
+        try {
+            const userDocRef = doc(firestore, 'userProfiles', editingUser.id);
 
-        const updatedData: Partial<User> = {
-            name: userData.name,
-            email: userData.email,
-            role: userData.role,
-            carreraId: (userData.role === 'Jefe de carrera' || userData.role === 'Docente') ? userData.carreraId : undefined,
-            status: userData.status,
-        };
+            const updatedData: Partial<User> = {
+                name: userData.name,
+                email: userData.email,
+                role: userData.role,
+                carreraId: (userData.role === 'Jefe de carrera' || userData.role === 'Docente') ? userData.carreraId : undefined,
+                status: userData.status,
+            };
 
-        await updateDoc(userDocRef, updatedData);
+            await updateDoc(userDocRef, updatedData);
 
-        toast({ title: "Usuario actualizado", description: `El usuario ${userData.name} ha sido actualizado.` });
-        window.location.reload();
-    } catch(error: any) {
-        console.error("Error updating user: ", error);
-        toast({ variant: "destructive", title: "Error", description: "No se pudo actualizar el usuario." });
+            toast({ title: "Usuario actualizado", description: `El usuario ${userData.name} ha sido actualizado.` });
+            window.location.reload();
+        } catch(error: any) {
+            console.error("Error updating user: ", error);
+            toast({ variant: "destructive", title: "Error", description: "No se pudo actualizar el usuario." });
+        }
+    } else { // CREATE LOGIC
+        if (!userData.password) {
+            toast({ variant: "destructive", title: "Campo requerido", description: "La contraseña es obligatoria para nuevos usuarios." });
+            return;
+        }
+        try {
+            // Step 1: Create user in Firebase Auth
+            const userCredential = await createUserWithEmailAndPassword(auth, userData.email, userData.password);
+            const newUser = userCredential.user;
+
+            // Step 2: Create profile in Firestore
+            const userDocRef = doc(firestore, 'userProfiles', newUser.uid);
+            const newUserProfile: Omit<User, 'password'> = {
+                id: newUser.uid,
+                name: userData.name,
+                email: userData.email,
+                role: userData.role,
+                carreraId: (userData.role === 'Jefe de carrera' || userData.role === 'Docente') ? userData.carreraId : undefined,
+                status: 'Activo', // Default to active
+                createdAt: new Date().toISOString(),
+            };
+            
+            await setDoc(userDocRef, newUserProfile);
+
+            toast({ title: "Usuario Creado", description: `El usuario ${userData.name} ha sido creado exitosamente.` });
+            window.location.reload();
+
+        } catch (error: any) {
+            console.error("Error creating user: ", error);
+            let description = "No se pudo crear el usuario.";
+            if (error.code === 'auth/email-already-in-use') {
+                description = "El correo electrónico ya está en uso por otra cuenta.";
+            } else if (error.code === 'auth/weak-password') {
+                description = "La contraseña es demasiado débil. Debe tener al menos 6 caracteres.";
+            }
+            toast({ variant: "destructive", title: "Error al crear usuario", description: description });
+        }
     }
   };
 
-  const openEditDialog = (user: User) => {
+  const openDialog = (user: User | null) => {
     setEditingUser(user);
-    setSelectedFormRole(user.role);
+    setSelectedFormRole(user ? user.role : '');
     setShowPassword(false);
     setIsDialogOpen(true);
   };
@@ -142,7 +182,7 @@ export default function UsersPage() {
   };
   
   const handleDownloadTemplate = () => {
-    const headers = [['name', 'email', 'role', 'carreraId (solo para Jefe de carrera o Docente)']];
+    const headers = [['name', 'email', 'password', 'role', 'carreraId (solo para Jefe de carrera o Docente)']];
     const ws = XLSX.utils.aoa_to_sheet(headers);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
@@ -151,7 +191,10 @@ export default function UsersPage() {
   };
 
   const handleExport = () => {
-    const usersToExport = users.map(({ id, password, ...rest }) => rest);
+    const usersToExport = users.map(({ id, password, createdAt, ...rest }) => ({
+        ...rest,
+        createdAt: new Date(createdAt).toLocaleDateString(),
+    }));
     const ws = XLSX.utils.json_to_sheet(usersToExport);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Usuarios");
@@ -179,6 +222,7 @@ export default function UsersPage() {
             const batch = writeBatch(firestore);
             let updatedCount = 0;
             let skippedCount = 0;
+            let createdCount = 0;
             
             for (const item of json) {
                 const email = item.email ? String(item.email).trim().toLowerCase() : '';
@@ -191,7 +235,7 @@ export default function UsersPage() {
                 const q = query(collection(firestore, 'userProfiles'), where('email', '==', email));
                 const querySnapshot = await getDocs(q);
 
-                if (!querySnapshot.empty) {
+                if (!querySnapshot.empty) { // User exists, update them
                     const userDoc = querySnapshot.docs[0];
                     const updatedData: any = {
                         name: item.name,
@@ -200,22 +244,43 @@ export default function UsersPage() {
                     };
                     if (item.carreraId && (item.role === 'Jefe de carrera' || item.role === 'Docente')) {
                         updatedData.carreraId = item.carreraId;
+                    } else {
+                        updatedData.carreraId = null;
                     }
                     batch.update(userDoc.ref, updatedData);
                     updatedCount++;
-                } else {
-                    // Not creating new users via import to avoid auth/profile mismatches
-                    skippedCount++;
+                } else { // User does not exist, create them
+                    if (!item.password) {
+                        toast({ variant: "destructive", title: "Contraseña faltante", description: `No se puede crear el usuario '${email}' sin contraseña. Se omitirá.` });
+                        skippedCount++;
+                        continue;
+                    }
+                    try {
+                        const userCredential = await createUserWithEmailAndPassword(auth, email, item.password);
+                        const newUser = userCredential.user;
+                        const userDocRef = doc(firestore, 'userProfiles', newUser.uid);
+                        const newUserProfile: Omit<User, 'password'> = {
+                            id: newUser.uid,
+                            name: item.name,
+                            email: email,
+                            role: item.role,
+                            carreraId: (item.role === 'Jefe de carrera' || item.role === 'Docente') ? item.carreraId : undefined,
+                            status: 'Activo',
+                            createdAt: new Date().toISOString(),
+                        };
+                         batch.set(userDocRef, newUserProfile);
+                         createdCount++;
+                    } catch (error: any) {
+                         toast({ variant: "destructive", title: `Error al crear ${email}`, description: error.message });
+                         skippedCount++;
+                    }
                 }
             }
+            
+            await batch.commit();
+            toast({ title: "Importación exitosa", description: `${createdCount} creados, ${updatedCount} actualizados, ${skippedCount} omitidos.` });
+            window.location.reload();
 
-            if (updatedCount > 0) {
-                 await batch.commit();
-                 toast({ title: "Importación exitosa", description: `${updatedCount} usuarios actualizados. ${skippedCount} omitidos.` });
-                 window.location.reload();
-            } else {
-                 toast({ title: "Importación finalizada", description: `No se actualizaron usuarios. ${skippedCount} omitidos.` });
-            }
 
         } catch (error: any) {
             console.error("Error al importar el archivo:", error);
@@ -244,9 +309,13 @@ export default function UsersPage() {
           <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                   <CardTitle>Gestión de Usuarios</CardTitle>
-                  <CardDescription>Edita, importa y exporta usuarios. La creación de usuarios se realiza a través de la importación.</CardDescription>
+                  <CardDescription>Crea, edita, importa y exporta usuarios del personal.</CardDescription>
               </div>
               <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
+                <Button size="sm" onClick={() => openDialog(null)}>
+                    <PlusCircle className="h-3.5 w-3.5 mr-1" />
+                    Crear Usuario
+                </Button>
                 <Button size="sm" variant="outline" onClick={handleImportClick}>
                     <Upload className="h-3.5 w-3.5 mr-1" />
                     Importar
@@ -282,7 +351,7 @@ export default function UsersPage() {
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="h-8 w-8 -mt-2 -mr-2"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                             <DropdownMenuContent>
-                                <DropdownMenuItem onClick={() => openEditDialog(user)}>Editar</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => openDialog(user)}>Editar</DropdownMenuItem>
                                 <AlertDialog>
                                     <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
                                     <AlertDialogContent>
@@ -349,7 +418,7 @@ export default function UsersPage() {
                           <DropdownMenuTrigger asChild><Button aria-haspopup="true" size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /><span className="sr-only">Toggle menu</span></Button></DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Acciones</DropdownMenuLabel>
-                              <DropdownMenuItem onClick={() => openEditDialog(user)}>Editar</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openDialog(user)}>Editar</DropdownMenuItem>
                                <AlertDialog>
                                 <AlertDialogTrigger asChild>
                                   <DropdownMenuItem onSelect={(event) => event.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem>
@@ -383,8 +452,10 @@ export default function UsersPage() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Editar Usuario</DialogTitle>
-            <DialogDescription>Actualiza los detalles del usuario.</DialogDescription>
+            <DialogTitle>{editingUser ? 'Editar Usuario' : 'Crear Nuevo Usuario'}</DialogTitle>
+            <DialogDescription>
+              {editingUser ? 'Actualiza los detalles del usuario.' : 'Completa los datos para registrar un nuevo usuario.'}
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleFormSubmit}>
               <ScrollArea className="max-h-[60vh] pr-4">
@@ -392,14 +463,32 @@ export default function UsersPage() {
                     <div className="grid gap-2"><Label htmlFor="name">Nombre</Label><Input id="name" name="name" defaultValue={editingUser?.name} required /></div>
                     <div className="grid gap-2"><Label htmlFor="email">Correo electrónico</Label><Input id="email" name="email" type="email" defaultValue={editingUser?.email} required /></div>
                     
+                    {!editingUser && (
+                        <div className="grid gap-2">
+                        <Label htmlFor="password">Contraseña</Label>
+                        <div className="relative">
+                            <Input id="password" name="password" type={showPassword ? 'text' : 'password'} required />
+                            <Button 
+                                type="button" 
+                                variant="ghost" 
+                                size="icon" 
+                                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground"
+                                onClick={() => setShowPassword(!showPassword)}
+                            >
+                                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                <span className="sr-only">{showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}</span>
+                            </Button>
+                        </div>
+                        </div>
+                    )}
+                    
                     <div className="grid gap-2">
                       <Label htmlFor="role">Rol</Label>
-                      <Select name="role" defaultValue={editingUser?.role} onValueChange={(value) => setSelectedFormRole(value as UserRole)}>
+                      <Select name="role" defaultValue={editingUser?.role} onValueChange={(value) => setSelectedFormRole(value as UserRole)} required>
                         <SelectTrigger id="role"><SelectValue placeholder="Selecciona un rol" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="Docente">Docente</SelectItem>
                           <SelectItem value="Admin">Admin</SelectItem>
-                          <SelectItem value="Alumno">Alumno</SelectItem>
                           <SelectItem value="Jefe de carrera">Jefe de carrera</SelectItem>
                         </SelectContent>
                       </Select>
@@ -430,7 +519,7 @@ export default function UsersPage() {
               </ScrollArea>
               <DialogFooter className="pt-4">
                 <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                <Button type="submit">Guardar Cambios</Button>
+                <Button type="submit">{editingUser ? 'Guardar Cambios' : 'Crear Usuario'}</Button>
               </DialogFooter>
           </form>
         </DialogContent>
