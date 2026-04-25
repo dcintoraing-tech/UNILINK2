@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,7 +9,7 @@ import Link from "next/link";
 import { Mail, Lock, User as UserIcon, Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { collection, doc, getDocs, limit, query, setDoc } from "firebase/firestore";
+import { doc, getDocs, limit, query, collection, setDoc } from "firebase/firestore";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -37,7 +38,7 @@ const formSchema = z.object({
     message: "La contraseña debe tener al menos 6 caracteres.",
   }),
   confirmPassword: z.string(),
-  role: z.enum(['Docente', 'Admin', 'Alumno'], { required_error: "Debes seleccionar un rol." })
+  role: z.enum(['Docente', 'Admin', 'Alumno']).optional(),
 }).refine(data => data.password === data.confirmPassword, {
   message: "Las contraseñas no coinciden",
   path: ["confirmPassword"],
@@ -90,6 +91,11 @@ export default function SignupPage() {
   }, [isFirstUser, isChecking, form]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    if (!isFirstUser && !values.role) {
+      form.setError("role", { type: "manual", message: "Debes seleccionar un tipo de usuario." });
+      return;
+    }
+
     try {
         const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
         const user = userCredential.user;
@@ -269,3 +275,5 @@ export default function SignupPage() {
     </Card>
   );
 }
+
+    
