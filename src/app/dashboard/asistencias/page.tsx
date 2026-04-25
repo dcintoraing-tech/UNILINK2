@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -626,7 +627,37 @@ export default function TeacherAttendancePage() {
                                 <CardDescription>El estado se actualizará en tiempo real a medida que el sistema reconozca a los estudiantes.</CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <Table>
+                                {/* Mobile View */}
+                                <div className="grid gap-4 md:hidden">
+                                    {groupStudentList.map(student => (
+                                        <Card key={student.id}>
+                                            <CardContent className="p-4 flex flex-col gap-3">
+                                                <div className="flex justify-between items-start">
+                                                    <div className="flex items-center gap-3">
+                                                        <Avatar>
+                                                            <AvatarImage src={student.facialImage || undefined} alt={`${student.firstName} ${student.lastName}`} />
+                                                            <AvatarFallback><UserIcon /></AvatarFallback>
+                                                        </Avatar>
+                                                        <div>
+                                                            <p className="font-medium">{student.firstName} {student.lastName}</p>
+                                                            <Badge variant={getStatusVariant(student.status)}>{student.status}</Badge>
+                                                        </div>
+                                                    </div>
+                                                    <Button variant="secondary" size="sm" onClick={() => handleOpenJustifyDialog(student)} disabled={student.status !== 'Falta'}>
+                                                        <FilePlus className="mr-2 h-3 w-3" />
+                                                        Justificar
+                                                    </Button>
+                                                </div>
+                                                <div className="text-sm text-muted-foreground space-y-1">
+                                                    <p>Materia: {student.subjectName || 'N/A'}</p>
+                                                    <p>Llegada: {student.arrivalTime || 'N/A'}</p>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                                {/* Desktop View */}
+                                <Table className="hidden md:table">
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>Estudiante</TableHead>

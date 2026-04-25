@@ -366,7 +366,54 @@ export default function UsersPage() {
               accept=".xlsx, .xls, .csv"
               className="hidden"
           />
-          <Table>
+          {/* Mobile View */}
+          <div className="grid gap-4 md:hidden">
+            {users.map((user) => (
+                <Card key={user.id}>
+                    <CardHeader className="flex flex-row items-start justify-between pb-2">
+                        <div>
+                            <CardTitle className="text-base font-semibold">{user.name}</CardTitle>
+                            <CardDescription>{user.email}</CardDescription>
+                        </div>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="h-8 w-8 -mt-2 -mr-2"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                                <DropdownMenuItem onClick={() => openEditDialog(user)}>Editar</DropdownMenuItem>
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription></AlertDialogHeader>
+                                        <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteUser(user.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction></AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Rol</span>
+                            <div className="text-right">
+                                {user.role}
+                                {(user.role === 'Jefe de carrera' || user.role === 'Docente') && user.carreraId && (
+                                    <div className="text-xs text-muted-foreground">({getCarreraName(user.carreraId)})</div>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex justify-between text-sm items-center">
+                            <span className="text-muted-foreground">Estado</span>
+                            <Badge variant={user.status === 'Activo' ? 'default' : 'secondary'}>{user.status}</Badge>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Creado</span>
+                            <span>{new Date(user.createdAt).toLocaleDateString()}</span>
+                        </div>
+                    </CardContent>
+                </Card>
+            ))}
+          </div>
+
+          {/* Desktop View */}
+          <Table className="hidden md:table">
             <TableHeader>
               <TableRow>
                 <TableHead>Nombre</TableHead>

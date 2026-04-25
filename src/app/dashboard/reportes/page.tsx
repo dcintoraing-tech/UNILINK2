@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
@@ -124,7 +125,24 @@ export default function TeacherReportsPage() {
                     <CardContent className="grid gap-6 md:grid-cols-2">
                         <div>
                              <h3 className="font-semibold mb-4">Detalle por Estudiante</h3>
-                             <Table>
+                             {/* Mobile View */}
+                            <div className="grid gap-4 md:hidden">
+                                {reportData.studentReports.map(student => (
+                                    <Card key={student.id}>
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-base">{student.name}</CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="text-sm space-y-2">
+                                            <div className="flex justify-between"><span className="text-muted-foreground">Asistencias</span> <span>{student.presents}</span></div>
+                                            <div className="flex justify-between"><span className="text-muted-foreground">Retardos</span> <span>{student.lates}</span></div>
+                                            <div className="flex justify-between"><span className="text-muted-foreground">Faltas</span> <span className="font-bold text-destructive">{student.absences}</span></div>
+                                            <div className="flex justify-between"><span className="text-muted-foreground">Justificadas</span> <span>{student.justified}</span></div>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                             {/* Desktop View */}
+                             <Table className="hidden md:table">
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Estudiante</TableHead>
