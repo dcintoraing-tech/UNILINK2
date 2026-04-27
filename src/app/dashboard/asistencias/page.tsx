@@ -246,94 +246,101 @@ export default function TeacherAttendancePage() {
     const markAttendance = useCallback((studentId: string) => {
         setGroupStudentList(currentList => {
             const studentToMark = currentList.find(s => s.id === studentId);
-
+    
             if (!studentToMark || studentToMark.status !== 'Pendiente') {
-                return currentList; 
+                return currentList;
             }
-
+    
             const now = new Date();
-            const jsDay = now.getDay();
-            if (jsDay < 1 || jsDay > 5) {
-                return currentList; 
-            }
-            const scheduleDayIndex = jsDay - 1;
-
             const dateString = now.toISOString().split('T')[0];
-            let subjectName = 'Clase Actual';
-            let materiaId = 'default-materia';
-            let docenteId = 'default-docente';
-            let status: AttendanceStatus = 'Presente';
-
-            const studentSchedule = horarios.find(h => h.grupoId === studentToMark.assignedGroupId);
-            if (studentSchedule && studentSchedule.schedule) {
-                const todaySchedule = studentSchedule.schedule[String(scheduleDayIndex)];
-        
-                if (todaySchedule) {
-                    const currentHour = now.getHours();
-                    const currentBlockIndex = currentHour - 7; 
-
-                    let activeBlock: HorarioBlock | null = null;
-                    let activeBlockKey: string | undefined;
-
-                    const sortedBlockKeys = Object.keys(todaySchedule).map(Number).sort((a,b) => a - b);
-                    
-                    for (const key of sortedBlockKeys) {
-                        const block = todaySchedule[String(key)];
-                        if(block && key <= currentBlockIndex && (key + (block.duracion || 1) > currentBlockIndex)) {
-                            activeBlock = block;
-                            activeBlockKey = String(key);
-                            break;
-                        }
-                    }
-                    
-                    if (activeBlock && activeBlockKey) {
-                        materiaId = activeBlock.materiaId;
-                        docenteId = activeBlock.docenteId;
-                        subjectName = materias.find(m => m.id === activeBlock.materiaId)?.materia || 'Materia Desconocida';
-
-                        const horaInicioStr = ["07:00", "08:00", "09:00", "10:00"][parseInt(activeBlockKey, 10)];
-                        const [hours, minutes] = horaInicioStr.split(':').map(Number);
-                        const startTime = new Date(now);
-                        startTime.setHours(hours, minutes, 0, 0);
-                        const toleranceTime = new Date(startTime);
-                        toleranceTime.setMinutes(startTime.getMinutes() + config.toleranceMinutes);
-                        status = now <= toleranceTime ? 'Presente' : 'Retardo';
-                    } else {
-                        return currentList; 
-                    }
-                } else {
-                    return currentList; 
-                }
-            } else {
-                return currentList; 
-            }
-
             const arrivalTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
+            const jsDay = now.getDay();
+            const scheduleDayIndex = jsDay - 1;
+    
+            if (scheduleDayIndex < 0 || scheduleDayIndex > 4) {
+                return currentList;
+            }
+    
+            const studentSchedule = horarios.find(h => h.grupoId === studentToMark.assignedGroupId);
+            if (!studentSchedule || !studentSchedule.schedule) {
+                toast({
+                    variant: 'destructive',
+                    title: 'Horario no encontrado',
+                    description: `No se encontró un horario configurado para el grupo de ${studentToMark.firstName}.`,
+                });
+                return currentList;
+            }
+    
+            const todaySchedule = studentSchedule.schedule[String(scheduleDayIndex)];
+            if (!todaySchedule || Object.keys(todaySchedule).length === 0) {
+                toast({
+                    variant: 'destructive',
+                    title: 'No hay clases hoy',
+                    description: `No hay clases programadas para este grupo el día de hoy.`,
+                });
+                return currentList;
+            }
+    
+            const currentHour = now.getHours();
+            const currentBlockIndex = currentHour - 7;
+            let activeBlock: HorarioBlock | null = null;
+            let activeBlockKey: string | undefined;
+    
+            const sortedBlockKeys = Object.keys(todaySchedule).map(Number).sort((a, b) => a - b);
+            for (const key of sortedBlockKeys) {
+                const block = todaySchedule[String(key)];
+                if (block && key <= currentBlockIndex && (key + (block.duracion || 1) > currentBlockIndex)) {
+                    activeBlock = block;
+                    activeBlockKey = String(key);
+                    break;
+                }
+            }
+    
+            if (!activeBlock || !activeBlockKey) {
+                toast({
+                    variant: 'destructive',
+                    title: 'No hay clase activa',
+                    description: `Se reconoció a ${studentToMark.firstName}, pero no hay una clase activa en este momento.`,
+                });
+                return currentList;
+            }
+    
+            // --- All checks passed, we have an active class ---
+    
+            const { materiaId, docenteId } = activeBlock;
+            const subjectName = materias.find(m => m.id === materiaId)?.materia || 'Materia Desconocida';
+    
+            const horaInicioStr = ["07:00", "08:00", "09:00", "10:00"][parseInt(activeBlockKey, 10)];
+            const [hours, minutes] = horaInicioStr.split(':').map(Number);
+            const startTime = new Date(now);
+            startTime.setHours(hours, minutes, 0, 0);
+            const toleranceTime = new Date(startTime);
+            toleranceTime.setMinutes(startTime.getMinutes() + config.toleranceMinutes);
+            const status: AttendanceStatus = now <= toleranceTime ? 'Presente' : 'Retardo';
+            
             toast({
                 title: `Asistencia Registrada (${status})`,
-                description: `${studentToMark.firstName} ${studentToMark.lastName} para ${subjectName}.`,
+                description: `${studentToMark.firstName} ${studentToMark.lastName} ha sido marcado para ${subjectName}.`,
             });
             
             const recordId = `att-${studentId}-${dateString}-${materiaId}`;
             const recordExists = attendance.some(a => a.id === recordId);
-
+    
             if (!recordExists) {
                 const recordRef = doc(firestore, 'attendance', recordId);
-                const newRecordData = {
+                setDoc(recordRef, {
                     studentId: studentId,
                     date: dateString,
                     materiaAsignacionId: materiaId,
                     docenteId: docenteId,
                     status: status,
                     arrivalTime: arrivalTime
-                };
-                setDoc(recordRef, newRecordData).catch(err => {
+                }).catch(err => {
                     console.error("Error writing attendance record: ", err);
                     toast({ variant: 'destructive', title: 'Error de Red', description: 'No se pudo guardar la asistencia.' });
                 });
             }
-
+    
             return currentList.map(s =>
                 s.id === studentId
                     ? { ...s, status, arrivalTime, subjectName }
