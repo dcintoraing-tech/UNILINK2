@@ -103,7 +103,6 @@ export default function TeacherAttendancePage() {
     // --- Component State ---
     const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
     const [groupStudentList, setGroupStudentList] = useState<DisplayStudent[]>([]);
-    const groupStudentListRef = useRef(groupStudentList);
 
     const [isTakingAttendance, setIsTakingAttendance] = useState(false);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
@@ -122,10 +121,6 @@ export default function TeacherAttendancePage() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const recognitionIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-    useEffect(() => {
-        groupStudentListRef.current = groupStudentList;
-    }, [groupStudentList]);
 
     // Load face-api.js models
     useEffect(() => {
@@ -165,30 +160,43 @@ export default function TeacherAttendancePage() {
             return;
         }
 
-        try {
-            const studentsInGroup = allStudents.filter(s => s.assignedGroupId === selectedGroup && s.embedding && s.embedding.length > 0);
+        let isMounted = true;
+        
+        const createMatcher = () => {
+            try {
+                const studentsInGroup = allStudents.filter(s => s.assignedGroupId === selectedGroup && s.embedding && s.embedding.length > 0);
 
-            if (studentsInGroup.length === 0) {
-                setFaceMatcher(null);
-                setFaceMatcherError("No hay estudiantes con registro facial en este grupo.");
-                return;
+                if (studentsInGroup.length === 0) {
+                    if (isMounted) {
+                        setFaceMatcher(null);
+                        setFaceMatcherError("No hay estudiantes con registro facial en este grupo.");
+                    }
+                    return;
+                }
+
+                const labeledFaceDescriptors = studentsInGroup.map(student =>
+                    new faceapi.LabeledFaceDescriptors(
+                        student.id,
+                        [Float32Array.from(student.embedding!)]
+                    )
+                );
+
+                const newFaceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.6);
+                if (isMounted) {
+                    setFaceMatcher(newFaceMatcher);
+                    setFaceMatcherError(null);
+                }
+            } catch (error) {
+                console.error("Error creating FaceMatcher:", error);
+                if (isMounted) {
+                    setFaceMatcher(null);
+                    setFaceMatcherError('No se pudo inicializar el sistema de reconocimiento facial.');
+                }
             }
-
-            const labeledFaceDescriptors = studentsInGroup.map(student =>
-                new faceapi.LabeledFaceDescriptors(
-                    student.id,
-                    [Float32Array.from(student.embedding!)]
-                )
-            );
-
-            const newFaceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.6);
-            setFaceMatcher(newFaceMatcher);
-            setFaceMatcherError(null);
-        } catch (error) {
-            console.error("Error creating FaceMatcher:", error);
-            setFaceMatcher(null);
-            setFaceMatcherError('No se pudo inicializar el sistema de reconocimiento facial.');
         }
+        createMatcher();
+        
+        return () => { isMounted = false; }
     }, [selectedGroup, allStudents, modelsLoaded]);
     
     // Effect to show toast on error
@@ -236,103 +244,103 @@ export default function TeacherAttendancePage() {
     }, []);
 
     const markAttendance = useCallback((studentId: string) => {
-        const studentToMark = groupStudentListRef.current.find(s => s.id === studentId);
+        setGroupStudentList(currentList => {
+            const studentToMark = currentList.find(s => s.id === studentId);
 
-        if (!studentToMark || studentToMark.status !== 'Pendiente') {
-            return;
-        }
+            if (!studentToMark || studentToMark.status !== 'Pendiente') {
+                return currentList; 
+            }
 
-        const now = new Date();
-        const jsDay = now.getDay();
-        if (jsDay < 1 || jsDay > 5) {
-            return;
-        }
-        const scheduleDayIndex = jsDay - 1;
+            const now = new Date();
+            const jsDay = now.getDay();
+            if (jsDay < 1 || jsDay > 5) {
+                return currentList; 
+            }
+            const scheduleDayIndex = jsDay - 1;
 
-        const dateString = now.toISOString().split('T')[0];
-        let subjectName = 'Clase Actual';
-        let materiaId = 'default-materia';
-        let docenteId = 'default-docente';
-        let status: AttendanceStatus = 'Presente';
+            const dateString = now.toISOString().split('T')[0];
+            let subjectName = 'Clase Actual';
+            let materiaId = 'default-materia';
+            let docenteId = 'default-docente';
+            let status: AttendanceStatus = 'Presente';
 
-        const studentSchedule = horarios.find(h => h.grupoId === studentToMark.assignedGroupId);
-        if (studentSchedule && studentSchedule.schedule) {
-            const todaySchedule = studentSchedule.schedule[String(scheduleDayIndex)];
-    
-            if (todaySchedule) {
-                const currentHour = now.getHours();
-                const currentBlockIndex = currentHour - 7; // 7am -> 0, 8am -> 1, etc.
+            const studentSchedule = horarios.find(h => h.grupoId === studentToMark.assignedGroupId);
+            if (studentSchedule && studentSchedule.schedule) {
+                const todaySchedule = studentSchedule.schedule[String(scheduleDayIndex)];
+        
+                if (todaySchedule) {
+                    const currentHour = now.getHours();
+                    const currentBlockIndex = currentHour - 7; 
 
-                let activeBlock: HorarioBlock | null = null;
-                let activeBlockKey: string | undefined;
+                    let activeBlock: HorarioBlock | null = null;
+                    let activeBlockKey: string | undefined;
 
-                const sortedBlockKeys = Object.keys(todaySchedule).map(Number).sort((a,b) => a - b);
-                
-                for (const key of sortedBlockKeys) {
-                    const block = todaySchedule[String(key)];
-                    if(block && key <= currentBlockIndex && (key + (block.duracion || 1) > currentBlockIndex)) {
-                        activeBlock = block;
-                        activeBlockKey = String(key);
-                        break;
+                    const sortedBlockKeys = Object.keys(todaySchedule).map(Number).sort((a,b) => a - b);
+                    
+                    for (const key of sortedBlockKeys) {
+                        const block = todaySchedule[String(key)];
+                        if(block && key <= currentBlockIndex && (key + (block.duracion || 1) > currentBlockIndex)) {
+                            activeBlock = block;
+                            activeBlockKey = String(key);
+                            break;
+                        }
                     }
-                }
-                
-                if (activeBlock && activeBlockKey) {
-                    materiaId = activeBlock.materiaId;
-                    docenteId = activeBlock.docenteId;
-                    subjectName = materias.find(m => m.id === activeBlock.materiaId)?.materia || 'Materia Desconocida';
+                    
+                    if (activeBlock && activeBlockKey) {
+                        materiaId = activeBlock.materiaId;
+                        docenteId = activeBlock.docenteId;
+                        subjectName = materias.find(m => m.id === activeBlock.materiaId)?.materia || 'Materia Desconocida';
 
-                    const horaInicioStr = ["07:00", "08:00", "09:00", "10:00"][parseInt(activeBlockKey, 10)];
-                    const [hours, minutes] = horaInicioStr.split(':').map(Number);
-                    const startTime = new Date(now);
-                    startTime.setHours(hours, minutes, 0, 0);
-                    const toleranceTime = new Date(startTime);
-                    toleranceTime.setMinutes(startTime.getMinutes() + config.toleranceMinutes);
-                    status = now <= toleranceTime ? 'Presente' : 'Retardo';
+                        const horaInicioStr = ["07:00", "08:00", "09:00", "10:00"][parseInt(activeBlockKey, 10)];
+                        const [hours, minutes] = horaInicioStr.split(':').map(Number);
+                        const startTime = new Date(now);
+                        startTime.setHours(hours, minutes, 0, 0);
+                        const toleranceTime = new Date(startTime);
+                        toleranceTime.setMinutes(startTime.getMinutes() + config.toleranceMinutes);
+                        status = now <= toleranceTime ? 'Presente' : 'Retardo';
+                    } else {
+                        return currentList; 
+                    }
                 } else {
-                    return;
+                    return currentList; 
                 }
             } else {
-                 return;
+                return currentList; 
             }
-        } else {
-            return;
-        }
 
-        const arrivalTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const arrivalTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-        setGroupStudentList(prevList =>
-            prevList.map(s =>
+            toast({
+                title: `Asistencia Registrada (${status})`,
+                description: `${studentToMark.firstName} ${studentToMark.lastName} para ${subjectName}.`,
+            });
+            
+            const recordId = `att-${studentId}-${dateString}-${materiaId}`;
+            const recordExists = attendance.some(a => a.id === recordId);
+
+            if (!recordExists) {
+                const recordRef = doc(firestore, 'attendance', recordId);
+                const newRecordData = {
+                    studentId: studentId,
+                    date: dateString,
+                    materiaAsignacionId: materiaId,
+                    docenteId: docenteId,
+                    status: status,
+                    arrivalTime: arrivalTime
+                };
+                setDoc(recordRef, newRecordData).catch(err => {
+                    console.error("Error writing attendance record: ", err);
+                    toast({ variant: 'destructive', title: 'Error de Red', description: 'No se pudo guardar la asistencia.' });
+                });
+            }
+
+            return currentList.map(s =>
                 s.id === studentId
                     ? { ...s, status, arrivalTime, subjectName }
                     : s
-            )
-        );
-
-        const recordId = `att-${studentId}-${dateString}-${materiaId}`;
-        const recordExists = attendance.some(a => a.id === recordId);
-
-        if (!recordExists) {
-            const recordRef = doc(firestore, 'attendance', recordId);
-            const newRecordData = {
-                studentId: studentId,
-                date: dateString,
-                materiaAsignacionId: materiaId,
-                docenteId: docenteId,
-                status: status,
-                arrivalTime: arrivalTime
-            };
-            setDoc(recordRef, newRecordData).catch(err => {
-                console.error("Error writing attendance record: ", err);
-                toast({ variant: 'destructive', title: 'Error de Red', description: 'No se pudo guardar la asistencia.' });
-            });
-        }
-
-        toast({
-            title: `Asistencia Registrada (${status})`,
-            description: `${studentToMark.firstName} ${studentToMark.lastName} para ${subjectName}.`,
+            );
         });
-    }, [horarios, materias, config, toast, attendance, firestore]);
+    }, [horarios, materias, config, toast, firestore, attendance]);
 
     // Recognition loop
     useEffect(() => {
