@@ -110,6 +110,7 @@ export default function TeacherAttendancePage() {
     const [modelsLoaded, setModelsLoaded] = useState(false);
     const [modelError, setModelError] = useState<string | null>(null);
     const [isDetecting, setIsDetecting] = useState(false);
+    const [faceMatcherError, setFaceMatcherError] = useState<string | null>(null);
 
     const [isJustifyOpen, setIsJustifyOpen] = useState(false);
     const [justifyingStudent, setJustifyingStudent] = useState<DisplayStudent | null>(null);
@@ -157,6 +158,7 @@ export default function TeacherAttendancePage() {
 
     // Create FaceMatcher when group changes
     const faceMatcher = useMemo(() => {
+        setFaceMatcherError(null);
         if (!selectedGroup || allStudents.length === 0 || !modelsLoaded) return null;
 
         const studentsInGroup = allStudents.filter(s => s.assignedGroupId === selectedGroup && s.embedding && s.embedding.length > 0);
@@ -178,14 +180,20 @@ export default function TeacherAttendancePage() {
             return new faceapi.FaceMatcher(labeledFaceDescriptors, 0.6);
         } catch (error) {
             console.error("Error creating FaceMatcher:", error);
+            setFaceMatcherError('No se pudo crear el comparador de rostros.');
+            return null;
+        }
+    }, [selectedGroup, allStudents, modelsLoaded]);
+    
+    useEffect(() => {
+        if (faceMatcherError) {
             toast({
                 variant: 'destructive',
                 title: 'Error de IA',
-                description: 'No se pudo crear el comparador de rostros.',
+                description: faceMatcherError,
             });
-            return null;
         }
-    }, [selectedGroup, allStudents, modelsLoaded, toast]);
+    }, [faceMatcherError, toast]);
 
     useEffect(() => {
         if (selectedGroup) {
