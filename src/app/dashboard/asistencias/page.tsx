@@ -93,12 +93,12 @@ export default function TeacherAttendancePage() {
     const { data: attendanceData } = useCollection<AttendanceRecord>(useMemoFirebase(() => collection(firestore, 'attendance'), [firestore]));
     const { data: configData } = useDoc<AttendanceConfig>(useMemoFirebase(() => doc(firestore, 'config', 'attendance'), [firestore]));
     
-    const allStudents = allStudentsData || [];
-    const horarios = horariosData || [];
-    const grupos = gruposData || [];
-    const materias = materiasData || [];
-    const attendance = attendanceData || [];
-    const config = configData || { toleranceMinutes: 10, absenceLimitMinutes: 30 };
+    const allStudents = useMemo(() => allStudentsData || [], [allStudentsData]);
+    const horarios = useMemo(() => horariosData || [], [horariosData]);
+    const grupos = useMemo(() => gruposData || [], [gruposData]);
+    const materias = useMemo(() => materiasData || [], [materiasData]);
+    const attendance = useMemo(() => attendanceData || [], [attendanceData]);
+    const config = useMemo(() => configData || { toleranceMinutes: 10, absenceLimitMinutes: 30 }, [configData]);
 
     // --- Component State ---
     const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
