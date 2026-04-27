@@ -103,6 +103,7 @@ export default function TeacherAttendancePage() {
     // --- Component State ---
     const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
     const [groupStudentList, setGroupStudentList] = useState<DisplayStudent[]>([]);
+    const groupStudentListRef = useRef(groupStudentList);
 
     const [isTakingAttendance, setIsTakingAttendance] = useState(false);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
@@ -119,6 +120,10 @@ export default function TeacherAttendancePage() {
     const streamRef = useRef<MediaStream | null>(null);
     const recognitionIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+    useEffect(() => {
+        groupStudentListRef.current = groupStudentList;
+    }, [groupStudentList]);
+
     // Load face-api.js models
     useEffect(() => {
         const loadModels = async () => {
@@ -132,15 +137,12 @@ export default function TeacherAttendancePage() {
                 }
 
                 const MODEL_URL = window.location.origin + '/models';
-                console.log("Cargando modelos de IA desde:", MODEL_URL);
-
                 await Promise.all([
                     faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
                     faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
                     faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
                 ]);
                 
-                console.log("¡Todos los modelos de IA se cargaron exitosamente! ✅");
                 setModelsLoaded(true);
                 setModelError(null);
 
@@ -160,7 +162,6 @@ export default function TeacherAttendancePage() {
         const studentsInGroup = allStudents.filter(s => s.assignedGroupId === selectedGroup && s.embedding && s.embedding.length > 0);
 
         if (studentsInGroup.length === 0) {
-            console.log("No students with embeddings in this group.");
             return null;
         }
 
@@ -220,47 +221,67 @@ export default function TeacherAttendancePage() {
     }, []);
 
     const markAttendance = useCallback((studentId: string) => {
-        const studentToMark = groupStudentList.find(s => s.id === studentId);
+        const studentToMark = groupStudentListRef.current.find(s => s.id === studentId);
 
         if (!studentToMark || studentToMark.status !== 'Pendiente') {
-            return; // Already marked
+            return;
         }
 
         const now = new Date();
+        const jsDay = now.getDay();
+        if (jsDay < 1 || jsDay > 5) {
+            return;
+        }
+        const scheduleDayIndex = jsDay - 1;
+
         const dateString = now.toISOString().split('T')[0];
-        let subjectName = 'Clase de Prueba';
+        let subjectName = 'Clase Actual';
         let materiaId = 'default-materia';
         let docenteId = 'default-docente';
         let status: AttendanceStatus = 'Presente';
 
         const studentSchedule = horarios.find(h => h.grupoId === studentToMark.assignedGroupId);
         if (studentSchedule && studentSchedule.schedule) {
-            const dayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1;
-            const todaySchedule = studentSchedule.schedule[String(dayIndex) as keyof typeof studentSchedule.schedule];
+            const todaySchedule = studentSchedule.schedule[String(scheduleDayIndex)];
     
             if (todaySchedule) {
-                const sortedBlockKeys = Object.keys(todaySchedule).sort((a,b) => parseInt(a) - parseInt(b));
-                const firstBlockKey = sortedBlockKeys.find(key => todaySchedule[key as keyof typeof todaySchedule] !== null);
+                const currentHour = now.getHours();
+                const currentBlockIndex = currentHour - 7; // 7am -> 0, 8am -> 1, etc.
+
+                let activeBlock: HorarioBlock | null = null;
+                let activeBlockKey: string | undefined;
+
+                const sortedBlockKeys = Object.keys(todaySchedule).map(Number).sort((a,b) => a - b);
                 
-                if (firstBlockKey !== undefined) {
-                    const block = todaySchedule[firstBlockKey as keyof typeof todaySchedule];
-                    const blockIndexNumber = parseInt(firstBlockKey, 10);
-                    const horaInicioStr = ["07:00", "08:00", "09:00", "10:00"][blockIndexNumber];
-    
-                    if (block && horaInicioStr) {
-                        materiaId = block.materiaId;
-                        docenteId = block.docenteId;
-                        subjectName = materias.find(m => m.id === block.materiaId)?.materia || 'Materia Desconocida';
-    
-                        const [hours, minutes] = horaInicioStr.split(':').map(Number);
-                        const startTime = new Date(now);
-                        startTime.setHours(hours, minutes, 0, 0);
-                        const toleranceTime = new Date(startTime);
-                        toleranceTime.setMinutes(startTime.getMinutes() + config.toleranceMinutes);
-                        status = now <= toleranceTime ? 'Presente' : 'Retardo';
+                for (const key of sortedBlockKeys) {
+                    const block = todaySchedule[String(key)];
+                    if(block && key <= currentBlockIndex && (key + (block.duracion || 1) > currentBlockIndex)) {
+                        activeBlock = block;
+                        activeBlockKey = String(key);
+                        break;
                     }
                 }
+                
+                if (activeBlock && activeBlockKey) {
+                    materiaId = activeBlock.materiaId;
+                    docenteId = activeBlock.docenteId;
+                    subjectName = materias.find(m => m.id === activeBlock.materiaId)?.materia || 'Materia Desconocida';
+
+                    const horaInicioStr = ["07:00", "08:00", "09:00", "10:00"][parseInt(activeBlockKey, 10)];
+                    const [hours, minutes] = horaInicioStr.split(':').map(Number);
+                    const startTime = new Date(now);
+                    startTime.setHours(hours, minutes, 0, 0);
+                    const toleranceTime = new Date(startTime);
+                    toleranceTime.setMinutes(startTime.getMinutes() + config.toleranceMinutes);
+                    status = now <= toleranceTime ? 'Presente' : 'Retardo';
+                } else {
+                    return;
+                }
+            } else {
+                 return;
             }
+        } else {
+            return;
         }
 
         const arrivalTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -296,7 +317,7 @@ export default function TeacherAttendancePage() {
             title: `Asistencia Registrada (${status})`,
             description: `${studentToMark.firstName} ${studentToMark.lastName} para ${subjectName}.`,
         });
-    }, [groupStudentList, horarios, materias, config, toast, attendance, firestore]);
+    }, [horarios, materias, config, toast, attendance, firestore]);
 
     // Recognition loop
     useEffect(() => {
@@ -398,10 +419,16 @@ export default function TeacherAttendancePage() {
 
             const now = new Date();
             const dateString = now.toISOString().split('T')[0];
+            
+            const jsDay = now.getDay();
+            if (jsDay < 1 || jsDay > 5) {
+                toast({ title: "Pase de lista detenido", description: `No hay clases programadas para hoy.` });
+                return;
+            }
+            const scheduleDayIndex = jsDay - 1;
 
             const studentSchedule = horarios.find(h => h.grupoId === selectedGroup);
-            const dayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1;
-            const todaySchedule = studentSchedule?.schedule?.[String(dayIndex) as keyof typeof studentSchedule.schedule];
+            const todaySchedule = studentSchedule?.schedule?.[String(scheduleDayIndex)];
 
             const updatedList = [...groupStudentList];
             let absencesCount = 0;
@@ -417,7 +444,7 @@ export default function TeacherAttendancePage() {
 
                      if (todaySchedule) {
                         for (const blockIndexStr in todaySchedule) {
-                             const block = todaySchedule[blockIndexStr as keyof typeof todaySchedule];
+                             const block = todaySchedule[blockIndexStr];
                              if (block) {
                                 const recordId = `att-${student.id}-${dateString}-${block.materiaId}`;
                                 const recordExists = attendance.some(a => a.id === recordId);
@@ -706,5 +733,3 @@ export default function TeacherAttendancePage() {
         </>
     );
 }
-
-    
