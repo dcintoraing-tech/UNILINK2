@@ -452,9 +452,16 @@ export default function TeacherAttendancePage() {
                 return;
             }
             const scheduleDayIndex = jsDay - 1;
-
             const studentSchedule = horarios.find(h => h.grupoId === selectedGroup);
             const todaySchedule = studentSchedule?.schedule?.[String(scheduleDayIndex)];
+
+            if (!todaySchedule || Object.keys(todaySchedule).length === 0) {
+                toast({
+                    title: "Pase de lista detenido",
+                    description: "No se encontraron clases programadas para este grupo hoy. No se marcaron faltas."
+                });
+                return;
+            }
 
             const updatedList = [...groupStudentList];
             let absencesCount = 0;
@@ -468,23 +475,21 @@ export default function TeacherAttendancePage() {
                         updatedList[studentIndex].status = 'Falta';
                     }
 
-                     if (todaySchedule) {
-                        for (const blockIndexStr in todaySchedule) {
-                             const block = todaySchedule[blockIndexStr];
-                             if (block) {
-                                const recordId = `att-${student.id}-${dateString}-${block.materiaId}`;
-                                const recordExists = attendance.some(a => a.id === recordId);
-                                if (!recordExists) {
-                                    const recordRef = doc(firestore, 'attendance', recordId);
-                                    batch.set(recordRef, {
-                                        studentId: student.id,
-                                        date: dateString,
-                                        materiaAsignacionId: block.materiaId,
-                                        docenteId: block.docenteId,
-                                        status: 'Falta',
-                                    });
-                                }
-                             }
+                    for (const blockIndexStr in todaySchedule) {
+                        const block = todaySchedule[blockIndexStr];
+                        if (block) {
+                            const recordId = `att-${student.id}-${dateString}-${block.materiaId}`;
+                            const recordExists = attendance.some(a => a.id === recordId);
+                            if (!recordExists) {
+                                const recordRef = doc(firestore, 'attendance', recordId);
+                                batch.set(recordRef, {
+                                    studentId: student.id,
+                                    date: dateString,
+                                    materiaAsignacionId: block.materiaId,
+                                    docenteId: block.docenteId,
+                                    status: 'Falta',
+                                });
+                            }
                         }
                     }
                 }
@@ -492,16 +497,17 @@ export default function TeacherAttendancePage() {
 
             setGroupStudentList(updatedList);
             if (absencesCount > 0) {
-                 batch.commit().catch(err => {
+                batch.commit().then(() => {
+                    toast({
+                        title: "Pase de lista detenido",
+                        description: `${absencesCount} estudiante(s) fueron marcados como 'Falta' para las clases de hoy.`
+                    });
+                }).catch(err => {
                     console.error("Error writing absences: ", err);
                     toast({ variant: 'destructive', title: 'Error de Red', description: 'No se pudieron guardar las faltas.' });
-                 });
-                toast({
-                    title: "Pase de lista detenido",
-                    description: `${absencesCount} estudiante(s) fueron marcados como 'Falta'.`
                 });
             } else {
-                 toast({
+                toast({
                     title: "Pase de lista detenido",
                     description: "Todos los estudiantes fueron registrados."
                 });
