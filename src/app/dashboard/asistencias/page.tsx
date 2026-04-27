@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -37,8 +38,8 @@ interface HorarioBlock {
     docenteId: string;
     duracion: 1 | 2;
 }
-type DaySchedule = { [blockIndex: number]: HorarioBlock | null };
-type ScheduleData = { [day: number]: DaySchedule };
+type DaySchedule = { [blockIndex: string]: HorarioBlock | null };
+type ScheduleData = { [day: string]: DaySchedule };
 interface Horario {
     id: string; // Same as grupoId
     grupoId: string;
@@ -233,19 +234,24 @@ export default function TeacherAttendancePage() {
         let status: AttendanceStatus = 'Presente';
 
         const studentSchedule = horarios.find(h => h.grupoId === studentToMark.assignedGroupId);
-        if (studentSchedule) {
+        if (studentSchedule && studentSchedule.schedule) {
             const dayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1;
-            const todaySchedule = studentSchedule.schedule?.[dayIndex];
+            const todaySchedule = studentSchedule.schedule[String(dayIndex) as keyof typeof studentSchedule.schedule];
+    
             if (todaySchedule) {
-                const firstBlockKey = Object.keys(todaySchedule).map(Number).sort((a, b) => a - b).find(key => todaySchedule[key] !== null);
+                const sortedBlockKeys = Object.keys(todaySchedule).sort((a,b) => parseInt(a) - parseInt(b));
+                const firstBlockKey = sortedBlockKeys.find(key => todaySchedule[key as keyof typeof todaySchedule] !== null);
+                
                 if (firstBlockKey !== undefined) {
-                    const block = todaySchedule[firstBlockKey];
-                    const horaInicioStr = ["07:00", "08:00", "09:00", "10:00"][firstBlockKey];
+                    const block = todaySchedule[firstBlockKey as keyof typeof todaySchedule];
+                    const blockIndexNumber = parseInt(firstBlockKey, 10);
+                    const horaInicioStr = ["07:00", "08:00", "09:00", "10:00"][blockIndexNumber];
+    
                     if (block && horaInicioStr) {
                         materiaId = block.materiaId;
                         docenteId = block.docenteId;
                         subjectName = materias.find(m => m.id === block.materiaId)?.materia || 'Materia Desconocida';
-
+    
                         const [hours, minutes] = horaInicioStr.split(':').map(Number);
                         const startTime = new Date(now);
                         startTime.setHours(hours, minutes, 0, 0);
@@ -395,7 +401,7 @@ export default function TeacherAttendancePage() {
 
             const studentSchedule = horarios.find(h => h.grupoId === selectedGroup);
             const dayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1;
-            const todaySchedule = studentSchedule?.schedule?.[dayIndex];
+            const todaySchedule = studentSchedule?.schedule?.[String(dayIndex) as keyof typeof studentSchedule.schedule];
 
             const updatedList = [...groupStudentList];
             let absencesCount = 0;
@@ -411,7 +417,7 @@ export default function TeacherAttendancePage() {
 
                      if (todaySchedule) {
                         for (const blockIndexStr in todaySchedule) {
-                             const block = todaySchedule[parseInt(blockIndexStr)];
+                             const block = todaySchedule[blockIndexStr as keyof typeof todaySchedule];
                              if (block) {
                                 const recordId = `att-${student.id}-${dateString}-${block.materiaId}`;
                                 const recordExists = attendance.some(a => a.id === recordId);
@@ -700,3 +706,5 @@ export default function TeacherAttendancePage() {
         </>
     );
 }
+
+    
