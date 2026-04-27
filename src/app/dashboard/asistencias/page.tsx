@@ -86,14 +86,14 @@ export default function TeacherAttendancePage() {
     const firestore = useFirestore();
     
     // --- Data from Firestore ---
-    const { data: allStudentsData } = useCollection<Student>(useMemoFirebase(() => collection(firestore, 'students'), [firestore]));
+    const { data: studentsData } = useCollection<Student>(useMemoFirebase(() => collection(firestore, 'students'), [firestore]));
     const { data: horariosData } = useCollection<Horario>(useMemoFirebase(() => collection(firestore, 'horarios'), [firestore]));
     const { data: gruposData } = useCollection<Grupo>(useMemoFirebase(() => collection(firestore, 'grupos'), [firestore]));
     const { data: materiasData } = useCollection<AsignacionMateria>(useMemoFirebase(() => collection(firestore, 'materiaAsignaciones'), [firestore]));
     const { data: attendanceData } = useCollection<AttendanceRecord>(useMemoFirebase(() => collection(firestore, 'attendance'), [firestore]));
     const { data: configData } = useDoc<AttendanceConfig>(useMemoFirebase(() => doc(firestore, 'config', 'attendance'), [firestore]));
     
-    const allStudents = useMemo(() => allStudentsData || [], [allStudentsData]);
+    const allStudents = useMemo(() => studentsData || [], [studentsData]);
     const horarios = useMemo(() => horariosData || [], [horariosData]);
     const grupos = useMemo(() => gruposData || [], [gruposData]);
     const materias = useMemo(() => materiasData || [], [materiasData]);
@@ -180,12 +180,6 @@ export default function TeacherAttendancePage() {
                     [Float32Array.from(student.embedding!)]
                 )
             );
-
-            if (labeledFaceDescriptors.length === 0) {
-                setFaceMatcher(null);
-                 setFaceMatcherError("No se pudieron cargar los descriptores faciales.");
-                return;
-            }
 
             const newFaceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.6);
             setFaceMatcher(newFaceMatcher);
@@ -359,27 +353,30 @@ export default function TeacherAttendancePage() {
                         const ctx = canvas.getContext('2d');
                         if (ctx) {
                             ctx.clearRect(0, 0, canvas.width, canvas.height);
-                            resizedDetections.forEach(detection => {
-                                const box = detection.detection.box
-                                const drawBox = new faceapi.draw.DrawBox(box, { label: 'Rostro' })
-                                drawBox.draw(canvas)
-                            })
                         }
 
-                        if (detections.length > 0 && faceMatcher) {
-                            for (const detection of detections) {
-                                const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
-                                if (bestMatch.label !== 'unknown') {
-                                    markAttendance(bestMatch.label);
-                                }
+                        resizedDetections.forEach(detection => {
+                            const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+                            const student = allStudents.find(s => s.id === bestMatch.label);
+                            const label = student ? `${student.firstName} ${student.lastName.split(' ')[0]}` : 'Desconocido';
+                            
+                            const drawBox = new faceapi.draw.DrawBox(detection.detection.box, { 
+                                label: label,
+                                boxColor: student ? 'rgba(0, 255, 0, 1)' : 'rgba(255, 0, 0, 1)'
+                            });
+                            drawBox.draw(canvas);
+
+                            if (bestMatch.label !== 'unknown') {
+                                markAttendance(bestMatch.label);
                             }
-                        }
+                        });
+
                     } catch (err) {
                         console.error("Error en detección:", err);
                     }
                     setIsDetecting(false);
                 }
-            }, 1000); 
+            }, 1500); 
         } else {
              if (recognitionIntervalRef.current) {
                 clearInterval(recognitionIntervalRef.current);
@@ -391,7 +388,7 @@ export default function TeacherAttendancePage() {
                 clearInterval(recognitionIntervalRef.current);
             }
         };
-    }, [isTakingAttendance, modelsLoaded, faceMatcher, markAttendance]);
+    }, [isTakingAttendance, modelsLoaded, faceMatcher, markAttendance, allStudents]);
 
     // Camera start/stop effect
     useEffect(() => {
