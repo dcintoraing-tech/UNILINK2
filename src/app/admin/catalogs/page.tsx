@@ -434,18 +434,20 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
     };
 
     const handleDownloadTemplate = () => {
-        const headers = [['materia', 'carreraId', 'cuatrimestre', 'semestre']];
+        const headers = [['materia', 'cuatrimestre', 'semestre', 'carreraId', 'carreraName']];
         const ws = XLSX.utils.aoa_to_sheet(headers);
+
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Plantilla Materias");
         
         if (carreras.length > 0) {
-            const carrerasSheet = XLSX.utils.json_to_sheet(carreras.map(c => ({ 'ID de Carrera': c.id, 'Nombre de Carrera': c.name })));
-            XLSX.utils.book_append_sheet(wb, carrerasSheet, "IDs de Carreras");
+            const carrerasSheetData = carreras.map(c => ({ 'ID de Carrera': c.id, 'Nombre de Carrera': c.name }));
+            const carrerasSheet = XLSX.utils.json_to_sheet(carrerasSheetData);
+            XLSX.utils.book_append_sheet(wb, carrerasSheet, "IDs y Nombres de Carreras");
         }
         
         XLSX.writeFile(wb, "plantilla_materias.xlsx");
-        toast({ title: "Plantilla descargada", description: "El archivo de plantilla de Excel está listo." });
+        toast({ title: "Plantilla descargada", description: "El archivo de plantilla de Excel está listo para usarse." });
     };
 
     const handleExport = () => {
@@ -484,24 +486,64 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                 const worksheet = workbook.Sheets[sheetName];
                 const json = XLSX.utils.sheet_to_json<any>(worksheet);
 
+                if (carreras.length === 0) {
+                     toast({ variant: "destructive", title: "Error de importación", description: "No hay carreras cargadas en el sistema. Agrega carreras antes de importar materias." });
+                     return;
+                }
+
                 const batch = writeBatch(firestore);
                 let createdCount = 0;
                 let skippedCount = 0;
+                const validationErrors: string[] = [];
 
-                for (const item of json) {
+                for (const [index, item] of json.entries()) {
+                    const rowNum = index + 2; // Excel rows are 1-based, and we have a header
                     const materia = item.materia ? String(item.materia).trim() : '';
-                    const carreraId = item.carreraId ? String(item.carreraId).trim() : '';
-                    const cuatrimestre = item.cuatrimestre ? String(item.cuatrimestre) : 'NONE';
-                    const semestre = item.semestre ? String(item.semestre) : 'NONE';
 
-                    if (!materia || !carreraId || (cuatrimestre === 'NONE' && semestre === 'NONE')) {
+                    let resolvedCarreraId = item.carreraId ? String(item.carreraId).trim() : '';
+                    const carreraName = item.carreraName ? String(item.carreraName).trim() : '';
+                    
+                    if (!resolvedCarreraId && carreraName) {
+                        const foundCarrera = carreras.find(c => c.name.toLowerCase() === carreraName.toLowerCase());
+                        if (foundCarrera) {
+                            resolvedCarreraId = foundCarrera.id;
+                        } else {
+                            validationErrors.push(`Fila ${rowNum}: No se encontró la carrera "${carreraName}".`);
+                            skippedCount++;
+                            continue;
+                        }
+                    } else if (!resolvedCarreraId && !carreraName) {
+                         validationErrors.push(`Fila ${rowNum}: Se debe proporcionar un 'carreraId' o 'carreraName'.`);
+                         skippedCount++;
+                         continue;
+                    }
+                    
+                    const normalizePeriod = (period: any) => {
+                        const periodStr = period ? String(period).trim().toLowerCase() : '';
+                        if (!periodStr || ['ninguno', 'none', 'n/a'].includes(periodStr)) {
+                            return 'NONE';
+                        }
+                        return String(period); // Keep the original number as a string
+                    }
+
+                    const cuatrimestre = normalizePeriod(item.cuatrimestre);
+                    const semestre = normalizePeriod(item.semestre);
+
+                    if (!materia) {
+                        validationErrors.push(`Fila ${rowNum}: El campo 'materia' no puede estar vacío.`);
+                        skippedCount++;
+                        continue;
+                    }
+
+                    if (cuatrimestre === 'NONE' && semestre === 'NONE') {
+                        validationErrors.push(`Fila ${rowNum}: Se debe especificar un 'cuatrimestre' o 'semestre'.`);
                         skippedCount++;
                         continue;
                     }
 
                     const newAsignacion = {
                         materia,
-                        carreraId,
+                        carreraId: resolvedCarreraId,
                         cuatrimestre,
                         semestre,
                     };
@@ -513,15 +555,28 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                 if (createdCount > 0) {
                     await batch.commit();
                 }
-                toast({ title: "Importación Finalizada", description: `${createdCount} materia(s) creada(s), ${skippedCount} omitida(s).` });
-                window.location.reload();
+
+                if (validationErrors.length > 0) {
+                    toast({ 
+                        variant: "destructive", 
+                        title: "Importación con errores", 
+                        description: `Se omitieron ${skippedCount} filas. ${validationErrors.join(' ')}`,
+                        duration: 10000
+                    });
+                } else {
+                     toast({ title: "Importación Finalizada", description: `${createdCount} materia(s) creada(s), ${skippedCount} omitida(s).` });
+                }
+                
+                if (createdCount > 0) {
+                    window.location.reload();
+                }
 
             } catch (error: any) {
                 console.error("Error al importar el archivo:", error);
                 toast({
                     variant: "destructive",
                     title: "Error de importación",
-                    description: "No se pudo procesar el archivo. Revisa que el formato y los IDs sean correctos.",
+                    description: "No se pudo procesar el archivo. Revisa que el formato y los datos sean correctos.",
                 });
             } finally {
                 if (e.target) e.target.value = '';
