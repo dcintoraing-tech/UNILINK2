@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
     Card,
     CardContent,
@@ -14,7 +14,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { MoreHorizontal, PlusCircle, ArrowLeft, ArrowRight, Trash2 } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, ArrowLeft, ArrowRight, Trash2, Upload, Download } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -27,7 +27,8 @@ import { Separator } from '@/components/ui/separator';
 import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 import { Progress } from '@/components/ui/progress';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, doc, addDoc, updateDoc, deleteDoc, setDoc, Firestore } from 'firebase/firestore';
+import { collection, doc, addDoc, updateDoc, deleteDoc, setDoc, Firestore, writeBatch } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
 
 
 // --- INTERFACES ---
@@ -353,6 +354,7 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
     const { toast } = useToast();
     const [filterCarrera, setFilterCarrera] = useState('all');
     const [filterPeriodo, setFilterPeriodo] = useState('all');
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const cuatrimestres = useMemo(() => Array.from({ length: 9 }, (_, i) => `${i + 1}`), []);
     const semestres = useMemo(() => Array.from({ length: 9 }, (_, i) => `${i + 1}`), []);
@@ -431,12 +433,142 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
         return carreras.find(item => item.id === id)?.name || 'Carrera Desconocida';
     };
 
+    const handleDownloadTemplate = () => {
+        const headers = [['materia', 'carreraId', 'cuatrimestre', 'semestre']];
+        const ws = XLSX.utils.aoa_to_sheet(headers);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Plantilla Materias");
+        
+        if (carreras.length > 0) {
+            const carrerasSheet = XLSX.utils.json_to_sheet(carreras.map(c => ({ 'ID de Carrera': c.id, 'Nombre de Carrera': c.name })));
+            XLSX.utils.book_append_sheet(wb, carrerasSheet, "IDs de Carreras");
+        }
+        
+        XLSX.writeFile(wb, "plantilla_materias.xlsx");
+        toast({ title: "Plantilla descargada", description: "El archivo de plantilla de Excel está listo." });
+    };
+
+    const handleExport = () => {
+        if (filteredAsignaciones.length === 0) {
+            toast({ variant: 'destructive', title: 'No hay datos', description: 'No hay materias para exportar.' });
+            return;
+        }
+        const dataToExport = filteredAsignaciones.map(a => ({
+            'Materia': a.materia,
+            'Carrera': getCarreraName(a.carreraId),
+            'ID de Carrera': a.carreraId,
+            'Cuatrimestre': a.cuatrimestre === 'NONE' ? '' : a.cuatrimestre,
+            'Semestre': a.semestre === 'NONE' ? '' : a.semestre,
+        }));
+        const ws = XLSX.utils.json_to_sheet(dataToExport);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Materias");
+        XLSX.writeFile(wb, "materias.xlsx");
+        toast({ title: "Exportación exitosa", description: "La lista de materias ha sido descargada." });
+    };
+
+    const handleImportClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const data = event.target?.result;
+                const workbook = XLSX.read(data, { type: 'binary' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const json = XLSX.utils.sheet_to_json<any>(worksheet);
+
+                const batch = writeBatch(firestore);
+                let createdCount = 0;
+                let skippedCount = 0;
+
+                for (const item of json) {
+                    const materia = item.materia ? String(item.materia).trim() : '';
+                    const carreraId = item.carreraId ? String(item.carreraId).trim() : '';
+                    const cuatrimestre = item.cuatrimestre ? String(item.cuatrimestre) : 'NONE';
+                    const semestre = item.semestre ? String(item.semestre) : 'NONE';
+
+                    if (!materia || !carreraId || (cuatrimestre === 'NONE' && semestre === 'NONE')) {
+                        skippedCount++;
+                        continue;
+                    }
+
+                    const newAsignacion = {
+                        materia,
+                        carreraId,
+                        cuatrimestre,
+                        semestre,
+                    };
+                    const newDocRef = doc(collection(firestore, 'materiaAsignaciones'));
+                    batch.set(newDocRef, newAsignacion);
+                    createdCount++;
+                }
+
+                if (createdCount > 0) {
+                    await batch.commit();
+                }
+                toast({ title: "Importación Finalizada", description: `${createdCount} materia(s) creada(s), ${skippedCount} omitida(s).` });
+                window.location.reload();
+
+            } catch (error: any) {
+                console.error("Error al importar el archivo:", error);
+                toast({
+                    variant: "destructive",
+                    title: "Error de importación",
+                    description: "No se pudo procesar el archivo. Revisa que el formato y los IDs sean correctos.",
+                });
+            } finally {
+                if (e.target) e.target.value = '';
+            }
+        };
+        reader.readAsBinaryString(file);
+    };
+
     return (
         <Card>
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileImport}
+                accept=".xlsx, .xls"
+                className="hidden"
+            />
             <CardHeader>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <CardTitle>Asignación de Materias</CardTitle>
-                  <Button size="sm" onClick={() => openDialog(null)} disabled={carreras.length === 0} className="w-full sm:w-auto"><PlusCircle className="h-4 w-4 mr-2" />Asignar Materia</Button>
+                  <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
+                      <Button size="sm" onClick={() => openDialog(null)} disabled={carreras.length === 0}>
+                        <PlusCircle className="h-4 w-4 mr-2" />
+                        Asignar Materia
+                      </Button>
+                      <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="outline">
+                                  <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                              <DropdownMenuItem onSelect={handleImportClick}>
+                                  <Upload className="mr-2 h-4 w-4" />
+                                  Importar desde archivo
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={handleExport} disabled={filteredAsignaciones.length === 0}>
+                                  <Download className="mr-2 h-4 w-4" />
+                                  Exportar a Excel
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={handleDownloadTemplate}>
+                                  <Download className="mr-2 h-4 w-4" />
+                                  Descargar plantilla
+                              </DropdownMenuItem>
+                          </DropdownMenuContent>
+                      </DropdownMenu>
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
                     <Select value={filterCarrera} onValueChange={setFilterCarrera}>
