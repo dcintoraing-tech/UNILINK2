@@ -359,17 +359,26 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
     const cuatrimestres = useMemo(() => Array.from({ length: 9 }, (_, i) => `${i + 1}`), []);
     const semestres = useMemo(() => Array.from({ length: 9 }, (_, i) => `${i + 1}`), []);
 
-    const filteredAsignaciones = useMemo(() => {
-        return asignaciones.filter(a => {
-            const carreraMatch = !filterCarrera || filterCarrera === 'all' || a.carreraId === filterCarrera;
-            if (!filterPeriodo || filterPeriodo === 'all') return carreraMatch;
+    const validCarreraIds = useMemo(() => new Set(carreras.map(c => c.id)), [carreras]);
 
-            const [type, value] = filterPeriodo.split('-');
-            if (type === 'cuatri') return carreraMatch && a.cuatrimestre === value;
-            if (type === 'sem') return carreraMatch && a.semestre === value;
-            return carreraMatch;
-        });
-    }, [asignaciones, filterCarrera, filterPeriodo]);
+    const filteredAsignaciones = useMemo(() => {
+        return asignaciones
+            .filter(a => {
+                // Filter out items with no valid carrera
+                if (!a.carreraId || !validCarreraIds.has(a.carreraId)) {
+                    return false;
+                }
+                const carreraMatch = !filterCarrera || filterCarrera === 'all' || a.carreraId === filterCarrera;
+                if (!filterPeriodo || filterPeriodo === 'all') return carreraMatch;
+
+                const [type, value] = filterPeriodo.split('-');
+                if (type === 'cuatri') return carreraMatch && a.cuatrimestre === value;
+                if (type === 'sem') return carreraMatch && a.semestre === value;
+                return carreraMatch;
+            })
+            .sort((a, b) => a.materia.localeCompare(b.materia));
+    }, [asignaciones, filterCarrera, filterPeriodo, validCarreraIds]);
+
 
     const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
