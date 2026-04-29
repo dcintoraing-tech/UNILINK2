@@ -27,7 +27,7 @@ import { Separator } from '@/components/ui/separator';
 import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 import { Progress } from '@/components/ui/progress';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, doc, addDoc, updateDoc, deleteDoc, setDoc, Firestore, writeBatch } from 'firebase/firestore';
+import { collection, doc, addDoc, updateDoc, deleteDoc, setDoc, Firestore, writeBatch, getDocs } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 
 
@@ -491,6 +491,10 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                      return;
                 }
 
+                // Fetch all existing assignments to check for duplicates in memory
+                const existingAssignmentsSnapshot = await getDocs(collection(firestore, 'materiaAsignaciones'));
+                const existingAssignments = existingAssignmentsSnapshot.docs.map(doc => doc.data() as Omit<AsignacionMateria, 'id'>);
+
                 const batch = writeBatch(firestore);
                 let createdCount = 0;
                 let skippedCount = 0;
@@ -512,8 +516,8 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                             skippedCount++;
                             continue;
                         }
-                    } else if (!resolvedCarreraId && !carreraName) {
-                         validationErrors.push(`Fila ${rowNum}: Se debe proporcionar un 'carreraId' o 'carreraName'.`);
+                    } else if (!resolvedCarreraId) {
+                         validationErrors.push(`Fila ${rowNum}: Se debe proporcionar 'carreraId' o 'carreraName'.`);
                          skippedCount++;
                          continue;
                     }
@@ -523,7 +527,7 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                         if (!periodStr || ['ninguno', 'none', 'n/a'].includes(periodStr)) {
                             return 'NONE';
                         }
-                        return String(period); // Keep the original number as a string
+                        return String(period);
                     }
 
                     const cuatrimestre = normalizePeriod(item.cuatrimestre);
@@ -540,6 +544,19 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                         skippedCount++;
                         continue;
                     }
+                    
+                    // Check for duplicates
+                    const isDuplicate = existingAssignments.some(existing => 
+                        existing.materia.toLowerCase() === materia.toLowerCase() &&
+                        existing.carreraId === resolvedCarreraId &&
+                        existing.cuatrimestre === cuatrimestre &&
+                        existing.semestre === semestre
+                    );
+                    
+                    if (isDuplicate) {
+                        skippedCount++;
+                        continue; // Silently skip duplicates, or add to a specific message
+                    }
 
                     const newAsignacion = {
                         materia,
@@ -555,16 +572,22 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                 if (createdCount > 0) {
                     await batch.commit();
                 }
-
+                
+                let toastDescription = `${createdCount} materia(s) creada(s).`;
+                if (skippedCount > 0) toastDescription += ` ${skippedCount} fila(s) omitida(s) por ser duplicados o tener errores.`;
+                
                 if (validationErrors.length > 0) {
-                    toast({ 
-                        variant: "destructive", 
-                        title: "Importación con errores", 
-                        description: `Se omitieron ${skippedCount} filas. ${validationErrors.join(' ')}`,
-                        duration: 10000
+                    toast({
+                        variant: "destructive",
+                        title: "Importación con Errores",
+                        description: `${toastDescription} ${validationErrors.join(" ")}`,
+                        duration: 10000,
                     });
                 } else {
-                     toast({ title: "Importación Finalizada", description: `${createdCount} materia(s) creada(s), ${skippedCount} omitida(s).` });
+                    toast({
+                        title: "Importación Finalizada",
+                        description: toastDescription,
+                    });
                 }
                 
                 if (createdCount > 0) {
@@ -1316,3 +1339,5 @@ export default function CatalogsPage() {
         </Tabs>
     );
 }
+
+    
