@@ -477,6 +477,11 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
         const file = e.target.files?.[0];
         if (!file) return;
 
+        if (carreras.length === 0) {
+            toast({ variant: "destructive", title: "Error de importación", description: "No hay carreras cargadas en el sistema. Agrega carreras antes de importar materias." });
+            return;
+        }
+
         const reader = new FileReader();
         reader.onload = async (event) => {
             try {
@@ -486,12 +491,6 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                 const worksheet = workbook.Sheets[sheetName];
                 const json = XLSX.utils.sheet_to_json<any>(worksheet);
 
-                if (carreras.length === 0) {
-                     toast({ variant: "destructive", title: "Error de importación", description: "No hay carreras cargadas en el sistema. Agrega carreras antes de importar materias." });
-                     return;
-                }
-
-                // Fetch all existing assignments to check for duplicates in memory
                 const existingAssignmentsSnapshot = await getDocs(collection(firestore, 'materiaAsignaciones'));
                 const existingAssignments = existingAssignmentsSnapshot.docs.map(doc => doc.data() as Omit<AsignacionMateria, 'id'>);
 
@@ -501,27 +500,39 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                 const validationErrors: string[] = [];
 
                 for (const [index, item] of json.entries()) {
-                    const rowNum = index + 2; // Excel rows are 1-based, and we have a header
+                    const rowNum = index + 2;
                     const materia = item.materia ? String(item.materia).trim() : '';
+                    const providedCarreraId = item.carreraId ? String(item.carreraId).trim() : null;
+                    const providedCarreraName = item.carreraName ? String(item.carreraName).trim() : null;
 
-                    let resolvedCarreraId = item.carreraId ? String(item.carreraId).trim() : '';
-                    const carreraName = item.carreraName ? String(item.carreraName).trim() : '';
-                    
-                    if (!resolvedCarreraId && carreraName) {
-                        const foundCarrera = carreras.find(c => c.name.toLowerCase() === carreraName.toLowerCase());
-                        if (foundCarrera) {
-                            resolvedCarreraId = foundCarrera.id;
+                    let resolvedCarreraId: string | null = null;
+
+                    if (providedCarreraId) {
+                        const carreraExists = carreras.some(c => c.id === providedCarreraId);
+                        if (carreraExists) {
+                            resolvedCarreraId = providedCarreraId;
                         } else {
-                            validationErrors.push(`Fila ${rowNum}: No se encontró la carrera "${carreraName}".`);
+                            validationErrors.push(`Fila ${rowNum}: El carreraId "${providedCarreraId}" no existe.`);
                             skippedCount++;
                             continue;
                         }
-                    } else if (!resolvedCarreraId) {
-                         validationErrors.push(`Fila ${rowNum}: Se debe proporcionar 'carreraId' o 'carreraName'.`);
-                         skippedCount++;
-                         continue;
+                    } else if (providedCarreraName) {
+                        const foundCarrera = carreras.find(c => c.name.toLowerCase() === providedCarreraName.toLowerCase());
+                        if (foundCarrera) {
+                            resolvedCarreraId = foundCarrera.id;
+                        } else {
+                            validationErrors.push(`Fila ${rowNum}: No se encontró la carrera con nombre "${providedCarreraName}".`);
+                            skippedCount++;
+                            continue;
+                        }
                     }
-                    
+
+                    if (!resolvedCarreraId) {
+                        validationErrors.push(`Fila ${rowNum}: Se debe proporcionar un 'carreraId' válido o un 'carreraName' existente.`);
+                        skippedCount++;
+                        continue;
+                    }
+
                     const normalizePeriod = (period: any) => {
                         const periodStr = period ? String(period).trim().toLowerCase() : '';
                         if (!periodStr || ['ninguno', 'none', 'n/a'].includes(periodStr)) {
@@ -545,7 +556,6 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                         continue;
                     }
                     
-                    // Check for duplicates
                     const isDuplicate = existingAssignments.some(existing => 
                         existing.materia.toLowerCase() === materia.toLowerCase() &&
                         existing.carreraId === resolvedCarreraId &&
@@ -555,7 +565,7 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                     
                     if (isDuplicate) {
                         skippedCount++;
-                        continue; // Silently skip duplicates, or add to a specific message
+                        continue;
                     }
 
                     const newAsignacion = {
@@ -580,7 +590,7 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                     toast({
                         variant: "destructive",
                         title: "Importación con Errores",
-                        description: `${toastDescription} ${validationErrors.join(" ")}`,
+                        description: `${toastDescription} Errores: ${validationErrors.join(" ")}`,
                         duration: 10000,
                     });
                 } else {
