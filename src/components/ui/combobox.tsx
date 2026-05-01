@@ -39,9 +39,9 @@ export function Combobox({
     options, 
     name, 
     defaultValue,
-    placeholder = "Select an option",
-    emptyMessage = "No option found.",
-    searchPlaceholder = "Search...",
+    placeholder = "Seleccionar opción...",
+    emptyMessage = "No se encontraron resultados.",
+    searchPlaceholder = "Buscar...",
     value: controlledValue,
     onValueChange: setControlledValue
 }: ComboboxProps) {
@@ -81,13 +81,8 @@ export function Combobox({
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-          <Command
-            filter={(value, search) => {
-              if (value.toLowerCase().includes(search.toLowerCase())) return 1;
-              return 0;
-            }}
-          >
+        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+          <Command shouldFilter={true}>
             <CommandInput placeholder={searchPlaceholder} />
             <CommandList>
                 <CommandEmpty>{emptyMessage}</CommandEmpty>
@@ -96,12 +91,9 @@ export function Combobox({
                     <CommandItem
                         key={option.value}
                         value={option.label}
-                        onSelect={(currentLabel) => {
-                            const selectedOption = options.find(
-                                (opt) => opt.label.toLowerCase() === currentLabel.toLowerCase()
-                            );
-                            const selectedValue = selectedOption ? selectedOption.value : "";
-                            setValue(selectedValue === value ? "" : selectedValue);
+                        onSelect={() => {
+                            const newValue = option.value === value ? "" : option.value;
+                            setValue(newValue);
                             setOpen(false)
                         }}
                     >

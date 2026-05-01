@@ -82,8 +82,7 @@ function StudentRegistrationForm({
     useEffect(() => {
         const loadModels = async () => {
             if (typeof window !== 'undefined' && window.location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
-                const errorMsg = 'El acceso a la cámara y los modelos de IA no están disponibles en un entorno no seguro. Por favor, usa una conexión HTTPS.';
-                setModelError(errorMsg);
+                // Not blocking, just warning
                 return;
             }
             try {
@@ -94,11 +93,9 @@ function StudentRegistrationForm({
                     faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
                 ]);
                 setModelsLoaded(true);
-                setModelError(null);
             } catch (error) {
-                console.error("ERROR REAL AL CARGAR MODELOS:", error);
-                const userFriendlyMessage = "No se pudieron cargar los modelos de IA. Esto suele ocurrir si los archivos en la carpeta /public/models no son accesibles o están corruptos. Verifica la consola del navegador para ver el error específico.";
-                setModelError(userFriendlyMessage);
+                console.error("Error loading models:", error);
+                setModelError("No se pudieron cargar los modelos de IA para reconocimiento facial.");
             }
         };
         loadModels();
@@ -113,10 +110,6 @@ function StudentRegistrationForm({
     };
     
     const startCapture = async () => {
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
-        }
-
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
             streamRef.current = stream;
@@ -131,7 +124,7 @@ function StudentRegistrationForm({
             toast({
                 variant: 'destructive',
                 title: 'Acceso a la cámara denegado',
-                description: 'Por favor, habilita los permisos de la cámara en tu navegador.',
+                description: 'Por favor, habilita los permisos de la cámara.',
             });
         }
     };
@@ -155,19 +148,7 @@ function StudentRegistrationForm({
     const handleSaveStudent = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!firstName || !lastName || !controlNumber || !academicProgram || !assignedGroup) {
-            toast({
-                variant: 'destructive',
-                title: 'Campos requeridos',
-                description: 'Por favor, completa toda la información del estudiante.',
-            });
-            return;
-        }
-        if (!capturedImage) {
-            toast({
-                variant: 'destructive',
-                title: 'Imagen requerida',
-                description: 'Por favor, captura una imagen del rostro del estudiante.',
-            });
+            toast({ variant: 'destructive', title: 'Campos requeridos', description: 'Por favor, completa toda la información.' });
             return;
         }
 
@@ -175,6 +156,7 @@ function StudentRegistrationForm({
 
         let embedding: number[] | null = initialData?.embedding || null;
         
+        // Only process image if it's new and exists
         if (capturedImage && capturedImage !== initialData?.facialImage) {
             try {
                 const img = document.createElement('img');
@@ -186,38 +168,20 @@ function StudentRegistrationForm({
                     .withFaceLandmarks()
                     .withFaceDescriptor();
                 
-                if (!detection) {
+                if (detection) {
+                    embedding = Array.from(detection.descriptor);
+                } else {
                     toast({
                         variant: 'destructive',
                         title: 'Rostro no detectado',
-                        description: 'No se pudo encontrar un rostro en la imagen. Por favor, intenta de nuevo con buena iluminación y el rostro centrado.',
+                        description: 'No se detectó un rostro claro. Se guardará sin huella facial.',
                     });
-                    setIsProcessing(false);
-                    return;
+                    embedding = null;
                 }
-
-                embedding = Array.from(detection.descriptor);
-
             } catch (error) {
                 console.error("Error generating embedding:", error);
-                toast({
-                    variant: 'destructive',
-                    title: 'Error de Procesamiento',
-                    description: 'No se pudo procesar la imagen facial.',
-                });
-                setIsProcessing(false);
-                return;
+                embedding = null;
             }
-        }
-        
-        if (!embedding) {
-            toast({
-                variant: 'destructive',
-                title: 'Huella Facial Requerida',
-                description: 'No se pudo generar una huella facial. Asegúrate de capturar una nueva imagen si es un nuevo estudiante.',
-            });
-            setIsProcessing(false);
-            return;
         }
         
         try {
@@ -247,19 +211,14 @@ function StudentRegistrationForm({
             }
             onFinished();
         } catch (error) {
-            console.error("Error saving student to Firestore:", error);
-            toast({ variant: 'destructive', title: 'Error al Guardar', description: 'No se pudo guardar la información en la base de datos.'});
+            console.error("Error saving student:", error);
         } finally {
             setIsProcessing(false);
         }
     };
     
     useEffect(() => {
-        return () => {
-            if (streamRef.current) {
-                streamRef.current.getTracks().forEach(track => track.stop());
-            }
-        };
+        return () => stopCapture();
     }, []);
 
     return (
@@ -311,65 +270,50 @@ function StudentRegistrationForm({
 
                     <Card className="flex flex-col border-0 shadow-none">
                         <CardContent className="flex-1 flex flex-col items-center justify-center gap-4 p-1">
-                            <div className="relative w-full aspect-video rounded-md overflow-hidden bg-muted border flex items-center justify-center">
+                            <div className="relative w-full aspect-square rounded-md overflow-hidden bg-muted border flex items-center justify-center">
                                 <video 
                                     ref={videoRef}
-                                    className={cn("w-full h-full", !isCapturing && "hidden")}
+                                    className={cn("w-full h-full object-cover", !isCapturing && "hidden")}
                                     autoPlay
                                     muted
                                     playsInline
                                 />
                                 {!isCapturing && (
-                                    <Avatar className="w-40 h-40 border-2 border-dashed">
-                                        <AvatarImage src={capturedImage || studentPlaceholder?.imageUrl} alt="Rostro del estudiante" data-ai-hint={studentPlaceholder?.imageHint} />
+                                    <Avatar className="w-full h-full rounded-none">
+                                        <AvatarImage src={capturedImage || studentPlaceholder?.imageUrl} alt="Rostro" className="object-cover" />
                                         <AvatarFallback className="text-6xl"><UserIcon /></AvatarFallback>
                                     </Avatar>
                                 )}
                             </div>
                             
-                            {hasCameraPermission === false && (
-                                <Alert variant="destructive">
-                                    <AlertTitle>Acceso a Cámara Requerido</AlertTitle>
-                                    <AlertDescription>
-                                        Por favor, permite el acceso a la cámara para usar esta función.
-                                    </AlertDescription>
-                                </Alert>
-                            )}
-
-                            {!isCapturing ? (
-                                <Button type="button" onClick={startCapture} className="w-full">
-                                    <Camera className="mr-2 h-4 w-4" />
-                                    {capturedImage ? 'Capturar de Nuevo' : 'Iniciar Captura'}
-                                </Button>
-                            ) : (
-                                <div className="w-full grid grid-cols-2 gap-2">
-                                    <Button type="button" variant="secondary" onClick={stopCapture}>Cancelar</Button>
-                                    <Button type="button" onClick={takePicture}>Capturar</Button>
-                                </div>
-                            )}
+                            <div className="w-full flex flex-col gap-2">
+                                {!isCapturing ? (
+                                    <Button type="button" variant="outline" onClick={startCapture} className="w-full">
+                                        <Camera className="mr-2 h-4 w-4" />
+                                        {capturedImage ? 'Cambiar Foto' : 'Tomar Foto (Opcional)'}
+                                    </Button>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <Button type="button" variant="ghost" onClick={stopCapture}>Cancelar</Button>
+                                        <Button type="button" onClick={takePicture}>Capturar</Button>
+                                    </div>
+                                )}
+                                {capturedImage && (
+                                    <Button type="button" variant="link" size="sm" className="text-destructive" onClick={() => setCapturedImage(null)}>
+                                        Quitar foto
+                                    </Button>
+                                )}
+                            </div>
                         </CardContent>
-                        <CardFooter className="flex-col gap-2 pt-4">
-                            {modelError && (
-                                <Alert variant="destructive" className="text-xs">
-                                    <AlertTitle>Error de Modelos</AlertTitle>
-                                    <AlertDescription>{modelError}</AlertDescription>
-                                </Alert>
-                            )}
-                            {!modelsLoaded && !modelError && (
-                                <Alert className="text-xs">
-                                    <AlertDescription>Cargando modelos de IA...</AlertDescription>
-                                </Alert>
-                            )}
-                        </CardFooter>
                     </Card>
                 </div>
             </ScrollArea>
 
             <DialogFooter>
                 <Button type="button" variant="ghost" onClick={onFinished}>Cancelar</Button>
-                <Button type="submit" disabled={!modelsLoaded || isProcessing}>
+                <Button type="submit" disabled={isProcessing}>
                     {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {isProcessing ? 'Procesando...' : (initialData ? 'Guardar Cambios' : 'Registrar Estudiante')}
+                    {isProcessing ? 'Guardando...' : (initialData ? 'Guardar Cambios' : 'Registrar Estudiante')}
                 </Button>
             </DialogFooter>
 
@@ -410,44 +354,27 @@ export default function StudentsPage() {
     
     const handleSaveStudent = async (studentData: NewStudentData | Student) => {
         try {
-            if ('id' in studentData) { // Editing
+            if ('id' in studentData) {
                 const studentDocRef = doc(firestore, 'students', studentData.id);
                 await updateDoc(studentDocRef, studentData);
-                toast({ title: 'Estudiante Actualizado', description: `Los datos de ${studentData.firstName} han sido actualizados.` });
-            } else { // Creating
+                toast({ title: 'Éxito', description: 'Estudiante actualizado correctamente.' });
+            } else {
                 await addDoc(collection(firestore, 'students'), studentData);
-                toast({ title: 'Estudiante Registrado', description: `El estudiante ${studentData.firstName} ha sido guardado.` });
+                toast({ title: 'Éxito', description: 'Estudiante registrado correctamente.' });
             }
-            window.location.reload();
         } catch (error) {
-            console.error("Error saving student:", error);
-            toast({ variant: 'destructive', title: 'Error al guardar', description: 'No se pudo guardar el estudiante.' });
-            throw error; // Re-throw to be caught in the form
+            toast({ variant: 'destructive', title: 'Error', description: 'No se pudo guardar la información.' });
+            throw error;
         }
     };
     
     const handleDeleteStudent = async (studentId: string) => {
         try {
             await deleteDoc(doc(firestore, 'students', studentId));
-            toast({
-                title: "Estudiante eliminado",
-                description: "El estudiante ha sido eliminado del sistema."
-            });
-            window.location.reload();
+            toast({ title: "Eliminado", description: "Estudiante eliminado del sistema." });
         } catch (error) {
-            console.error("Error deleting student:", error);
             toast({ variant: 'destructive', title: 'Error', description: 'No se pudo eliminar al estudiante.' });
         }
-    };
-    
-    const handleOpenDialog = (student: Student | null) => {
-        setEditingStudent(student);
-        setIsDialogOpen(true);
-    };
-
-    const handleCloseDialog = () => {
-        setEditingStudent(null);
-        setIsDialogOpen(false);
     };
 
     const handleDownloadTemplate = () => {
@@ -455,32 +382,38 @@ export default function StudentsPage() {
         const ws = XLSX.utils.aoa_to_sheet(headers);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Plantilla Estudiantes");
+        
+        if (carreras.length > 0 || grupos.length > 0) {
+            const infoData = [];
+            const maxLength = Math.max(carreras.length, grupos.length);
+            for(let i=0; i<maxLength; i++) {
+                infoData.push({
+                    'ID Carrera': carreras[i]?.id || '',
+                    'Nombre Carrera': carreras[i]?.name || '',
+                    'ID Grupo': grupos[i]?.id || '',
+                    'Nombre Grupo': grupos[i]?.name || ''
+                });
+            }
+            const infoSheet = XLSX.utils.json_to_sheet(infoData);
+            XLSX.utils.book_append_sheet(wb, infoSheet, "IDs de Referencia");
+        }
+
         XLSX.writeFile(wb, "plantilla_estudiantes.xlsx");
-        toast({ title: "Plantilla descargada", description: "El archivo de plantilla de Excel está listo." });
     };
 
     const handleExport = () => {
-        if (filteredStudents.length === 0) {
-            toast({ variant: 'destructive', title: 'No hay datos', description: 'No hay estudiantes para exportar.' });
-            return;
-        }
         const studentsToExport = filteredStudents.map(s => ({
             'Nombre(s)': s.firstName,
             'Apellido(s)': s.lastName,
-            'Numero de Control': s.controlNumber,
-            'Programa Academico': getProgramName(s.academicProgramId),
+            'Número de Control': s.controlNumber,
+            'Carrera': getProgramName(s.academicProgramId),
             'Grupo': getGroupName(s.assignedGroupId),
-            'Imagen Facial Registrada': s.facialImage ? 'Sí' : 'No',
+            'Con Registro Facial': s.facialImage ? 'Sí' : 'No',
         }));
         const ws = XLSX.utils.json_to_sheet(studentsToExport);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Estudiantes");
-        XLSX.writeFile(wb, "estudiantes.xlsx");
-        toast({ title: "Exportación exitosa", description: "La lista de estudiantes ha sido descargada." });
-    };
-
-    const handleImportClick = () => {
-        fileInputRef.current?.click();
+        XLSX.writeFile(wb, "lista_estudiantes.xlsx");
     };
 
     const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -492,62 +425,40 @@ export default function StudentsPage() {
             try {
                 const data = event.target?.result;
                 const workbook = XLSX.read(data, { type: 'binary' });
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
+                const worksheet = workbook.Sheets[workbook.SheetNames[0]];
                 const json = XLSX.utils.sheet_to_json<any>(worksheet);
 
                 const batch = writeBatch(firestore);
-                let updatedCount = 0;
-                let createdCount = 0;
-                let skippedCount = 0;
+                let created = 0;
+                let skipped = 0;
 
                 for (const item of json) {
-                    const controlNumber = item.controlNumber ? String(item.controlNumber).trim() : '';
-                    if (!controlNumber || !item.firstName || !item.lastName || !item.academicProgramId || !item.assignedGroupId) {
-                        skippedCount++;
+                    if (!item.firstName || !item.lastName || !item.controlNumber || !item.academicProgramId || !item.assignedGroupId) {
+                        skipped++;
                         continue;
                     }
 
-                    const q = query(collection(firestore, 'students'), where('controlNumber', '==', controlNumber));
-                    const querySnapshot = await getDocs(q);
-                    
-                    const studentData = {
-                        firstName: item.firstName,
-                        lastName: item.lastName,
-                        controlNumber: controlNumber,
-                        academicProgramId: item.academicProgramId,
-                        assignedGroupId: item.assignedGroupId,
+                    const newStudent = {
+                        firstName: String(item.firstName),
+                        lastName: String(item.lastName),
+                        controlNumber: String(item.controlNumber),
+                        academicProgramId: String(item.academicProgramId),
+                        assignedGroupId: String(item.assignedGroupId),
+                        facialImage: null,
+                        embedding: null,
                     };
-
-                    if (!querySnapshot.empty) {
-                        const studentDoc = querySnapshot.docs[0];
-                        batch.update(studentDoc.ref, studentData);
-                        updatedCount++;
-                    } else {
-                        const newStudentData = {
-                            ...studentData,
-                            facialImage: null,
-                            embedding: null,
-                        };
-                        const newStudentRef = doc(collection(firestore, 'students'));
-                        batch.set(newStudentRef, newStudentData);
-                        createdCount++;
-                    }
+                    const newRef = doc(collection(firestore, 'students'));
+                    batch.set(newRef, newStudent);
+                    created++;
                 }
 
-                await batch.commit();
-                toast({ title: "Importación Finalizada", description: `${createdCount} estudiante(s) creado(s), ${updatedCount} actualizado(s), ${skippedCount} omitido(s).` });
-                window.location.reload();
+                if (created > 0) await batch.commit();
+                toast({ title: "Importación completada", description: `${created} creados, ${skipped} omitidos.` });
 
-            } catch (error: any) {
-                console.error("Error al importar el archivo:", error);
-                toast({
-                    variant: "destructive",
-                    title: "Error de importación",
-                    description: "No se pudo procesar el archivo. Revisa que el formato sea correcto.",
-                });
+            } catch (error) {
+                toast({ variant: "destructive", title: "Error", description: "El archivo no tiene el formato correcto." });
             } finally {
-                if (e.target) e.target.value = '';
+                e.target.value = '';
             }
         };
         reader.readAsBinaryString(file);
@@ -561,22 +472,22 @@ export default function StudentsPage() {
                     <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <CardTitle>Gestión de Estudiantes</CardTitle>
-                            <CardDescription>Consulta, busca, importa, exporta y registra nuevos estudiantes.</CardDescription>
+                            <CardDescription>Administra los registros y la información facial de los alumnos.</CardDescription>
                         </div>
                         <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
                              <div className="relative w-full flex-1 sm:w-auto md:grow-0">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     type="search"
-                                    placeholder="Buscar..."
-                                    className="w-full rounded-lg bg-background pl-8 md:w-[200px] lg:w-[250px]"
+                                    placeholder="Buscar por nombre o control..."
+                                    className="w-full rounded-lg bg-background pl-8 md:w-[250px]"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
                             </div>
-                            <Button size="sm" onClick={() => handleOpenDialog(null)}>
+                            <Button size="sm" onClick={() => { setEditingStudent(null); setIsDialogOpen(true); }}>
                                 <PlusCircle className="mr-2 h-4 w-4" />
-                                Registrar
+                                Nuevo Alumno
                             </Button>
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -585,18 +496,18 @@ export default function StudentsPage() {
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                    <DropdownMenuLabel>Acciones</DropdownMenuLabel>
-                                    <DropdownMenuItem onSelect={handleImportClick}>
+                                    <DropdownMenuLabel>Opciones por Lote</DropdownMenuLabel>
+                                    <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
                                         <Upload className="mr-2 h-4 w-4" />
-                                        Importar desde archivo
+                                        Subir Excel
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem onSelect={handleExport} disabled={filteredStudents.length === 0}>
+                                    <DropdownMenuItem onSelect={handleExport}>
                                         <Download className="mr-2 h-4 w-4" />
-                                        Exportar a Excel
+                                        Exportar Lista
                                     </DropdownMenuItem>
                                     <DropdownMenuItem onSelect={handleDownloadTemplate}>
                                         <Download className="mr-2 h-4 w-4" />
-                                        Descargar plantilla
+                                        Bajar Plantilla
                                     </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
@@ -604,141 +515,76 @@ export default function StudentsPage() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleFileImport}
-                        accept=".xlsx, .xls"
-                        className="hidden"
-                    />
-                    {/* Mobile View */}
-                    <div className="grid gap-4 md:hidden">
-                        {filteredStudents.map((student) => (
-                            <Card key={student.id}>
-                                <CardHeader className="flex flex-row items-start justify-between pb-2">
-                                     <div className="flex items-center gap-3">
-                                        <Avatar>
-                                            <AvatarImage src={student.facialImage || undefined} alt={`${student.firstName} ${student.lastName}`} />
-                                            <AvatarFallback><UserIcon /></AvatarFallback>
-                                        </Avatar>
-                                        <div>
-                                            <CardTitle className="text-base font-semibold">{student.firstName} {student.lastName}</CardTitle>
-                                            <CardDescription>{student.controlNumber}</CardDescription>
-                                        </div>
-                                    </div>
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="h-8 w-8 -mt-2 -mr-2"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                                        <DropdownMenuContent>
-                                            <DropdownMenuItem onSelect={() => handleOpenDialog(student)}>Editar</DropdownMenuItem>
-                                            <AlertDialog>
-                                                <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
-                                                <AlertDialogContent>
-                                                <AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esta acción no se puede deshacer y eliminará permanentemente al estudiante.</AlertDialogDescription></AlertDialogHeader>
-                                                <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={async () => await handleDeleteStudent(student.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction></AlertDialogFooter>
-                                                </AlertDialogContent>
-                                            </AlertDialog>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
-                                </CardHeader>
-                                <CardContent className="space-y-1 text-sm">
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Programa</span>
-                                        <span className="text-right">{getProgramName(student.academicProgramId)}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Grupo</span>
-                                        <span>{getGroupName(student.assignedGroupId)}</span>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
-
-                    {/* Desktop View */}
-                    <Table className="hidden md:table">
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Estudiante</TableHead>
-                                <TableHead>Programa Académico</TableHead>
-                                <TableHead>Grupo</TableHead>
-                                <TableHead><span className="sr-only">Acciones</span></TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {filteredStudents.length > 0 ? filteredStudents.map((student) => (
-                                <TableRow key={student.id}>
-                                    <TableCell>
-                                        <div className="flex items-center gap-3">
-                                            <Avatar>
-                                                <AvatarImage src={student.facialImage || undefined} alt={`${student.firstName} ${student.lastName}`} />
-                                                <AvatarFallback><UserIcon /></AvatarFallback>
-                                            </Avatar>
-                                            <div>
-                                                <div className="font-medium">{student.firstName} {student.lastName}</div>
-                                                <div className="text-sm text-muted-foreground">{student.controlNumber}</div>
-                                            </div>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>{getProgramName(student.academicProgramId)}</TableCell>
-                                    <TableCell>{getGroupName(student.assignedGroupId)}</TableCell>
-                                    <TableCell className="text-right">
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild><Button aria-haspopup="true" size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /><span className="sr-only">Menú</span></Button></DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end">
-                                                <DropdownMenuLabel>Acciones</DropdownMenuLabel>
-                                                <DropdownMenuItem onSelect={() => handleOpenDialog(student)}>Editar</DropdownMenuItem>
-                                                <AlertDialog>
-                                                    <AlertDialogTrigger asChild>
-                                                    <DropdownMenuItem onSelect={(event) => event.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem>
-                                                    </AlertDialogTrigger>
-                                                    <AlertDialogContent>
-                                                    <AlertDialogHeader>
-                                                        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                                                        <AlertDialogDescription>Esta acción no se puede deshacer y eliminará permanentemente al estudiante.</AlertDialogDescription>
-                                                    </AlertDialogHeader>
-                                                    <AlertDialogFooter>
-                                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                        <AlertDialogAction onClick={async () => await handleDeleteStudent(student.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction>
-                                                    </AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    </TableCell>
-                                </TableRow>
-                            )) : (
+                    <input type="file" ref={fileInputRef} onChange={handleFileImport} accept=".xlsx, .xls" className="hidden" />
+                    
+                    {/* Table View */}
+                    <div className="rounded-md border overflow-hidden">
+                        <Table>
+                            <TableHeader>
                                 <TableRow>
-                                    <TableCell colSpan={4} className="h-24 text-center">
-                                        No se encontraron estudiantes.
-                                    </TableCell>
+                                    <TableHead className="w-[80px]">Foto</TableHead>
+                                    <TableHead>Nombre Completo</TableHead>
+                                    <TableHead>Control</TableHead>
+                                    <TableHead>Grupo</TableHead>
+                                    <TableHead className="text-right">Acciones</TableHead>
                                 </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
-                </CardContent>
-                 <CardFooter>
-                    <div className="text-xs text-muted-foreground">
-                        Mostrando <strong>{filteredStudents.length}</strong> de <strong>{students.length}</strong> estudiantes
+                            </TableHeader>
+                            <TableBody>
+                                {filteredStudents.length > 0 ? filteredStudents.map((student) => (
+                                    <TableRow key={student.id}>
+                                        <TableCell>
+                                            <Avatar className="h-9 w-9">
+                                                <AvatarImage src={student.facialImage || undefined} className="object-cover" />
+                                                <AvatarFallback><UserIcon className="h-4 w-4" /></AvatarFallback>
+                                            </Avatar>
+                                        </TableCell>
+                                        <TableCell className="font-medium">
+                                            {student.firstName} {student.lastName}
+                                            {!student.facialImage && <span className="ml-2 text-[10px] bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded-full uppercase">Sin Rostro</span>}
+                                        </TableCell>
+                                        <TableCell>{student.controlNumber}</TableCell>
+                                        <TableCell>{getGroupName(student.assignedGroupId)}</TableCell>
+                                        <TableCell className="text-right">
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuItem onSelect={() => { setEditingStudent(student); setIsDialogOpen(true); }}>Editar / Tomar Foto</DropdownMenuItem>
+                                                    <AlertDialog>
+                                                        <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
+                                                        <AlertDialogContent>
+                                                            <AlertDialogHeader>
+                                                                <AlertDialogTitle>¿Eliminar a este alumno?</AlertDialogTitle>
+                                                                <AlertDialogDescription>Esta acción borrará permanentemente sus datos y registros de asistencia.</AlertDialogDescription>
+                                                            </AlertDialogHeader>
+                                                            <AlertDialogFooter>
+                                                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                                <AlertDialogAction onClick={() => handleDeleteStudent(student.id)} className="bg-destructive text-destructive-foreground">Eliminar</AlertDialogAction>
+                                                            </AlertDialogFooter>
+                                                        </AlertDialogContent>
+                                                    </AlertDialog>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </TableCell>
+                                    </TableRow>
+                                )) : (
+                                    <TableRow><TableCell colSpan={5} className="h-24 text-center">No hay alumnos registrados.</TableCell></TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
                     </div>
-                </CardFooter>
+                </CardContent>
             </Card>
 
-            <Dialog open={isDialogOpen} onOpenChange={(isOpen) => {
-                if (!isOpen) {
-                    handleCloseDialog();
-                } else {
-                    setIsDialogOpen(true);
-                }
-            }}>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="sm:max-w-4xl">
                     <DialogHeader>
-                        <DialogTitle>{editingStudent ? 'Editar Estudiante' : 'Registro de Estudiantes'}</DialogTitle>
+                        <DialogTitle>{editingStudent ? 'Editar Alumno' : 'Nuevo Alumno'}</DialogTitle>
                         <DialogDescription>
-                            {editingStudent ? 'Actualiza la información del estudiante.' : 'Captura la información personal, académica y biométrica del estudiante.'}
+                            Puedes capturar la foto ahora o dejarla pendiente para después.
                         </DialogDescription>
                     </DialogHeader>
                     <StudentRegistrationForm 
-                        onFinished={handleCloseDialog}
+                        onFinished={() => setIsDialogOpen(false)}
                         carreras={carreras}
                         grupos={grupos}
                         initialData={editingStudent}
