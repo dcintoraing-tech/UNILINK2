@@ -101,16 +101,13 @@ export default function TeacherAttendancePage() {
     const [modelsLoaded, setModelsLoaded] = useState(false);
     const [faceMatcher, setFaceMatcher] = useState<faceapi.FaceMatcher | null>(null);
 
-    const [isJustifyOpen, setIsJustifyOpen] = useState(false);
-    const [justifyingStudent, setJustifyingStudent] = useState<DisplayStudent | null>(null);
-    const [justificationReason, setJustificationReason] = useState('');
-
     // --- Refs for video and control ---
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const recognitionIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const processedIdsRef = useRef<Set<string>>(new Set());
+    const warnedIdsRef = useRef<Set<string>>(new Set());
 
     // Load face-api.js models
     useEffect(() => {
@@ -146,7 +143,7 @@ export default function TeacherAttendancePage() {
         const labeledDescriptors = studentsInGroup.map(student => 
             new faceapi.LabeledFaceDescriptors(student.id, [new Float32Array(student.embedding!)])
         );
-        setFaceMatcher(new faceapi.FaceMatcher(labeledDescriptors, 0.55)); // 0.55 is a good balance
+        setFaceMatcher(new faceapi.FaceMatcher(labeledDescriptors, 0.55));
     }, [selectedGroup, allStudents, modelsLoaded]);
 
     // Initialize list when group is selected
@@ -157,6 +154,7 @@ export default function TeacherAttendancePage() {
                 .map(s => ({ ...s, status: 'Pendiente' as DisplayStatus }));
             setGroupStudentList(list);
             processedIdsRef.current = new Set();
+            warnedIdsRef.current = new Set();
         } else {
             setGroupStudentList([]);
         }
@@ -171,41 +169,51 @@ export default function TeacherAttendancePage() {
         if (videoRef.current) videoRef.current.srcObject = null;
     }, []);
 
-    // Function to actually mark the attendance
+    // Function to mark attendance and show alerts
     const markAttendance = useCallback((studentId: string) => {
-        if (processedIdsRef.current.has(studentId)) return;
-
+        // Find the student details immediately
         const student = allStudents.find(s => s.id === studentId);
         if (!student) return;
+
+        // Avoid double processing in the same session
+        if (processedIdsRef.current.has(studentId)) return;
 
         const now = new Date();
         const jsDay = now.getDay();
         const scheduleDayIndex = jsDay - 1; // 0=Mon, 4=Fri
 
+        const studentFullName = `${student.firstName} ${student.lastName}`;
+
+        // If it's a weekend, we can't mark official attendance
         if (scheduleDayIndex < 0 || scheduleDayIndex > 4) {
-            // Not a weekday
+            if (!warnedIdsRef.current.has(studentId)) {
+                toast({
+                    title: "Estudiante Identificado",
+                    description: `${studentFullName} reconocido, pero hoy es fin de semana.`,
+                });
+                warnedIdsRef.current.add(studentId);
+            }
             return;
         }
 
         const groupSchedule = horarios.find(h => h.grupoId === student.assignedGroupId);
         const todaySchedule = groupSchedule?.schedule?.[String(scheduleDayIndex)];
 
+        // If there's no schedule for today
         if (!todaySchedule || Object.keys(todaySchedule).length === 0) {
-            // Warn only once if no schedule for today
-            if (!processedIdsRef.current.has('warn-no-schedule')) {
+            if (!warnedIdsRef.current.has(studentId)) {
                 toast({
-                    variant: "destructive",
-                    title: "Sin horario programado",
-                    description: "No hay clases registradas para este grupo el día de hoy.",
+                    title: "Estudiante Identificado",
+                    description: `${studentFullName} reconocido, pero el grupo no tiene clases hoy.`,
                 });
-                processedIdsRef.current.add('warn-no-schedule');
+                warnedIdsRef.current.add(studentId);
             }
             return;
         }
 
         // Find active block
         const currentHour = now.getHours();
-        const currentBlockIndex = currentHour - 7; // Assuming 7am start
+        const currentBlockIndex = currentHour - 7; // Assumes blocks are 0: 7am, 1: 8am, etc.
         let activeBlock: HorarioBlock | null = null;
         let activeBlockKey: string | null = null;
 
@@ -219,13 +227,30 @@ export default function TeacherAttendancePage() {
             }
         });
 
+        // IF SIMULATING: We can force a success message even if outside hours
+        if (isSimulating) {
+            processedIdsRef.current.add(studentId);
+            const mockSubject = activeBlock ? materias.find(m => m.id === activeBlock!.materiaId)?.materia : "Clase de Prueba";
+            
+            setGroupStudentList(prev => prev.map(s => 
+                s.id === studentId ? { ...s, status: 'Presente', arrivalTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), subjectName: mockSubject || 'Simulación' } : s
+            ));
+
+            toast({
+                title: "SIMULACIÓN: Identificado",
+                description: `${studentFullName} está Presente (Prueba).`,
+            });
+            return;
+        }
+
+        // OFFICIAL MODE: Must have an active block
         if (!activeBlock || !activeBlockKey) {
-            if (!processedIdsRef.current.has('warn-no-class-now')) {
+            if (!warnedIdsRef.current.has(studentId)) {
                  toast({
-                    title: "Fuera de horario",
-                    description: "El alumno fue reconocido, pero no hay una clase activa en este momento.",
+                    title: "Estudiante Identificado",
+                    description: `${studentFullName} reconocido, pero no hay clases en este momento.`,
                 });
-                processedIdsRef.current.add('warn-no-class-now');
+                warnedIdsRef.current.add(studentId);
             }
             return;
         }
@@ -244,32 +269,30 @@ export default function TeacherAttendancePage() {
         const arrivalTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const subject = materias.find(m => m.id === activeBlock!.materiaId)?.materia || 'Clase';
 
-        // Update Ref to avoid repeating
+        // Mark as processed
         processedIdsRef.current.add(studentId);
 
-        // Update UI List
+        // Update UI
         setGroupStudentList(prev => prev.map(s => 
             s.id === studentId ? { ...s, status, arrivalTime, subjectName: subject } : s
         ));
 
-        // Feedback
+        // Feedback Alert
         toast({
-            title: isSimulating ? "SIMULACIÓN: Identificado" : "¡Asistencia Registrada!",
-            description: `${student.firstName} ${student.lastName} está ${status} para ${subject}.`,
+            title: "¡Asistencia Registrada!",
+            description: `${studentFullName} está ${status} para ${subject}.`,
         });
 
-        // Save to Database
-        if (!isSimulating) {
-            const recordId = `att-${studentId}-${dateString}-${activeBlock!.materiaId}`;
-            setDoc(doc(firestore, 'attendance', recordId), {
-                studentId,
-                date: dateString,
-                materiaAsignacionId: activeBlock!.materiaId,
-                docenteId: activeBlock!.docenteId,
-                status,
-                arrivalTime
-            }).catch(e => console.error("Error saving attendance:", e));
-        }
+        // Save to Firestore
+        const recordId = `att-${studentId}-${dateString}-${activeBlock!.materiaId}`;
+        setDoc(doc(firestore, 'attendance', recordId), {
+            studentId,
+            date: dateString,
+            materiaAsignacionId: activeBlock!.materiaId,
+            docenteId: activeBlock!.docenteId,
+            status,
+            arrivalTime
+        }).catch(e => console.error("Error saving attendance:", e));
 
     }, [allStudents, horarios, materias, config, isSimulating, toast, firestore]);
 
@@ -297,7 +320,7 @@ export default function TeacherAttendancePage() {
                             const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
                             const isMatch = bestMatch.label !== 'unknown';
                             
-                            // Visual feedback box on canvas
+                            // Visual feedback
                             const drawBox = new faceapi.draw.DrawBox(detection.detection.box, { 
                                 label: isMatch ? 'Reconocido' : 'Desconocido',
                                 boxColor: isMatch ? 'rgba(0, 255, 0, 1)' : 'rgba(255, 0, 0, 1)'
@@ -312,7 +335,7 @@ export default function TeacherAttendancePage() {
                         console.error("Error in face recognition loop:", err);
                     }
                 }
-            }, 800); // 800ms for responsiveness
+            }, 700);
         }
 
         return () => {
@@ -360,6 +383,7 @@ export default function TeacherAttendancePage() {
             setIsSimulating(simulation);
             setIsTakingAttendance(true);
             processedIdsRef.current = new Set();
+            warnedIdsRef.current = new Set();
         } else {
             setIsTakingAttendance(false);
             if (isSimulating) {
@@ -368,7 +392,7 @@ export default function TeacherAttendancePage() {
                 return;
             }
 
-            // Save Absences for those who remained 'Pendiente'
+            // Official Attendance End: Record absences
             const now = new Date();
             const jsDay = now.getDay();
             const scheduleDayIdx = jsDay - 1;
@@ -402,8 +426,6 @@ export default function TeacherAttendancePage() {
                     batch.commit().then(() => {
                         toast({ title: "Pase de Lista Cerrado", description: `Se registraron faltas para ${absences} alumnos.` });
                     });
-                } else {
-                    toast({ title: "Pase de Lista Cerrado", description: "Todos los alumnos registrados asistieron." });
                 }
             }
         }
@@ -453,9 +475,9 @@ export default function TeacherAttendancePage() {
                         <CardHeader className="pb-2">
                             <div className="flex items-center justify-between">
                                 <CardTitle className="text-lg flex items-center gap-2">
-                                    Cámara en Vivo {isSimulating && <Badge variant="outline" className="bg-yellow-100 text-yellow-800">SIMULACIÓN</Badge>}
+                                    Cámara en Vivo {isSimulating && <Badge variant="outline" className="bg-yellow-100 text-yellow-800">MODO PRUEBA</Badge>}
                                 </CardTitle>
-                                {isTakingAttendance && <span className="flex items-center gap-2 text-xs text-red-500 animate-pulse"><div className="w-2 h-2 rounded-full bg-red-500" /> Grabando...</span>}
+                                {isTakingAttendance && <span className="flex items-center gap-2 text-xs text-red-500 animate-pulse"><div className="w-2 h-2 rounded-full bg-red-500" /> Escaneando...</span>}
                             </div>
                         </CardHeader>
                         <CardContent>
@@ -502,7 +524,7 @@ export default function TeacherAttendancePage() {
                                             <TableCell className="text-sm">{student.arrivalTime || '-'}</TableCell>
                                             <TableCell>
                                                 <Badge variant={getStatusVariant(student.status)} className="gap-1">
-                                                    {student.status === 'Presente' && <CheckCircle2 className="h-3 w-3" />}
+                                                    {(student.status === 'Presente' || student.status === 'Retardo') && <CheckCircle2 className="h-3 w-3" />}
                                                     {student.status === 'Falta' && <AlertCircle className="h-3 w-3" />}
                                                     {student.status}
                                                 </Badge>
@@ -517,21 +539,6 @@ export default function TeacherAttendancePage() {
                     </Card>
                 </>
             )}
-
-            <Dialog open={isJustifyOpen} onOpenChange={setIsJustifyOpen}>
-                <DialogContent>
-                    <DialogHeader><DialogTitle>Justificar Falta</DialogTitle></DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <Label htmlFor="reason">Motivo</Label>
-                        <Textarea id="reason" value={justificationReason} onChange={(e) => setJustificationReason(e.target.value)} placeholder="Indica el motivo..." />
-                    </div>
-                    <DialogFooter>
-                        <Button variant="ghost" onClick={() => setIsJustifyOpen(false)}>Cancelar</Button>
-                        <Button onClick={() => setIsJustifyOpen(false)}>Enviar</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
         </div>
     );
 }
-
