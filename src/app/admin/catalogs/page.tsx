@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from 'react';
@@ -68,7 +66,7 @@ function CatalogContent({ title, items, onAdd, onEdit, onDelete }: { title: stri
         } else {
             await onAdd(name);
         }
-        window.location.reload();
+        setIsDialogOpen(false);
     };
 
     const handleOpenDialog = (item: CatalogItem | null = null) => {
@@ -78,7 +76,6 @@ function CatalogContent({ title, items, onAdd, onEdit, onDelete }: { title: stri
 
     const handleDelete = async (itemId: string) => {
         await onDelete(itemId);
-        window.location.reload();
     };
 
     return (
@@ -135,7 +132,7 @@ function CatalogContent({ title, items, onAdd, onEdit, onDelete }: { title: stri
 }
 
 // --- GRUPOS COMPONENT ---
-function GruposContent({ firestore, grupos, carreras, modalidades, sedes }: { firestore: Firestore, grupos: Grupo[], setGrupos?: any, carreras: CatalogItem[], modalidades: CatalogItem[], sedes: CatalogItem[] }) {
+function GruposContent({ firestore, grupos, carreras, modalidades, sedes }: { firestore: Firestore, grupos: Grupo[], carreras: CatalogItem[], modalidades: CatalogItem[], sedes: CatalogItem[] }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<Grupo | null>(null);
     const { toast } = useToast();
@@ -172,7 +169,7 @@ function GruposContent({ firestore, grupos, carreras, modalidades, sedes }: { fi
                 await addDoc(collection(firestore, 'grupos'), groupData);
                 toast({ title: "Grupo agregado" });
             }
-            window.location.reload();
+            setIsDialogOpen(false);
         } catch (error) {
              toast({ variant: "destructive", title: "Error", description: "No se pudo guardar el grupo." });
         }
@@ -187,7 +184,6 @@ function GruposContent({ firestore, grupos, carreras, modalidades, sedes }: { fi
         try {
             await deleteDoc(doc(firestore, 'grupos', itemId));
             toast({ title: "Grupo eliminado" });
-            window.location.reload();
         } catch (error) {
              toast({ variant: "destructive", title: "Error", description: "No se pudo eliminar el grupo." });
         }
@@ -364,7 +360,6 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
     const filteredAsignaciones = useMemo(() => {
         return asignaciones
             .filter(a => {
-                // Filter out items with no valid carrera
                 if (!a.carreraId || !validCarreraIds.has(a.carreraId)) {
                     return false;
                 }
@@ -389,20 +384,12 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
         const semestre = formData.get('semestre') as string;
 
         if (!materia || !carreraId) {
-            toast({
-                variant: 'destructive',
-                title: "Campos requeridos",
-                description: "Debes completar el nombre de la materia y seleccionar una carrera.",
-            });
+            toast({ variant: 'destructive', title: "Campos requeridos", description: "Debes completar el nombre de la materia y seleccionar una carrera." });
             return;
         }
 
         if (cuatrimestre === 'NONE' && semestre === 'NONE') {
-            toast({
-                variant: 'destructive',
-                title: "Periodo requerido",
-                description: "Debes seleccionar un cuatrimestre o un semestre.",
-            });
+            toast({ variant: 'destructive', title: "Periodo requerido", description: "Debes seleccionar un cuatrimestre o un semestre." });
             return;
         }
 
@@ -416,7 +403,7 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                 await addDoc(collection(firestore, 'materiaAsignaciones'), newAsignacion);
                 toast({ title: "Materia asignada" });
             }
-            window.location.reload();
+            setIsDialogOpen(false);
         } catch (error) {
             toast({ variant: 'destructive', title: 'Error', description: 'No se pudo guardar la asignación.' });
         }
@@ -431,7 +418,6 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
         try {
             await deleteDoc(doc(firestore, 'materiaAsignaciones', itemId));
             toast({ title: "Asignación eliminada" });
-            window.location.reload();
         } catch (error) {
             toast({ variant: 'destructive', title: 'Error', description: 'No se pudo eliminar la asignación.' });
         }
@@ -445,25 +431,18 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
     const handleDownloadTemplate = () => {
         const headers = [['materia', 'cuatrimestre', 'semestre', 'carreraId', 'carreraName']];
         const ws = XLSX.utils.aoa_to_sheet(headers);
-
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Plantilla Materias");
-        
         if (carreras.length > 0) {
             const carrerasSheetData = carreras.map(c => ({ 'ID de Carrera': c.id, 'Nombre de Carrera': c.name }));
             const carrerasSheet = XLSX.utils.json_to_sheet(carrerasSheetData);
             XLSX.utils.book_append_sheet(wb, carrerasSheet, "IDs y Nombres de Carreras");
         }
-        
         XLSX.writeFile(wb, "plantilla_materias.xlsx");
-        toast({ title: "Plantilla descargada", description: "El archivo de plantilla de Excel está listo para usarse." });
     };
 
     const handleExport = () => {
-        if (filteredAsignaciones.length === 0) {
-            toast({ variant: 'destructive', title: 'No hay datos', description: 'No hay materias para exportar.' });
-            return;
-        }
+        if (filteredAsignaciones.length === 0) return;
         const dataToExport = filteredAsignaciones.map(a => ({
             'Materia': a.materia,
             'Carrera': getCarreraName(a.carreraId),
@@ -475,29 +454,20 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Materias");
         XLSX.writeFile(wb, "materias.xlsx");
-        toast({ title: "Exportación exitosa", description: "La lista de materias ha sido descargada." });
     };
 
-    const handleImportClick = () => {
-        fileInputRef.current?.click();
-    };
+    const handleImportClick = () => fileInputRef.current?.click();
 
     const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file) return;
-
-        if (carreras.length === 0) {
-            toast({ variant: "destructive", title: "Error de importación", description: "No hay carreras cargadas en el sistema. Agrega carreras antes de importar materias." });
-            return;
-        }
+        if (!file || carreras.length === 0) return;
 
         const reader = new FileReader();
         reader.onload = async (event) => {
             try {
                 const data = event.target?.result;
                 const workbook = XLSX.read(data, { type: 'binary' });
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
+                const worksheet = workbook.Sheets[workbook.SheetNames[0]];
                 const json = XLSX.utils.sheet_to_json<any>(worksheet);
 
                 const existingAssignmentsSnapshot = await getDocs(collection(firestore, 'materiaAsignaciones'));
@@ -506,70 +476,33 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                 const batch = writeBatch(firestore);
                 let createdCount = 0;
                 let skippedCount = 0;
-                const validationErrors: string[] = [];
 
-                for (const [index, item] of json.entries()) {
-                    const rowNum = index + 2;
+                for (const item of json) {
                     const materia = item.materia ? String(item.materia).trim() : '';
-                    const providedCarreraId = item.carreraId ? String(item.carreraId).trim() : null;
-                    const providedCarreraName = item.carreraName ? String(item.carreraName).trim() : null;
-
-                    let resolvedCarreraId: string | null = null;
-
-                    if (providedCarreraId) {
-                        const carreraExists = carreras.some(c => c.id === providedCarreraId);
-                        if (carreraExists) {
-                            resolvedCarreraId = providedCarreraId;
-                        } else {
-                            validationErrors.push(`Fila ${rowNum}: El carreraId "${providedCarreraId}" no existe.`);
-                            skippedCount++;
-                            continue;
-                        }
-                    } else if (providedCarreraName) {
-                        const foundCarrera = carreras.find(c => c.name.toLowerCase() === providedCarreraName.toLowerCase());
-                        if (foundCarrera) {
-                            resolvedCarreraId = foundCarrera.id;
-                        } else {
-                            validationErrors.push(`Fila ${rowNum}: No se encontró la carrera con nombre "${providedCarreraName}".`);
-                            skippedCount++;
-                            continue;
-                        }
+                    let resolvedCarreraId = item.carreraId ? String(item.carreraId).trim() : null;
+                    if (!resolvedCarreraId && item.carreraName) {
+                        resolvedCarreraId = carreras.find(c => c.name.toLowerCase() === String(item.carreraName).toLowerCase())?.id || null;
                     }
 
-                    if (!resolvedCarreraId) {
-                        validationErrors.push(`Fila ${rowNum}: Se debe proporcionar un 'carreraId' válido o un 'carreraName' existente.`);
+                    if (!materia || !resolvedCarreraId || !validCarreraIds.has(resolvedCarreraId)) {
                         skippedCount++;
                         continue;
                     }
 
-                    const normalizePeriod = (period: any) => {
-                        const periodStr = period ? String(period).trim().toLowerCase() : '';
-                        if (!periodStr || ['ninguno', 'none', 'n/a'].includes(periodStr)) {
-                            return 'NONE';
-                        }
-                        return String(period);
-                    }
-
+                    const normalizePeriod = (p: any) => {
+                        const s = p ? String(p).trim().toLowerCase() : '';
+                        return (!s || ['ninguno', 'none', 'n/a'].includes(s)) ? 'NONE' : String(p);
+                    };
                     const cuatrimestre = normalizePeriod(item.cuatrimestre);
                     const semestre = normalizePeriod(item.semestre);
 
-                    if (!materia) {
-                        validationErrors.push(`Fila ${rowNum}: El campo 'materia' no puede estar vacío.`);
-                        skippedCount++;
-                        continue;
-                    }
-
                     if (cuatrimestre === 'NONE' && semestre === 'NONE') {
-                        validationErrors.push(`Fila ${rowNum}: Se debe especificar un 'cuatrimestre' o 'semestre'.`);
                         skippedCount++;
                         continue;
                     }
                     
-                    const isDuplicate = existingAssignments.some(existing => 
-                        existing.materia.toLowerCase() === materia.toLowerCase() &&
-                        existing.carreraId === resolvedCarreraId &&
-                        existing.cuatrimestre === cuatrimestre &&
-                        existing.semestre === semestre
+                    const isDuplicate = existingAssignments.some(ex => 
+                        ex.materia.toLowerCase() === materia.toLowerCase() && ex.carreraId === resolvedCarreraId && ex.cuatrimestre === cuatrimestre && ex.semestre === semestre
                     );
                     
                     if (isDuplicate) {
@@ -577,51 +510,17 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                         continue;
                     }
 
-                    const newAsignacion = {
-                        materia,
-                        carreraId: resolvedCarreraId,
-                        cuatrimestre,
-                        semestre,
-                    };
                     const newDocRef = doc(collection(firestore, 'materiaAsignaciones'));
-                    batch.set(newDocRef, newAsignacion);
+                    batch.set(newDocRef, { materia, carreraId: resolvedCarreraId, cuatrimestre, semestre });
                     createdCount++;
                 }
 
-                if (createdCount > 0) {
-                    await batch.commit();
-                }
-                
-                let toastDescription = `${createdCount} materia(s) creada(s).`;
-                if (skippedCount > 0) toastDescription += ` ${skippedCount} fila(s) omitida(s) por ser duplicados o tener errores.`;
-                
-                if (validationErrors.length > 0) {
-                    toast({
-                        variant: "destructive",
-                        title: "Importación con Errores",
-                        description: `${toastDescription} Errores: ${validationErrors.join(" ")}`,
-                        duration: 10000,
-                    });
-                } else {
-                    toast({
-                        title: "Importación Finalizada",
-                        description: toastDescription,
-                    });
-                }
-                
-                if (createdCount > 0) {
-                    window.location.reload();
-                }
-
-            } catch (error: any) {
-                console.error("Error al importar el archivo:", error);
-                toast({
-                    variant: "destructive",
-                    title: "Error de importación",
-                    description: "No se pudo procesar el archivo. Revisa que el formato y los datos sean correctos.",
-                });
+                if (createdCount > 0) await batch.commit();
+                toast({ title: "Importación Finalizada", description: `${createdCount} materias creadas, ${skippedCount} omitidas.` });
+            } catch (error) {
+                toast({ variant: "destructive", title: "Error de importación" });
             } finally {
-                if (e.target) e.target.value = '';
+                e.target.value = '';
             }
         };
         reader.readAsBinaryString(file);
@@ -629,40 +528,22 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
 
     return (
         <Card>
-            <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileImport}
-                accept=".xlsx, .xls"
-                className="hidden"
-            />
+            <input type="file" ref={fileInputRef} onChange={handleFileImport} accept=".xlsx, .xls" className="hidden" />
             <CardHeader>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <CardTitle>Asignación de Materias</CardTitle>
                   <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
                       <Button size="sm" onClick={() => openDialog(null)} disabled={carreras.length === 0}>
-                        <PlusCircle className="h-4 w-4 mr-2" />
-                        Asignar Materia
+                        <PlusCircle className="h-4 w-4 mr-2" /> Asignar Materia
                       </Button>
                       <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                              <Button size="sm" variant="outline">
-                                  <MoreHorizontal className="h-4 w-4" />
-                              </Button>
+                              <Button size="sm" variant="outline"><MoreHorizontal className="h-4 w-4" /></Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                              <DropdownMenuItem onSelect={handleImportClick}>
-                                  <Upload className="mr-2 h-4 w-4" />
-                                  Importar desde archivo
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onSelect={handleExport} disabled={filteredAsignaciones.length === 0}>
-                                  <Download className="mr-2 h-4 w-4" />
-                                  Exportar a Excel
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onSelect={handleDownloadTemplate}>
-                                  <Download className="mr-2 h-4 w-4" />
-                                  Descargar plantilla
-                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={handleImportClick}><Upload className="mr-2 h-4 w-4" /> Importar</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={handleExport} disabled={filteredAsignaciones.length === 0}><Download className="mr-2 h-4 w-4" /> Exportar</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={handleDownloadTemplate}><Download className="mr-2 h-4 w-4" /> Plantilla</DropdownMenuItem>
                           </DropdownMenuContent>
                       </DropdownMenu>
                   </div>
@@ -704,7 +585,7 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                                         <AlertDialog>
                                             <AlertDialogTrigger asChild><DropdownMenuItem onSelect={e => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
                                             <AlertDialogContent>
-                                                <AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription></AlertDialogHeader>
+                                                <AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle></AlertDialogHeader>
                                                 <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(a.id)} className="bg-destructive text-destructive-foreground">Eliminar</AlertDialogAction></AlertDialogFooter>
                                             </AlertDialogContent>
                                         </AlertDialog>
@@ -713,10 +594,8 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                             </CardHeader>
                             <CardContent>
                                 <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                                    <dt className="text-muted-foreground">Cuatrimestre</dt>
-                                    <dd>{a.cuatrimestre === 'NONE' ? 'N/A' : a.cuatrimestre}</dd>
-                                    <dt className="text-muted-foreground">Semestre</dt>
-                                    <dd>{a.semestre === 'NONE' ? 'N/A' : a.semestre}</dd>
+                                    <dt className="text-muted-foreground">Cuatrimestre</dt><dd>{a.cuatrimestre === 'NONE' ? 'N/A' : a.cuatrimestre}</dd>
+                                    <dt className="text-muted-foreground">Semestre</dt><dd>{a.semestre === 'NONE' ? 'N/A' : a.semestre}</dd>
                                 </dl>
                             </CardContent>
                         </Card>
@@ -727,11 +606,7 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                 <Table className="hidden md:table">
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Materia</TableHead>
-                            <TableHead>Carrera</TableHead>
-                            <TableHead>Cuatrimestre</TableHead>
-                            <TableHead>Semestre</TableHead>
-                            <TableHead className="text-right"><span className="sr-only">Acciones</span></TableHead>
+                            <TableHead>Materia</TableHead><TableHead>Carrera</TableHead><TableHead>Cuatrimestre</TableHead><TableHead>Semestre</TableHead><TableHead className="text-right"><span className="sr-only">Acciones</span></TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -749,7 +624,7 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                                             <AlertDialog>
                                                 <AlertDialogTrigger asChild><DropdownMenuItem onSelect={e => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
                                                 <AlertDialogContent>
-                                                    <AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription></AlertDialogHeader>
+                                                    <AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle></AlertDialogHeader>
                                                     <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(a.id)} className="bg-destructive text-destructive-foreground">Eliminar</AlertDialogAction></AlertDialogFooter>
                                                 </AlertDialogContent>
                                             </AlertDialog>
@@ -760,7 +635,6 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                         ))}
                     </TableBody>
                 </Table>
-                {carreras.length === 0 && <p className="text-sm text-muted-foreground mt-4">Crea una carrera antes de asignar una materia.</p>}
             </CardContent>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent>
@@ -773,29 +647,21 @@ function MateriasContent({ firestore, asignaciones, carreras }: { firestore: Fir
                                     <Label>Carrera</Label>
                                     <Select name="carreraId" defaultValue={currentItem?.carreraId} required>
                                         <SelectTrigger><SelectValue placeholder="Selecciona una carrera" /></SelectTrigger>
-                                        <SelectContent>
-                                            {carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                                        </SelectContent>
+                                        <SelectContent>{carreras.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                                     </Select>
                                 </div>
                                 <div className="grid gap-2">
                                     <Label htmlFor="cuatrimestre">Cuatrimestre</Label>
                                     <Select name="cuatrimestre" defaultValue={currentItem?.cuatrimestre || "NONE"} required>
                                         <SelectTrigger id="cuatrimestre"><SelectValue placeholder="Selecciona un cuatrimestre" /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="NONE">Ninguno</SelectItem>
-                                            {cuatrimestres.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                                        </SelectContent>
+                                        <SelectContent><SelectItem value="NONE">Ninguno</SelectItem>{cuatrimestres.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                                     </Select>
                                 </div>
                                 <div className="grid gap-2">
                                     <Label htmlFor="semestre">Semestre</Label>
                                     <Select name="semestre" defaultValue={currentItem?.semestre || "NONE"} required>
                                         <SelectTrigger id="semestre"><SelectValue placeholder="Selecciona un semestre" /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="NONE">Ninguno</SelectItem>
-                                            {semestres.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                                        </SelectContent>
+                                        <SelectContent><SelectItem value="NONE">Ninguno</SelectItem>{semestres.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
                                     </Select>
                                 </div>
                             </div>
@@ -818,290 +684,107 @@ const TOTAL_DAYS = 5;
 const TOTAL_BLOCKS_PER_DAY = 4;
 
 function ScheduleWizard({
-    grupos,
-    materias,
-    docentes,
-    onSave,
-    onCancel,
-    existingHorario
+    grupos, materias, docentes, onSave, onCancel, existingHorario
 }: {
-    grupos: ComboboxOption[];
-    materias: ComboboxOption[];
-    docentes: ComboboxOption[];
-    onSave: (horario: Horario) => Promise<void>;
-    onCancel: () => void;
-    existingHorario: Horario | null;
+    grupos: ComboboxOption[]; materias: ComboboxOption[]; docentes: ComboboxOption[]; onSave: (horario: Horario) => Promise<void>; onCancel: () => void; existingHorario: Horario | null;
 }) {
     const [wizardStep, setWizardStep] = useState(existingHorario ? 'build_schedule' : 'select_group');
     const [selectedGroupId, setSelectedGroupId] = useState<string>(existingHorario?.grupoId || '');
     const [currentDay, setCurrentDay] = useState(0);
     const [currentBlock, setCurrentBlock] = useState(0);
+    const { toast } = useToast();
 
     const initialSchedule = useMemo(() => {
         if (existingHorario) return existingHorario.schedule;
         const newSchedule: ScheduleData = {};
         for (let i = 0; i < TOTAL_DAYS; i++) {
             newSchedule[i] = {};
-            for (let j = 0; j < TOTAL_BLOCKS_PER_DAY; j++) {
-                newSchedule[i][j] = null;
-            }
+            for (let j = 0; j < TOTAL_BLOCKS_PER_DAY; j++) newSchedule[i][j] = null;
         }
         return newSchedule;
     }, [existingHorario]);
 
     const [workingSchedule, setWorkingSchedule] = useState<ScheduleData>(initialSchedule);
 
-    const { toast } = useToast();
-    
-    const selectedGroupName = useMemo(() => grupos.find(g => g.value === selectedGroupId)?.label, [selectedGroupId, grupos]);
-    const progress = useMemo(() => {
-        const totalSteps = TOTAL_DAYS * TOTAL_BLOCKS_PER_DAY;
-        const currentStep = currentDay * TOTAL_BLOCKS_PER_DAY + currentBlock;
-        return (currentStep / totalSteps) * 100;
-    }, [currentDay, currentBlock]);
-
-    const isBlockOccupied = (() => {
-        for (let i = 1; i <= currentBlock; i++) {
-          const prevIndex = currentBlock - i;
-          if (prevIndex < 0) continue;
-      
-          const prevBlock = workingSchedule[currentDay]?.[prevIndex];
-          if (prevBlock && (prevBlock.duracion || 1) > i) {
-            return true;
-          }
-        }
-        return false;
-    })();
-
     const handleScheduleChange = (field: 'materiaId' | 'docenteId' | 'duracion', value: string | number | null) => {
         setWorkingSchedule(prev => {
-            const newSchedule: ScheduleData = JSON.parse(JSON.stringify(prev)); // Deep copy
-
+            const newSchedule: ScheduleData = JSON.parse(JSON.stringify(prev));
             const day = newSchedule[currentDay] = newSchedule[currentDay] || {};
             let block = day[currentBlock];
-            const isClearingBlock = field === 'materiaId' && value === null;
-    
-            if (isClearingBlock) {
-                day[currentBlock] = null;
-                return newSchedule;
-            }
-    
+            if (field === 'materiaId' && value === null) { day[currentBlock] = null; return newSchedule; }
             if (value) {
-                if (!block) {
-                    block = day[currentBlock] = { materiaId: '', docenteId: '', duracion: 1 };
-                }
+                if (!block) block = day[currentBlock] = { materiaId: '', docenteId: '', duracion: 1 };
                 (block as any)[field] = value;
-            } else { // value is empty string (from combobox clear)
-                if (block) {
-                    delete (block as any)[field];
-                    if (!block.materiaId && !block.docenteId) {
-                        day[currentBlock] = null;
-                    }
-                }
+            } else if (block) {
+                delete (block as any)[field];
+                if (!block.materiaId && !block.docenteId) day[currentBlock] = null;
             }
-            
             return newSchedule;
         });
     };
 
     const currentBlockData = workingSchedule[currentDay]?.[currentBlock];
-    const isPartiallyFilled = currentBlockData && (
-        (currentBlockData.materiaId && !currentBlockData.docenteId) ||
-        (!currentBlockData.materiaId && currentBlockData.docenteId)
-    );
+    const isPartiallyFilled = currentBlockData && ((currentBlockData.materiaId && !currentBlockData.docenteId) || (!currentBlockData.materiaId && currentBlockData.docenteId));
 
     const handleNext = () => {
-        if (isPartiallyFilled) {
-            toast({ variant: 'destructive', title: "Campos incompletos", description: "Debes seleccionar materia y docente para el bloque, o dejarlo vacío." });
-            return;
-        }
+        if (isPartiallyFilled) { toast({ variant: 'destructive', title: "Campos incompletos" }); return; }
         const duracion = currentBlockData?.duracion || 1;
         let nextBlock = currentBlock + duracion;
         let nextDay = currentDay;
-
-        if (nextBlock >= TOTAL_BLOCKS_PER_DAY) {
-            nextDay++;
-            nextBlock = 0;
-        }
-
-        if (nextDay < TOTAL_DAYS) {
-            setCurrentDay(nextDay);
-            setCurrentBlock(nextBlock);
-        } else {
-            handleSave();
-        }
+        if (nextBlock >= TOTAL_BLOCKS_PER_DAY) { nextDay++; nextBlock = 0; }
+        if (nextDay < TOTAL_DAYS) { setCurrentDay(nextDay); setCurrentBlock(nextBlock); } else { handleSave(); }
     };
     
     const handleBack = () => {
-        let prevBlock = currentBlock - 1;
-        let prevDay = currentDay;
-        
-        if (prevBlock < 0) {
-            prevDay--;
-            if (prevDay >= 0) {
-              prevBlock = TOTAL_BLOCKS_PER_DAY - 1;
-            }
-        }
-
+        let prevBlock = currentBlock - 1; let prevDay = currentDay;
+        if (prevBlock < 0) { prevDay--; if (prevDay >= 0) prevBlock = TOTAL_BLOCKS_PER_DAY - 1; }
         if (prevDay >= 0) {
-             let targetBlock = prevBlock;
-             let targetDay = prevDay;
-             
-             // Look backwards for the previous actual block to edit
-             let found = false;
+             let targetBlock = prevBlock; let targetDay = prevDay; let found = false;
              for (let d = prevDay; d >= 0; d--) {
                  for (let b = (d === prevDay ? prevBlock : TOTAL_BLOCKS_PER_DAY - 1); b >=0; b--) {
-                     const blockToCheck = workingSchedule[d]?.[b];
-                     if(blockToCheck){
-                         const dur = blockToCheck.duracion || 1;
-                         // Check if this is where the previous step was
-                         if(b + dur > prevBlock || d < prevDay){
-                            targetDay = d;
-                            targetBlock = b;
-                            found = true;
-                            break;
-                         }
-                     } else {
-                        // Empty block, this must be the step
-                        targetDay = d;
-                        targetBlock = b;
-                        found = true;
-                        break;
-                     }
+                     const blk = workingSchedule[d]?.[b];
+                     if(blk) { if(b + (blk.duracion || 1) > prevBlock || d < prevDay) { targetDay = d; targetBlock = b; found = true; break; }
+                     } else { targetDay = d; targetBlock = b; found = true; break; }
                  }
                  if(found) break;
              }
-             setCurrentDay(targetDay);
-             setCurrentBlock(targetBlock);
+             setCurrentDay(targetDay); setCurrentBlock(targetBlock);
         }
     };
 
     const handleSave = async () => {
-        if (isPartiallyFilled) {
-            toast({ variant: 'destructive', title: "Campos incompletos", description: "El último bloque está incompleto." });
-            return;
-        }
-        const newHorario: Horario = {
-            id: selectedGroupId,
-            grupoId: selectedGroupId,
-            schedule: workingSchedule,
-        };
-        await onSave(newHorario);
+        if (isPartiallyFilled) return;
+        await onSave({ id: selectedGroupId, grupoId: selectedGroupId, schedule: workingSchedule });
     };
-
-    const isLastStep = currentDay === TOTAL_DAYS - 1 && currentBlock >= TOTAL_BLOCKS_PER_DAY - (workingSchedule[TOTAL_DAYS - 1]?.[TOTAL_BLOCKS_PER_DAY-1]?.duracion || 1)
 
     if (wizardStep === 'select_group') {
         return (
             <>
-                <DialogHeader>
-                    <DialogTitle>Crear o Editar Horario</DialogTitle>
-                    <DialogDescription>Selecciona el grupo para el cual deseas crear o editar un horario.</DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                    <div className="grid gap-2">
-                        <Label htmlFor="grupo">Grupo</Label>
-                        <Select onValueChange={setSelectedGroupId} value={selectedGroupId}>
-                            <SelectTrigger id="grupo"><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger>
-                            <SelectContent>{grupos.map(g => <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>)}</SelectContent>
-                        </Select>
-                    </div>
-                </div>
-                <DialogFooter>
-                    <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
-                    <Button onClick={() => {
-                        if (selectedGroupId) setWizardStep('build_schedule')
-                        else toast({ variant: 'destructive', title: 'Selecciona un grupo' })
-                    }}>Comenzar</Button>
-                </DialogFooter>
+                <DialogHeader><DialogTitle>Crear o Editar Horario</DialogTitle></DialogHeader>
+                <div className="grid gap-4 py-4"><div className="grid gap-2"><Label>Grupo</Label><Select onValueChange={setSelectedGroupId} value={selectedGroupId}><SelectTrigger><SelectValue placeholder="Selecciona un grupo" /></SelectTrigger><SelectContent>{grupos.map(g => <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>)}</SelectContent></Select></div></div>
+                <DialogFooter><Button variant="ghost" onClick={onCancel}>Cancelar</Button><Button onClick={() => selectedGroupId ? setWizardStep('build_schedule') : toast({ variant: 'destructive', title: 'Selecciona un grupo' })}>Comenzar</Button></DialogFooter>
             </>
         );
     }
     
     return (
         <>
-            <DialogHeader>
-                <DialogTitle>{existingHorario ? 'Editar' : 'Crear'} Horario: {selectedGroupName}</DialogTitle>
-                <DialogDescription>
-                    Estás en: <strong>{DIAS_SEMANA[currentDay]}</strong>, bloque de <strong>{HORAS_BLOQUE[currentBlock]}</strong>.
-                </DialogDescription>
-            </DialogHeader>
+            <DialogHeader><DialogTitle>{existingHorario ? 'Editar' : 'Crear'} Horario: {grupos.find(g => g.value === selectedGroupId)?.label}</DialogTitle><DialogDescription>Día: <strong>{DIAS_SEMANA[currentDay]}</strong>, Bloque: <strong>{HORAS_BLOQUE[currentBlock]}</strong></DialogDescription></DialogHeader>
             <div className="space-y-6 py-4">
-                <Progress value={progress} />
-                {isBlockOccupied ? (
-                    <div className="text-center text-muted-foreground py-10">
-                        Este bloque está ocupado por la clase anterior.
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label>Materia</Label>
-                            <Combobox 
-                                options={materias} 
-                                value={currentBlockData?.materiaId || ''}
-                                onValueChange={(val) => handleScheduleChange('materiaId', val)}
-                                placeholder="Seleccionar materia..."
-                                searchPlaceholder="Buscar materia..."
-                                emptyMessage="No se encontró la materia."
-                            />
-                        </div>
-                         <div className="space-y-2">
-                            <Label>Docente</Label>
-                             <Combobox 
-                                options={docentes} 
-                                value={currentBlockData?.docenteId || ''}
-                                onValueChange={(val) => handleScheduleChange('docenteId', val)}
-                                placeholder="Seleccionar docente..."
-                                searchPlaceholder="Buscar docente..."
-                                emptyMessage="No se encontró el docente."
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Duración (horas)</Label>
-                            <Select 
-                                value={String(currentBlockData?.duracion || 1)}
-                                onValueChange={(val) => handleScheduleChange('duracion', parseInt(val))}
-                                disabled={!currentBlockData || currentBlock === TOTAL_BLOCKS_PER_DAY - 1}
-                            >
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="1">1 hora</SelectItem>
-                                    <SelectItem value="2">2 horas</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                         <div className="flex items-end">
-                            <Button variant="outline" size="sm" onClick={() => handleScheduleChange('materiaId', null)}>
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Limpiar bloque
-                            </Button>
-                        </div>
-                    </div>
-                )}
+                <Progress value={((currentDay * TOTAL_BLOCKS_PER_DAY + currentBlock) / (TOTAL_DAYS * TOTAL_BLOCKS_PER_DAY)) * 100} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2"><Label>Materia</Label><Combobox options={materias} value={currentBlockData?.materiaId || ''} onValueChange={(v) => handleScheduleChange('materiaId', v)} /></div>
+                    <div className="space-y-2"><Label>Docente</Label><Combobox options={docentes} value={currentBlockData?.docenteId || ''} onValueChange={(v) => handleScheduleChange('docenteId', v)} /></div>
+                    <div className="space-y-2"><Label>Duración</Label><Select value={String(currentBlockData?.duracion || 1)} onValueChange={(v) => handleScheduleChange('duracion', parseInt(v))} disabled={!currentBlockData || currentBlock === TOTAL_BLOCKS_PER_DAY - 1}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="1">1 hora</SelectItem><SelectItem value="2">2 horas</SelectItem></SelectContent></Select></div>
+                    <div className="flex items-end"><Button variant="outline" size="sm" onClick={() => handleScheduleChange('materiaId', null)}><Trash2 className="h-4 w-4 mr-2" /> Limpiar bloque</Button></div>
+                </div>
             </div>
-            <DialogFooter className="flex justify-between w-full">
-                <Button variant="outline" onClick={handleBack} disabled={currentDay === 0 && currentBlock === 0}>
-                    <ArrowLeft className="h-4 w-4 mr-2"/>
-                    Anterior
-                </Button>
-                <Button onClick={handleNext} disabled={isPartiallyFilled}>
-                    {isLastStep ? 'Guardar Horario' : 'Siguiente'}
-                    {!isLastStep && <ArrowRight className="h-4 w-4 ml-2"/>}
-                </Button>
-            </DialogFooter>
+            <DialogFooter className="flex justify-between w-full"><Button variant="outline" onClick={handleBack} disabled={currentDay === 0 && currentBlock === 0}><ArrowLeft className="h-4 w-4 mr-2"/>Anterior</Button><Button onClick={handleNext} disabled={isPartiallyFilled}>{currentDay === TOTAL_DAYS - 1 && currentBlock >= TOTAL_BLOCKS_PER_DAY - 1 ? 'Guardar' : 'Siguiente'}</Button></DialogFooter>
         </>
     )
 }
 
-function HorariosContent({
-    firestore, horarios, grupos, materias, users
-}: {
-    firestore: Firestore,
-    horarios: Horario[],
-    grupos: Grupo[],
-    materias: AsignacionMateria[],
-    users: User[],
-}) {
+function HorariosContent({ firestore, horarios, grupos, materias, users }: { firestore: Firestore, horarios: Horario[], grupos: Grupo[], materias: AsignacionMateria[], users: User[] }) {
     const { toast } = useToast();
     const [isWizardOpen, setIsWizardOpen] = useState(false);
     const [editingHorario, setEditingHorario] = useState<Horario | null>(null);
@@ -1110,154 +793,54 @@ function HorariosContent({
     const materiaOptions = useMemo(() => materias.map(m => ({ value: m.id, label: m.materia })), [materias]);
     const grupoOptions = useMemo(() => grupos.map(g => ({ value: g.id, label: g.name })), [grupos]);
 
-    const handleSaveHorario = async (horario: Horario) => {
-        try {
-            await setDoc(doc(firestore, "horarios", horario.id), horario, { merge: true });
-            toast({ title: "Horario guardado", description: "El horario se ha guardado correctamente." });
-            window.location.reload();
-        } catch (error) {
-            console.error("Error saving horario:", error);
-            toast({ variant: "destructive", title: "Error al guardar", description: "No se pudo guardar el horario." });
-        }
-    };
-
-    const handleDeleteHorario = async (grupoId: string) => {
-        try {
-            await deleteDoc(doc(firestore, "horarios", grupoId));
-            toast({ title: "Horario eliminado" });
-            window.location.reload();
-        } catch (error) {
-             toast({ variant: "destructive", title: "Error", description: "No se pudo eliminar el horario." });
-        }
-    }
-
-    const openWizard = (horario: Horario | null = null) => {
-        setEditingHorario(horario);
-        setIsWizardOpen(true);
-    };
-
-    const renderCell = (horario: Horario, dayIndex: number, blockIndex: number) => {
-        const block = horario.schedule[dayIndex]?.[blockIndex];
-
-        // Check if a previous block spans over this one
-        for (let i = 1; i < TOTAL_BLOCKS_PER_DAY; i++) {
-            const prevBlock = horario.schedule[dayIndex]?.[blockIndex - i];
-            if (prevBlock && (prevBlock.duracion || 1) > i) {
-                return null; // This cell is spanned by a previous one, so don't render it.
-            }
-        }
-        
-        if (!block) {
-            return <TableCell key={`${dayIndex}-${blockIndex}`}></TableCell>;
-        }
-
-        const materia = materias.find(m => m.id === block.materiaId);
-        const docente = users.find(u => u.id === block.docenteId);
-
-        return (
-            <TableCell key={`${dayIndex}-${blockIndex}`} rowSpan={block.duracion} className="align-top bg-muted/50 p-2 max-w-32">
-                <div className="font-bold truncate" title={materia?.materia}>{materia?.materia || 'Materia no encontrada'}</div>
-                <div className="text-xs text-muted-foreground truncate" title={docente?.name}>{docente?.name || 'Docente no encontrado'}</div>
-            </TableCell>
-        );
+    const handleSaveHorario = async (h: Horario) => {
+        try { await setDoc(doc(firestore, "horarios", h.id), h, { merge: true }); toast({ title: "Horario guardado" }); setIsWizardOpen(false); } catch (e) { toast({ variant: "destructive", title: "Error" }); }
     };
 
     return (
         <Card>
             <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                    <CardTitle>Horarios</CardTitle>
-                    <CardDescription>Gestiona los horarios de los grupos.</CardDescription>
-                </div>
-                <Button size="sm" onClick={() => openWizard(null)} disabled={grupos.length === 0} className="w-full sm:w-auto">
-                     <PlusCircle className="h-4 w-4 mr-2" /> Crear Horario
-                </Button>
+                <div><CardTitle>Horarios</CardTitle><CardDescription>Gestiona los horarios de los grupos.</CardDescription></div>
+                <Button size="sm" onClick={() => { setEditingHorario(null); setIsWizardOpen(true); }} disabled={grupos.length === 0}> <PlusCircle className="h-4 w-4 mr-2" /> Crear Horario </Button>
             </CardHeader>
             <CardContent className="space-y-6">
-                {horarios.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No hay horarios creados. ¡Crea el primero!</p>}
-                {horarios.map(horario => {
-                    const grupo = grupos.find(g => g.id === horario.grupoId);
+                {horarios.map(h => {
+                    const grp = grupos.find(g => g.id === h.grupoId);
                     return (
-                        <Card key={horario.id}>
+                        <Card key={h.id}>
                             <CardHeader className="flex-row items-center justify-between">
-                                <div>
-                                    <CardTitle>{grupo?.name || 'Grupo no encontrado'}</CardTitle>
-                                    <CardDescription>Turno {grupo?.turno}</CardDescription>
-                                </div>
+                                <div><CardTitle>{grp?.name}</CardTitle><CardDescription>Turno {grp?.turno}</CardDescription></div>
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                                    <DropdownMenuContent>
-                                        <DropdownMenuItem onSelect={() => openWizard(horario)}>Editar</DropdownMenuItem>
-                                        <AlertDialog>
-                                            <AlertDialogTrigger asChild><DropdownMenuItem onSelect={e => e.preventDefault()} className="text-red-600 focus:text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger>
-                                            <AlertDialogContent>
-                                                <AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esta acción eliminará permanentemente el horario de este grupo.</AlertDialogDescription></AlertDialogHeader>
-                                                <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteHorario(horario.id)} className="bg-destructive text-destructive-foreground">Eliminar</AlertDialogAction></AlertDialogFooter>
-                                            </AlertDialogContent>
-                                        </AlertDialog>
-                                    </DropdownMenuContent>
+                                    <DropdownMenuContent><DropdownMenuItem onSelect={() => { setEditingHorario(h); setIsWizardOpen(true); }}>Editar</DropdownMenuItem><AlertDialog><AlertDialogTrigger asChild><DropdownMenuItem onSelect={e => e.preventDefault()} className="text-red-600">Eliminar</DropdownMenuItem></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={async () => await deleteDoc(doc(firestore, "horarios", h.id))} className="bg-destructive text-destructive-foreground">Eliminar</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></DropdownMenuContent>
                                 </DropdownMenu>
                             </CardHeader>
                             <CardContent>
-                                {/* Mobile View */}
-                                <div className="md:hidden space-y-4">
-                                    {DIAS_SEMANA.map((dia, dayIndex) => {
-                                        const daySchedule = horario.schedule[dayIndex];
-                                        if (!daySchedule || Object.keys(daySchedule).length === 0) return null;
-
-                                        const blockIndices = Object.keys(daySchedule).map(Number).sort((a, b) => a - b);
-                                        const visibleBlocks = [];
-                                        let coveredUntil = -1;
-                                        for (const blockIndex of blockIndices) {
-                                            if (blockIndex > coveredUntil) {
-                                                const block = daySchedule[blockIndex];
-                                                if (block) {
-                                                    visibleBlocks.push({ blockIndex, block });
-                                                    coveredUntil = blockIndex + (block.duracion || 1) - 1;
-                                                }
-                                            }
-                                        }
-
-                                        if (visibleBlocks.length === 0) return null;
-
-                                        return (
-                                            <div key={dia}>
-                                                <h4 className="font-semibold text-sm mb-2 border-b pb-1">{dia}</h4>
-                                                <div className="space-y-2">
-                                                    {visibleBlocks.map(({ blockIndex, block }) => {
-                                                        const materia = materias.find(m => m.id === block.materiaId);
-                                                        const docente = users.find(u => u.id === block.docenteId);
-                                                        const horaInicio = HORAS_BLOQUE[blockIndex];
-                                                        const duracion = block.duracion || 1;
-                                                        return (
-                                                            <div key={blockIndex} className="p-2 rounded-md bg-muted/50 text-sm">
-                                                                <p className="font-bold">{materia?.materia || 'Materia no encontrada'}</p>
-                                                                <p className="text-xs text-muted-foreground">{docente?.name || 'Docente no encontrado'}</p>
-                                                                <p className="text-xs text-muted-foreground mt-1">
-                                                                    {horaInicio} ({duracion}h)
-                                                                </p>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-
-                                {/* Desktop View */}
-                                <Table className="hidden md:table border table-fixed w-full">
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead className="w-[12%]">Hora</TableHead>
-                                            {DIAS_SEMANA.map(dia => <TableHead key={dia} className="w-[17.6%]">{dia}</TableHead>)}
-                                        </TableRow>
-                                    </TableHeader>
+                                <Table className="border table-fixed w-full">
+                                    <TableHeader><TableRow><TableHead className="w-[12%]">Hora</TableHead>{DIAS_SEMANA.map(d => <TableHead key={d} className="w-[17.6%]">{d}</TableHead>)}</TableRow></TableHeader>
                                     <TableBody>
-                                        {HORAS_BLOQUE.map((hora, blockIndex) => (
+                                        {HORAS_BLOQUE.map((hora, bIdx) => (
                                             <TableRow key={hora}>
                                                 <TableCell className="font-medium">{hora}</TableCell>
-                                                {DIAS_SEMANA.map((_, dayIndex) => renderCell(horario, dayIndex, blockIndex))}
+                                                {DIAS_SEMANA.map((_, dIdx) => {
+                                                    const block = h.schedule[dIdx]?.[bIdx];
+                                                    // Evitar renderizar celdas que están cubiertas por rowSpan
+                                                    for (let i = 1; i < TOTAL_BLOCKS_PER_DAY; i++) {
+                                                        const prevBlock = h.schedule[dIdx]?.[bIdx - i];
+                                                        if (prevBlock && (prevBlock.duracion || 1) > i) return null;
+                                                    }
+                                                    if (!block) return <TableCell key={dIdx} />;
+                                                    const m = materias.find(m => m.id === block.materiaId);
+                                                    const docnt = users.find(u => u.id === block.docenteId);
+                                                    return (
+                                                        <TableCell key={dIdx} rowSpan={block.duracion} className="align-top bg-muted/50 p-1 border">
+                                                            <ScrollArea className="h-full max-h-20">
+                                                                <div className="font-bold text-xs leading-tight">{m?.materia || '...'}</div>
+                                                                <div className="text-[10px] text-muted-foreground mt-1">{docnt?.name || '...'}</div>
+                                                            </ScrollArea>
+                                                        </TableCell>
+                                                    );
+                                                })}
                                             </TableRow>
                                         ))}
                                     </TableBody>
@@ -1267,21 +850,12 @@ function HorariosContent({
                     );
                 })}
             </CardContent>
-             <Dialog open={isWizardOpen} onOpenChange={(open) => { if (!open) { setIsWizardOpen(false); setEditingHorario(null); } }}>
+            <Dialog open={isWizardOpen} onOpenChange={setIsWizardOpen}>
                 <DialogContent className="sm:max-w-2xl" onInteractOutside={(e) => {
                     const target = e.target as HTMLElement;
-                    if (target.closest('[data-radix-popper-content-wrapper]')) {
-                        e.preventDefault();
-                    }
+                    if (target.closest('[data-radix-popper-content-wrapper]')) e.preventDefault();
                 }}>
-                     <ScheduleWizard
-                        grupos={grupoOptions}
-                        materias={materiaOptions}
-                        docentes={docenteOptions}
-                        onSave={handleSaveHorario}
-                        onCancel={() => { setIsWizardOpen(false); setEditingHorario(null); }}
-                        existingHorario={editingHorario}
-                    />
+                     <ScheduleWizard grupos={grupoOptions} materias={materiaOptions} docentes={docenteOptions} onSave={handleSaveHorario} onCancel={() => setIsWizardOpen(false)} existingHorario={editingHorario} />
                 </DialogContent>
             </Dialog>
         </Card>
@@ -1291,72 +865,31 @@ function HorariosContent({
 export default function CatalogsPage() {
     const firestore = useFirestore();
     const { toast } = useToast();
+    const { data: carreras } = useCollection<CatalogItem>(useMemoFirebase(() => collection(firestore, 'carreras'), [firestore]));
+    const { data: modalidades } = useCollection<CatalogItem>(useMemoFirebase(() => collection(firestore, 'modalidades'), [firestore]));
+    const { data: sedes } = useCollection<CatalogItem>(useMemoFirebase(() => collection(firestore, 'sedes'), [firestore]));
+    const { data: grupos } = useCollection<Grupo>(useMemoFirebase(() => collection(firestore, 'grupos'), [firestore]));
+    const { data: assignments } = useCollection<AsignacionMateria>(useMemoFirebase(() => collection(firestore, 'materiaAsignaciones'), [firestore]));
+    const { data: horarios } = useCollection<Horario>(useMemoFirebase(() => collection(firestore, 'horarios'), [firestore]));
+    const { data: users } = useCollection<User>(useMemoFirebase(() => collection(firestore, 'userProfiles'), [firestore]));
 
-    const { data: carrerasData } = useCollection<CatalogItem>(useMemoFirebase(() => collection(firestore, 'carreras'), [firestore]));
-    const { data: modalidadesData } = useCollection<CatalogItem>(useMemoFirebase(() => collection(firestore, 'modalidades'), [firestore]));
-    const { data: sedesData } = useCollection<CatalogItem>(useMemoFirebase(() => collection(firestore, 'sedes'), [firestore]));
-    const { data: gruposData } = useCollection<Grupo>(useMemoFirebase(() => collection(firestore, 'grupos'), [firestore]));
-    const { data: materiaAsignacionesData } = useCollection<AsignacionMateria>(useMemoFirebase(() => collection(firestore, 'materiaAsignaciones'), [firestore]));
-    const { data: horariosData } = useCollection<Horario>(useMemoFirebase(() => collection(firestore, 'horarios'), [firestore]));
-    const { data: usersData } = useCollection<User>(useMemoFirebase(() => collection(firestore, 'userProfiles'), [firestore]));
-    
-    const carreras = carrerasData || [];
-    const modalidades = modalidadesData || [];
-    const sedes = sedesData || [];
-    const grupos = gruposData || [];
-    const materiaAsignaciones = materiaAsignacionesData || [];
-    const horarios = horariosData || [];
-    const users = usersData || [];
-
-    const createFirestoreCrudHandlers = (collectionName: string, singularName: string) => ({
-        onAdd: async (name: string) => {
-            try {
-                await addDoc(collection(firestore, collectionName), { name });
-                toast({ title: `${singularName} agregado` });
-            } catch (error) {
-                toast({ variant: 'destructive', title: 'Error', description: `No se pudo agregar el ${singularName.toLowerCase()}.` });
-            }
-        },
-        onEdit: async (id: string, name: string) => {
-            try {
-                await updateDoc(doc(firestore, collectionName, id), { name });
-                toast({ title: `${singularName} actualizado` });
-            } catch (error) {
-                toast({ variant: 'destructive', title: 'Error', description: `No se pudo actualizar el ${singularName.toLowerCase()}.` });
-            }
-        },
-        onDelete: async (id: string) => {
-            try {
-                await deleteDoc(doc(firestore, collectionName, id));
-                toast({ title: `${singularName} eliminado` });
-            } catch (error) {
-                toast({ variant: 'destructive', title: 'Error', description: `No se pudo eliminar el ${singularName.toLowerCase()}.` });
-            }
-        },
+    const createHandlers = (col: string, name: string) => ({
+        onAdd: async (n: string) => { try { await addDoc(collection(firestore, col), { name: n }); toast({ title: `${name} agregado` }); } catch (e) { toast({ variant: 'destructive', title: 'Error' }); } },
+        onEdit: async (id: string, n: string) => { try { await updateDoc(doc(firestore, col, id), { name: n }); toast({ title: `${name} actualizado` }); } catch (e) { toast({ variant: 'destructive', title: 'Error' }); } },
+        onDelete: async (id: string) => { try { await deleteDoc(doc(firestore, col, id)); toast({ title: `${name} eliminado` }); } catch (e) { toast({ variant: 'destructive', title: 'Error' }); } },
     });
-
-    const carrerasHandlers = createFirestoreCrudHandlers('carreras', 'Carrera');
-    const modalidadesHandlers = createFirestoreCrudHandlers('modalidades', 'Modalidad');
-    const sedesHandlers = createFirestoreCrudHandlers('sedes', 'Sede');
 
     return (
         <Tabs defaultValue="carreras" className="w-full">
             <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-6 h-auto">
-                <TabsTrigger value="carreras">Carreras</TabsTrigger>
-                <TabsTrigger value="modalidades">Modalidades</TabsTrigger>
-                <TabsTrigger value="sedes">Sedes</TabsTrigger>
-                <TabsTrigger value="grupos">Grupos</TabsTrigger>
-                <TabsTrigger value="materias">Materias</TabsTrigger>
-                <TabsTrigger value="horarios">Horarios</TabsTrigger>
+                <TabsTrigger value="carreras">Carreras</TabsTrigger><TabsTrigger value="modalidades">Modalidades</TabsTrigger><TabsTrigger value="sedes">Sedes</TabsTrigger><TabsTrigger value="grupos">Grupos</TabsTrigger><TabsTrigger value="materias">Materias</TabsTrigger><TabsTrigger value="horarios">Horarios</TabsTrigger>
             </TabsList>
-            <TabsContent value="carreras"><CatalogContent title="Carreras" items={carreras} {...carrerasHandlers} /></TabsContent>
-            <TabsContent value="modalidades"><CatalogContent title="Modalidades" items={modalidades} {...modalidadesHandlers} /></TabsContent>
-            <TabsContent value="sedes"><CatalogContent title="Sedes" items={sedes} {...sedesHandlers} /></TabsContent>
-            <TabsContent value="grupos"><GruposContent firestore={firestore} grupos={grupos} carreras={carreras} modalidades={modalidades} sedes={sedes} /></TabsContent>
-            <TabsContent value="materias"><MateriasContent firestore={firestore} asignaciones={materiaAsignaciones} carreras={carreras} /></TabsContent>
-            <TabsContent value="horarios"><HorariosContent firestore={firestore} horarios={horarios} grupos={grupos} materias={materiaAsignaciones} users={users} /></TabsContent>
+            <TabsContent value="carreras"><CatalogContent title="Carreras" items={carreras || []} {...createHandlers('carreras', 'Carrera')} /></TabsContent>
+            <TabsContent value="modalidades"><CatalogContent title="Modalidades" items={modalidades || []} {...createHandlers('modalidades', 'Modalidad')} /></TabsContent>
+            <TabsContent value="sedes"><CatalogContent title="Sedes" items={sedes || []} {...createHandlers('sedes', 'Sede')} /></TabsContent>
+            <TabsContent value="grupos"><GruposContent firestore={firestore} grupos={grupos || []} carreras={carreras || []} modalidades={modalidades || []} sedes={sedes || []} /></TabsContent>
+            <TabsContent value="materias"><MateriasContent firestore={firestore} asignaciones={assignments || []} carreras={carreras || []} /></TabsContent>
+            <TabsContent value="horarios"><HorariosContent firestore={firestore} horarios={horarios || []} grupos={grupos || []} materias={assignments || []} users={users || []} /></TabsContent>
         </Tabs>
     );
 }
-
-    
