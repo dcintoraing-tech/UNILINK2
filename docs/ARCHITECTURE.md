@@ -1,47 +1,61 @@
-# Documentación Técnica de Arquitectura
+# Documentación Técnica de Arquitectura - UniLink Access
 
-Esta guía contiene la información necesaria para la creación de diagramas de Clases (Dominio) y de Paquetes (Arquitectura).
+Esta guía contiene la información necesaria para la creación de diagramas de Clases, Paquetes y Entidad-Relación (ER).
 
-## 1. Diagrama de Clases (Modelo de Datos)
+## 1. Diagrama Entidad-Relación (Modelo de Datos Firestore)
 
-### Entidades Principales
+Aunque Firestore es NoSQL, el sistema mantiene una integridad referencial lógica mediante IDs.
 
-- **UserProfile (Personal/Admin)**
-  - `id`: string (UID de Firebase Auth)
-  - `name`: string
-  - `email`: string
-  - `role`: enum (Admin, Jefe de carrera, Docente, Alumno)
-  - `carreraId`: string (Relación con Carrera)
-  - `status`: enum (Activo, Inactivo)
+### Entidades y Atributos
 
-- **Student (Estudiante)**
-  - `id`: string (ID autogenerado)
-  - `firstName`, `lastName`: string
-  - `controlNumber`: string (Identificador único)
-  - `academicProgramId`: string (Relación con Carrera)
-  - `assignedGroupId`: string (Relación con Grupo)
-  - `facialImage`: string (Base64)
-  - `embedding`: number[] (Vector de 128 posiciones para IA)
+#### **Colección: `userProfiles` (Personal)**
+*   `id` (PK): UID de Firebase Auth.
+*   `name`: Nombre completo.
+*   `email`: Correo institucional.
+*   `role`: [Admin, Jefe de carrera, Docente, Alumno].
+*   `carreraId` (FK): Referencia a `carreras.id`.
+*   `status`: [Activo, Inactivo].
 
-- **Asistencia (AttendanceRecord)**
-  - `id`: string (`att-{studentId}-{date}-{materiaId}`)
-  - `studentId`: string
-  - `date`: string (YYYY-MM-DD)
-  - `status`: enum (Presente, Retardo, Falta, Falta Justificada)
-  - `materiaAsignacionId`: string
-  - `docenteId`: string
+#### **Colección: `students` (Alumnos)**
+*   `id` (PK): ID autogenerado.
+*   `firstName`, `lastName`: Datos personales.
+*   `controlNumber`: Identificador único escolar.
+*   `academicProgramId` (FK): Referencia a `carreras.id`.
+*   `assignedGroupId` (FK): Referencia a `grupos.id`.
+*   `facialImage`: String Base64 de la foto de registro.
+*   `embedding`: Array de 128 números (Descriptor facial de IA).
 
-- **Catálogos**
-  - `Carrera`: { id, name }
-  - `Grupo`: { id, name, carreraId, turno, cuatrimestre }
-  - `AsignacionMateria`: { id, materia, carreraId }
-  - `Horario`: { id, grupoId, schedule: Map }
+#### **Colección: `carreras` (Catálogo)**
+*   `id` (PK): ID autogenerado.
+*   `name`: Nombre de la carrera.
 
-### Relaciones
-- Una **Carrera** tiene muchos **Grupos** y muchas **Materias**.
-- Un **Grupo** tiene muchos **Estudiantes** y un **Horario**.
-- Un **Estudiante** tiene muchos **Registros de Asistencia**.
-- Una **Asistencia** puede tener una **Justificación** (en caso de falta).
+#### **Colección: `grupos`**
+*   `id` (PK): ID autogenerado.
+*   `name`: Ejemplo "TI-11".
+*   `carreraId` (FK): Referencia a `carreras.id`.
+*   `turno`: [Matutino, Vespertino, Nocturno].
+*   `cuatrimestre/semestre`: Nivel actual.
+
+#### **Colección: `materiaAsignaciones`**
+*   `id` (PK): ID autogenerado.
+*   `materia`: Nombre de la materia.
+*   `carreraId` (FK): Referencia a `carreras.id`.
+
+#### **Colección: `attendance` (Asistencias)**
+*   `id` (PK): Formato `att-{studentId}-{date}-{materiaId}`.
+*   `studentId` (FK): Referencia a `students.id`.
+*   `date`: Fecha (YYYY-MM-DD).
+*   `materiaAsignacionId` (FK): Referencia a `materiaAsignaciones.id`.
+*   `docenteId` (FK): Referencia a `userProfiles.id`.
+*   `status`: [Presente, Retardo, Falta, Falta Justificada].
+*   `arrivalTime`: Hora exacta del registro.
+
+#### **Colección: `justificaciones`**
+*   `id` (PK): ID autogenerado.
+*   `studentId` (FK): Referencia a `students.id`.
+*   `attendanceRecordId` (FK): Referencia a `attendance.id`.
+*   `reason`: Motivo de la falta.
+*   `status`: [Pendiente, Aprobado, Rechazado].
 
 ---
 
@@ -49,24 +63,30 @@ Esta guía contiene la información necesaria para la creación de diagramas de 
 
 ### Capas del Sistema
 
-1. **Capa de Presentación (`src/app`)**
-   - `(auth)`: Login y recuperación.
-   - `admin/`: Paneles de gestión global.
-   - `dashboard/`: Herramientas del docente (Pase de lista).
-   - `student/`: Vista de consulta del alumno.
+1.  **Capa de Presentación (`src/app`)**
+    *   `(auth)`: Login de personal y acceso por No. Control para alumnos.
+    *   `admin/`: Gestión global (Usuarios, Alumnos, Catálogos).
+    *   `dashboard/`: Herramientas del docente (Pase de lista facial).
+    *   `student/`: Vista de consulta del alumno.
 
-2. **Capa de UI (`src/components`)**
-   - `ui/`: Componentes atómicos de ShadCN.
-   - `logo.tsx`, `logout-button.tsx`: Componentes globales.
+2.  **Capa de UI (`src/components`)**
+    *   `ui/`: Componentes atómicos basados en ShadCN.
+    *   `logo.tsx`, `logout-button.tsx`: Elementos globales de marca y sesión.
 
-3. **Capa de Datos y Servicios (`src/firebase`)**
-   - `firestore/`: Hooks personalizados para lectura en tiempo real.
-   - `auth/`: Lógica de sesiones.
-   - `config.ts`: Configuración de conexión al backend.
+3.  **Capa de Datos y Firebase (`src/firebase`)**
+    *   `firestore/`: Hooks `useCollection` y `useDoc` para datos en tiempo real.
+    *   `auth/`: Gestión de estados de sesión.
+    *   `config.ts`: Credenciales de conexión al proyecto de Google Cloud.
 
-4. **Motor Biométrico (`public/models`)**
-   - Contiene los pesos de las redes neuronales de `face-api.js`.
+4.  **Motor Biométrico (`public/models`)**
+    *   Pesos de redes neuronales: `tinyFaceDetector`, `faceLandmark68` y `faceRecognition`.
 
-5. **Utilidades (`src/lib`)**
-   - `utils.ts`: Formateo y clases condicionales.
-   - `placeholder-images.ts`: Manejo de imágenes por defecto.
+---
+
+## 3. Flujo de Identificación Facial
+
+1.  **Captura**: El navegador accede a la webcam vía `navigator.mediaDevices`.
+2.  **Detección**: `face-api.js` localiza el rostro en el video.
+3.  **Extracción**: Se genera un vector (embedding) del rostro actual.
+4.  **Comparación**: Se calcula la distancia euclidiana entre el rostro actual y los embeddings de la colección `students`.
+5.  **Registro**: Si hay coincidencia (>95% similitud), se busca la clase activa en el `Horario` y se escribe el documento en `attendance`.
