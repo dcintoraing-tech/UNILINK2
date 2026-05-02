@@ -1,22 +1,19 @@
-
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { User as UserIcon, Camera, Users, FilePlus, Loader2, PlayCircle, CheckCircle2, AlertCircle } from 'lucide-react';
+import { User as UserIcon, Camera, PlayCircle, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import * as faceapi from 'face-api.js';
 import { useFirestore, useCollection, useDoc, useMemoFirebase } from '@/firebase';
-import { doc, setDoc, writeBatch, collection, addDoc } from 'firebase/firestore';
+import { doc, setDoc, writeBatch, collection } from 'firebase/firestore';
 
 // --- INTERFACES ---
 interface Student {
@@ -82,14 +79,12 @@ export default function TeacherAttendancePage() {
     const { data: horariosData } = useCollection<Horario>(useMemoFirebase(() => collection(firestore, 'horarios'), [firestore]));
     const { data: gruposData } = useCollection<Grupo>(useMemoFirebase(() => collection(firestore, 'grupos'), [firestore]));
     const { data: materiasData } = useCollection<AsignacionMateria>(useMemoFirebase(() => collection(firestore, 'materiaAsignaciones'), [firestore]));
-    const { data: attendanceData } = useCollection<AttendanceRecord>(useMemoFirebase(() => collection(firestore, 'attendance'), [firestore]));
     const { data: configData } = useDoc<AttendanceConfig>(useMemoFirebase(() => doc(firestore, 'config', 'attendance'), [firestore]));
     
     const allStudents = useMemo(() => studentsData || [], [studentsData]);
     const horarios = useMemo(() => horariosData || [], [horariosData]);
     const grupos = useMemo(() => gruposData || [], [gruposData]);
     const materias = useMemo(() => materiasData || [], [materiasData]);
-    const attendance = useMemo(() => attendanceData || [], [attendanceData]);
     const config = useMemo(() => configData || { toleranceMinutes: 10, absenceLimitMinutes: 30 }, [configData]);
 
     // --- State ---
@@ -107,7 +102,6 @@ export default function TeacherAttendancePage() {
     const streamRef = useRef<MediaStream | null>(null);
     const recognitionIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const processedIdsRef = useRef<Set<string>>(new Set());
-    const warnedIdsRef = useRef<Set<string>>(new Set());
 
     // Load face-api.js models
     useEffect(() => {
@@ -154,7 +148,6 @@ export default function TeacherAttendancePage() {
                 .map(s => ({ ...s, status: 'Pendiente' as DisplayStatus }));
             setGroupStudentList(list);
             processedIdsRef.current = new Set();
-            warnedIdsRef.current = new Set();
         } else {
             setGroupStudentList([]);
         }
@@ -169,130 +162,87 @@ export default function TeacherAttendancePage() {
         if (videoRef.current) videoRef.current.srcObject = null;
     }, []);
 
-    // Function to mark attendance and show alerts
     const markAttendance = useCallback((studentId: string) => {
-        // Find the student details immediately
         const student = allStudents.find(s => s.id === studentId);
-        if (!student) return;
-
-        // Avoid double processing in the same session
-        if (processedIdsRef.current.has(studentId)) return;
+        if (!student || processedIdsRef.current.has(studentId)) return;
 
         const now = new Date();
-        const jsDay = now.getDay();
-        const scheduleDayIndex = jsDay - 1; // 0=Mon, 4=Fri
-
         const studentFullName = `${student.firstName} ${student.lastName}`;
+        const arrivalTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-        // If it's a weekend, we can't mark official attendance
-        if (scheduleDayIndex < 0 || scheduleDayIndex > 4) {
-            if (!warnedIdsRef.current.has(studentId)) {
-                toast({
-                    title: "Estudiante Identificado",
-                    description: `${studentFullName} reconocido, pero hoy es fin de semana.`,
-                });
-                warnedIdsRef.current.add(studentId);
-            }
-            return;
-        }
-
+        // Encontrar horario
+        const jsDay = now.getDay();
+        const scheduleDayIndex = jsDay - 1; 
         const groupSchedule = horarios.find(h => h.grupoId === student.assignedGroupId);
         const todaySchedule = groupSchedule?.schedule?.[String(scheduleDayIndex)];
 
-        // If there's no schedule for today
-        if (!todaySchedule || Object.keys(todaySchedule).length === 0) {
-            if (!warnedIdsRef.current.has(studentId)) {
-                toast({
-                    title: "Estudiante Identificado",
-                    description: `${studentFullName} reconocido, pero el grupo no tiene clases hoy.`,
-                });
-                warnedIdsRef.current.add(studentId);
-            }
-            return;
-        }
-
-        // Find active block
+        // Encontrar bloque activo
         const currentHour = now.getHours();
-        const currentBlockIndex = currentHour - 7; // Assumes blocks are 0: 7am, 1: 8am, etc.
+        const currentBlockIndex = currentHour - 7;
         let activeBlock: HorarioBlock | null = null;
         let activeBlockKey: string | null = null;
 
-        Object.entries(todaySchedule).forEach(([key, block]) => {
-            if (block) {
-                const startIdx = parseInt(key);
-                if (currentBlockIndex >= startIdx && currentBlockIndex < (startIdx + (block.duracion || 1))) {
-                    activeBlock = block;
-                    activeBlockKey = key;
+        if (todaySchedule) {
+            Object.entries(todaySchedule).forEach(([key, block]) => {
+                if (block) {
+                    const startIdx = parseInt(key);
+                    if (currentBlockIndex >= startIdx && currentBlockIndex < (startIdx + (block.duracion || 1))) {
+                        activeBlock = block;
+                        activeBlockKey = key;
+                    }
                 }
-            }
-        });
+            });
+        }
 
-        // IF SIMULATING: We can force a success message even if outside hours
         if (isSimulating) {
             processedIdsRef.current.add(studentId);
-            const mockSubject = activeBlock ? materias.find(m => m.id === activeBlock!.materiaId)?.materia : "Clase de Prueba";
-            
             setGroupStudentList(prev => prev.map(s => 
-                s.id === studentId ? { ...s, status: 'Presente', arrivalTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), subjectName: mockSubject || 'Simulación' } : s
+                s.id === studentId ? { ...s, status: 'Presente', arrivalTime, subjectName: "Simulación" } : s
             ));
-
-            toast({
-                title: "SIMULACIÓN: Identificado",
-                description: `${studentFullName} está Presente (Prueba).`,
-            });
+            toast({ title: "SIMULACIÓN: Identificado", description: `${studentFullName} está Presente (Prueba).` });
             return;
         }
 
-        // OFFICIAL MODE: Must have an active block
-        if (!activeBlock || !activeBlockKey) {
-            if (!warnedIdsRef.current.has(studentId)) {
-                 toast({
-                    title: "Estudiante Identificado",
-                    description: `${studentFullName} reconocido, pero no hay clases en este momento.`,
-                });
-                warnedIdsRef.current.add(studentId);
-            }
-            return;
-        }
-
-        // Calculate status (Presente vs Retardo)
-        const horaInicioStr = HORAS_BLOQUE_INICIO[parseInt(activeBlockKey)];
-        const [hours, minutes] = horaInicioStr.split(':').map(Number);
-        const startTime = new Date(now);
-        startTime.setHours(hours, minutes, 0, 0);
-        
-        const toleranceTime = new Date(startTime);
-        toleranceTime.setMinutes(startTime.getMinutes() + config.toleranceMinutes);
-        
-        const status: AttendanceStatus = now <= toleranceTime ? 'Presente' : 'Retardo';
-        const dateString = now.toISOString().split('T')[0];
-        const arrivalTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const subject = materias.find(m => m.id === activeBlock!.materiaId)?.materia || 'Clase';
-
-        // Mark as processed
+        // MODO OFICIAL
         processedIdsRef.current.add(studentId);
 
-        // Update UI
-        setGroupStudentList(prev => prev.map(s => 
-            s.id === studentId ? { ...s, status, arrivalTime, subjectName: subject } : s
-        ));
+        if (activeBlock && activeBlockKey) {
+            const horaInicioStr = HORAS_BLOQUE_INICIO[parseInt(activeBlockKey)];
+            const [hours, minutes] = horaInicioStr.split(':').map(Number);
+            const startTime = new Date(now);
+            startTime.setHours(hours, minutes, 0, 0);
+            
+            const toleranceTime = new Date(startTime);
+            toleranceTime.setMinutes(startTime.getMinutes() + config.toleranceMinutes);
+            
+            const status: AttendanceStatus = now <= toleranceTime ? 'Presente' : 'Retardo';
+            const subject = materias.find(m => m.id === activeBlock!.materiaId)?.materia || 'Clase';
 
-        // Feedback Alert
-        toast({
-            title: "¡Asistencia Registrada!",
-            description: `${studentFullName} está ${status} para ${subject}.`,
-        });
+            // ACTUALIZAR TABLA
+            setGroupStudentList(prev => prev.map(s => 
+                s.id === studentId ? { ...s, status, arrivalTime, subjectName: subject } : s
+            ));
 
-        // Save to Firestore
-        const recordId = `att-${studentId}-${dateString}-${activeBlock!.materiaId}`;
-        setDoc(doc(firestore, 'attendance', recordId), {
-            studentId,
-            date: dateString,
-            materiaAsignacionId: activeBlock!.materiaId,
-            docenteId: activeBlock!.docenteId,
-            status,
-            arrivalTime
-        }).catch(e => console.error("Error saving attendance:", e));
+            toast({ title: "¡Asistencia Registrada!", description: `${studentFullName} está ${status} para ${subject}.` });
+
+            // Guardar en DB
+            const dateString = now.toISOString().split('T')[0];
+            const recordId = `att-${studentId}-${dateString}-${activeBlock!.materiaId}`;
+            setDoc(doc(firestore, 'attendance', recordId), {
+                studentId,
+                date: dateString,
+                materiaAsignacionId: activeBlock!.materiaId,
+                docenteId: activeBlock!.docenteId,
+                status,
+                arrivalTime
+            }).catch(e => console.error("Error saving attendance:", e));
+        } else {
+            // No hay clase activa, pero igual cambiamos el estado en la TABLA para feedback visual
+            setGroupStudentList(prev => prev.map(s => 
+                s.id === studentId ? { ...s, status: 'Presente', arrivalTime, subjectName: "Fuera de Horario" } : s
+            ));
+            toast({ title: "Estudiante Identificado", description: `${studentFullName} reconocido. No hay clases activas ahora.` });
+        }
 
     }, [allStudents, horarios, materias, config, isSimulating, toast, firestore]);
 
@@ -320,7 +270,6 @@ export default function TeacherAttendancePage() {
                             const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
                             const isMatch = bestMatch.label !== 'unknown';
                             
-                            // Visual feedback
                             const drawBox = new faceapi.draw.DrawBox(detection.detection.box, { 
                                 label: isMatch ? 'Reconocido' : 'Desconocido',
                                 boxColor: isMatch ? 'rgba(0, 255, 0, 1)' : 'rgba(255, 0, 0, 1)'
@@ -383,7 +332,6 @@ export default function TeacherAttendancePage() {
             setIsSimulating(simulation);
             setIsTakingAttendance(true);
             processedIdsRef.current = new Set();
-            warnedIdsRef.current = new Set();
         } else {
             setIsTakingAttendance(false);
             if (isSimulating) {
@@ -392,7 +340,7 @@ export default function TeacherAttendancePage() {
                 return;
             }
 
-            // Official Attendance End: Record absences
+            // MODO OFICIAL: Al cerrar, marcar faltas
             const now = new Date();
             const jsDay = now.getDay();
             const scheduleDayIdx = jsDay - 1;
