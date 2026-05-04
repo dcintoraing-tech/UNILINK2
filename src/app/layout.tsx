@@ -4,8 +4,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 
 export const metadata: Metadata = {
-  title: 'SIBF - CAI',
-  description: 'Inicia sesión en la plataforma SIBF - CAI.',
+  title: {
+    default: 'SIBF - CAI',
+    template: '%s | SIBF - CAI',
+  },
+  description: 'Sistema Integral de Gestión Académica con Reconocimiento Facial Biométrico.',
+  icons: {
+    icon: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23ff1a21%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><path d=%22M8 3H5a2 2 0 0 0-2 2v3%22/><path d=%22M16 3h3a2 2 0 0 1 2 2v3%22/><path d=%22M3 16v3a2 2 0 0 0 2 2h3%22/><path d=%22M21 16v3a2 2 0 0 1-2 2h-3%22/><circle cx=%2212%22 cy=%2210%22 r=%223%22/><path d=%22M7 20c0-3.3 2.7-6 5-6s5 2.7 5 6%22/></svg>',
+  },
 };
 
 export default function RootLayout({
