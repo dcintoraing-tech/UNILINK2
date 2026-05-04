@@ -1,6 +1,6 @@
 # Documentación Técnica de Arquitectura - SIBF - CAI
 
-Esta guía contiene la información necesaria para la creación de diagramas de Clases, Paquetes y Entidad-Relación (ER).
+Esta guía contiene la información necesaria para la creación de diagramas de Clases, Paquetes y Entidad-Relación (ER), así como el flujo de procesos por rol.
 
 ## 1. Diagrama Entidad-Relación (Modelo de Datos Firestore)
 
@@ -94,9 +94,29 @@ El sistema utiliza **Client-Side Machine Learning** (Inferencia en el cliente) m
 | **Face Landmark 68** | Alineación | Detecta 68 puntos clave en el rostro para asegurar que la cara esté en la posición correcta antes de analizarla. |
 | **Face Recognition** | Identificación | Basado en una arquitectura tipo ResNet-34 que mapea un rostro a un vector (embedding) de 128 números. |
 
-### Flujo de Identificación Facial
-1.  **Captura**: El navegador accede a la webcam vía `navigator.mediaDevices`.
-2.  **Detección**: `tinyFaceDetector` localiza el rostro en el video.
-3.  **Extracción**: `faceRecognition` genera un vector (embedding) del rostro actual.
-4.  **Comparación**: Se calcula la similitud entre el rostro actual y los embeddings de la colección `students`.
-5.  **Registro**: Si hay coincidencia (>95% similitud), se busca la clase activa en el `Horario` y se escribe el documento en `attendance`.
+---
+
+## 4. Flujos de Proceso por Rol de Usuario
+
+### **A. Administrador**
+1. Configuración de parámetros globales (tolerancia y límites).
+2. Alta de catálogos (Carreras, Modalidades, Sedes).
+3. Gestión de usuarios (Docentes y Jefes de Carrera).
+4. Alta masiva de alumnos mediante Excel.
+5. Supervisión de integridad de datos y respaldos.
+
+### **B. Docente**
+1. Consulta de grupos asignados.
+2. Ejecución del Pase de Lista Facial (Sincronizado con horario).
+3. Uso del modo simulación para verificación técnica.
+4. Consulta de estadísticas de asistencia de sus grupos.
+
+### **C. Jefe de Carrera**
+1. Supervisión de reportes de su área académica.
+2. Gestión de Justificaciones (Aprobación/Rechazo de solicitudes de alumnos).
+3. Monitoreo de indicadores de deserción basados en inasistencias.
+
+### **D. Alumno**
+1. Acceso mediante Número de Control.
+2. Consulta de historial de asistencias y faltas.
+3. Envío de solicitudes de justificación para registros con estado "Falta".
