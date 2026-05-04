@@ -83,10 +83,20 @@ Aunque Firestore es NoSQL, el sistema mantiene una integridad referencial lógic
 
 ---
 
-## 3. Flujo de Identificación Facial
+## 3. Especificaciones de Inteligencia Artificial
 
+El sistema utiliza **Client-Side Machine Learning** (Inferencia en el cliente) mediante la librería **face-api.js**.
+
+### Modelos Utilizados
+| Modelo | Función | Descripción Técnica |
+| :--- | :--- | :--- |
+| **Tiny Face Detector** | Detección | Red neuronal convolucional (CNN) optimizada para detectar rostros en tiempo real con bajo consumo de CPU. |
+| **Face Landmark 68** | Alineación | Detecta 68 puntos clave en el rostro para asegurar que la cara esté en la posición correcta antes de analizarla. |
+| **Face Recognition** | Identificación | Basado en una arquitectura tipo ResNet-34 que mapea un rostro a un vector (embedding) de 128 números. |
+
+### Flujo de Identificación Facial
 1.  **Captura**: El navegador accede a la webcam vía `navigator.mediaDevices`.
-2.  **Detección**: `face-api.js` localiza el rostro en el video.
-3.  **Extracción**: Se genera un vector (embedding) del rostro actual.
-4.  **Comparación**: Se calcula la distancia euclidiana entre el rostro actual y los embeddings de la colección `students`.
+2.  **Detección**: `tinyFaceDetector` localiza el rostro en el video.
+3.  **Extracción**: `faceRecognition` genera un vector (embedding) del rostro actual.
+4.  **Comparación**: Se calcula la similitud entre el rostro actual y los embeddings de la colección `students`.
 5.  **Registro**: Si hay coincidencia (>95% similitud), se busca la clase activa en el `Horario` y se escribe el documento en `attendance`.
