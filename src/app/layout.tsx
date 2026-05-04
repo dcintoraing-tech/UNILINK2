@@ -4,8 +4,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 
 export const metadata: Metadata = {
-  title: 'Acceso UniLink',
-  description: 'Inicia sesión en la plataforma de Acceso UniLink.',
+  title: 'SIBF - CAI',
+  description: 'Inicia sesión en la plataforma SIBF - CAI.',
 };
 
 export default function RootLayout({

@@ -13,7 +13,7 @@ export default function Home() {
         </div>
         <Card className="w-full shadow-lg">
           <CardHeader className="text-center">
-            <CardTitle className="text-3xl font-bold tracking-tight">Bienvenido a UniLink Access</CardTitle>
+            <CardTitle className="text-3xl font-bold tracking-tight">Bienvenido a SIBF - CAI</CardTitle>
             <CardDescription>La plataforma para la gestión académica.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">

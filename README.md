@@ -1,4 +1,4 @@
-# UniLink Access - Guía de Gestión
+# SIBF - CAI
 
 Este proyecto es una plataforma de gestión académica con reconocimiento facial integrada con Firebase.
 

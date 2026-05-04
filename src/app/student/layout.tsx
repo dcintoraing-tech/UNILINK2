@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from 'next/link';
@@ -123,7 +122,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode;
       <aside className="hidden w-64 flex-col border-r bg-background p-4 sm:flex">
         <div className="mb-8 flex items-center gap-2">
           <Logo className="h-8 w-8" />
-          <h1 className="text-xl font-semibold">UniLink</h1>
+          <h1 className="text-xl font-semibold">SIBF - CAI</h1>
         </div>
         <NavContent />
       </aside>
@@ -140,7 +139,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode;
                     <SheetContent side="left" className="flex w-full max-w-[280px] flex-col p-4">
                        <div className="mb-8 flex items-center gap-2">
                           <Logo className="h-8 w-8" />
-                          <h1 className="text-xl font-semibold">UniLink</h1>
+                          <h1 className="text-xl font-semibold">SIBF - CAI</h1>
                         </div>
                         <NavContent />
                     </SheetContent>

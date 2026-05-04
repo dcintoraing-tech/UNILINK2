@@ -11,7 +11,7 @@ export function Logo(props: { className?: string }) {
       */}
       <Image
         src="/logo.png"
-        alt="Logo de UniLink Access"
+        alt="Logo de SIBF - CAI"
         fill
         style={{ objectFit: 'contain' }}
         sizes="(max-width: 768px) 100vw, 50vw"

@@ -1,4 +1,4 @@
-# Documentación Técnica de Arquitectura - UniLink Access
+# Documentación Técnica de Arquitectura - SIBF - CAI
 
 Esta guía contiene la información necesaria para la creación de diagramas de Clases, Paquetes y Entidad-Relación (ER).
 
